@@ -110,7 +110,7 @@ class ApplicationManagementActivity : AppActivity() {
                         packages.isEmpty() -> {
                             item {
                                 ExpressiveCard(
-                                    icon = R.drawable.ic_default_app_icon,
+                                    icon = R.drawable.ic_system_icon,
                                     title = stringResource(R.string.home_app_management_title),
                                     body = stringResource(R.string.home_app_management_empty)
                                 )

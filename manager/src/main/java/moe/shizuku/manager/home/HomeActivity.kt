@@ -645,7 +645,7 @@ private fun ManageAppsCard(
     }
 
     SimpleActionCard(
-        icon = R.drawable.ic_default_app_icon,
+        icon = R.drawable.ic_system_icon,
         title = title,
         body = body,
         enabled = running,
