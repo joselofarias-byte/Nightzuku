@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,6 +48,7 @@ import moe.shizuku.manager.ktx.toHtml
 import moe.shizuku.manager.ui.compose.ExpressiveSwitch
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
+import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
 import moe.shizuku.manager.utils.ShizukuSystemApis
 import moe.shizuku.manager.utils.UserHandleCompat
@@ -94,7 +98,37 @@ class ApplicationManagementActivity : AppActivity() {
             ShizukuExpressiveTheme {
                 ShizukuLazyScaffold(
                     title = stringResource(R.string.home_app_management_title),
-                    onNavigateUp = { finish() }
+                    onNavigateUp = { finish() },
+                    actions = {
+                        if (packages.isNotEmpty()) {
+                            var menuExpanded by remember { mutableStateOf(false) }
+
+                            Box {
+                                IconButton(onClick = { menuExpanded = true }) {
+                                    ShizukuIcon(R.drawable.ic_more_vert_24)
+                                }
+                                DropdownMenu(
+                                    expanded = menuExpanded,
+                                    onDismissRequest = { menuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.app_management_select_all)) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            selectAll(packages, true)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.app_management_deselect_all)) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            selectAll(packages, false)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 ) {
                     when {
                         packagesResource == null -> {
@@ -150,6 +184,24 @@ class ApplicationManagementActivity : AppActivity() {
                 }
             }
         }
+    }
+
+    private fun selectAll(packages: List<PackageInfo>, granted: Boolean) {
+        packages.forEach { packageInfo ->
+            val applicationInfo = packageInfo.applicationInfo ?: return@forEach
+            val uid = applicationInfo.uid
+            val packageName = packageInfo.packageName
+            try {
+                if (granted) {
+                    AuthorizationManager.grant(packageName, uid)
+                } else {
+                    AuthorizationManager.revoke(packageName, uid)
+                }
+            } catch (_: SecurityException) {
+            }
+        }
+        permissionTick.intValue++
+        viewModel.load(onlyCount = true)
     }
 
     override fun onDestroy() {

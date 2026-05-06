@@ -25,6 +25,13 @@ Shizuku uses a completely different way. See detailed description below.
 
 <https://shizuku.rikka.app/>
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/main.png" width="300" />
+  <img src="screenshots/apps.png" width="300" />
+</p>
+
 ## How does Shizuku work?
 
 First, we need to talk about how app use system APIs. For example, if the app wants to get installed apps, we all know we should use `PackageManager#getInstalledPackages()`. This is actually an interprocess communication (IPC) process of the app process and system server process, just the Android framework did the inner works for us.
