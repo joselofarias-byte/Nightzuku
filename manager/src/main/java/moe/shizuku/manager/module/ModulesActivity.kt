@@ -214,8 +214,11 @@ class ModulesActivity : AppActivity() {
                             },
                             onDelete = { deleteTarget = module },
                             onTrustChange = { trusted ->
-                                ModuleSettings.setModuleTrusted(module.id, trusted)
-                                modules = modules.toList()
+                                scope.launch {
+                                    ModuleSettings.setModuleTrusted(module.id, trusted)
+                                    AdbModuleManager.setEnabled(module, trusted)
+                                    reload()
+                                }
                             }
                         )
                     }
