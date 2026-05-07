@@ -169,6 +169,9 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="modules_disabled">Disabled</string>
     <string name="modules_enable">Enable</string>
     <string name="modules_disable">Disable</string>
+    <string name="modules_full_trust">Full Trust</string>
+    <string name="modules_trust">Trust</string>
+    <string name="modules_untrust">Untrust</string>
     <string name="modules_run_action">Action</string>
     <string name="modules_run_service">Service</string>
     <string name="modules_running">Running module script…</string>

@@ -161,6 +161,7 @@ Current WebView policy:
 - Content access: disabled.
 - Third-party cookies: disabled.
 - `window.Shizuku` is exposed only for enabled module-local WebUI when the access policy allows WebUI bridge and WebView internet is off.
+- Full Trust modules can use WebView internet and `window.Shizuku` together.
 
 WebUI should treat module files as local UI assets. Remote dependencies are blocked by default.
 
@@ -180,6 +181,8 @@ The `window.Shizuku` object can be exposed to module-local offline WebUI so page
 - access mode is **Full access**, or **Custom** with WebUI shell bridge enabled;
 - WebView internet is off.
 
+Full Trust modules bypass the `usesShellBridge=true`, WebUI bridge, WebView internet, ReCommand, Action, Service, background, and WebUI download policy gates. Path traversal, process timeout, output caps, and download size caps still apply.
+
 #### Module Info
 
 You can retrieve the current module's metadata, paths, and settings:
@@ -189,6 +192,7 @@ const info = JSON.parse(window.Shizuku.getModuleInfo());
 console.log(info.id);         // e.g. "my-module"
 console.log(info.enabled);    // true
 console.log(info.accessMode); // "full"
+console.log(info.trusted);    // true for Full Trust modules
 console.log(info.moduleDir);  // absolute path to module storage
 ```
 
@@ -228,7 +232,21 @@ Rules:
 - `cwd` must stay inside the module directory.
 - extra env keys must match `[A-Za-z_][A-Za-z0-9_]*`.
 
-If the module is disabled, missing `usesShellBridge=true`, or blocked by Safe/Custom policy, shell calls return JSON with `ok: false`, `exitCode: -1`, and the error text in `stderr`.
+If the module is disabled, missing `usesShellBridge=true`, or blocked by Safe/Custom policy, shell calls return JSON with `ok: false`, `exitCode: -1`, and the error text in `stderr`. Full Trust modules do not require `usesShellBridge=true`.
+
+### Full Trust
+
+Full Trust is a per-module override for modules the user explicitly trusts. In the modules screen, long-press a module card to reveal **Trust**. After trusting, the action becomes **Untrust** and the module gets a Full Trust chip.
+
+Trusted modules:
+
+- can run Action and Service regardless of the global Safe/Custom/Full mode;
+- can run background Service without the global background toggle;
+- can expose `window.Shizuku` without `usesShellBridge=true`;
+- can use WebView internet while the bridge is exposed;
+- skip ReCommand prompts;
+- can use `download()` even when global WebUI download is blocked;
+- can overwrite WebUI entry files through `download()`.
 
 ### ReCommand
 

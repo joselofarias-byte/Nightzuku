@@ -28,6 +28,7 @@ object ModuleSettings {
     private const val KEY_AI_API_KEY_ENCRYPTED = "adb_modules_ai_api_key_encrypted"
     private const val KEY_AI_API_KEY_IV = "adb_modules_ai_api_key_iv"
     private const val KEY_AI_CHECKER_UNLOCKED = "adb_modules_ai_checker_unlocked"
+    private const val KEY_TRUSTED_MODULES = "adb_modules_trusted_modules"
 
     enum class AccessMode(
         val value: String,
@@ -133,12 +134,20 @@ object ModuleSettings {
         }
     }
 
+    fun canRunAction(module: AdbModule): Boolean {
+        return isModuleTrusted(module.id) || canRunAction()
+    }
+
     fun canRunService(): Boolean {
         return when (getAccessMode()) {
             AccessMode.SAFE -> false
             AccessMode.FULL -> true
             AccessMode.CUSTOM -> getCustomPermissions().service
         }
+    }
+
+    fun canRunService(module: AdbModule): Boolean {
+        return isModuleTrusted(module.id) || canRunService()
     }
 
     fun canExposeWebBridge(): Boolean {
@@ -149,6 +158,10 @@ object ModuleSettings {
         }
     }
 
+    fun canExposeWebBridge(module: AdbModule): Boolean {
+        return isModuleTrusted(module.id) || canExposeWebBridge()
+    }
+
     fun canUseWebNetwork(): Boolean {
         return when (getAccessMode()) {
             AccessMode.SAFE -> false
@@ -157,12 +170,42 @@ object ModuleSettings {
         }
     }
 
+    fun canUseWebNetwork(module: AdbModule): Boolean {
+        return isModuleTrusted(module.id) || canUseWebNetwork()
+    }
+
     fun canDownloadWebFiles(): Boolean {
         return when (getAccessMode()) {
             AccessMode.SAFE -> false
             AccessMode.FULL -> true
             AccessMode.CUSTOM -> getCustomPermissions().webDownload
         }
+    }
+
+    fun canDownloadWebFiles(module: AdbModule): Boolean {
+        return isModuleTrusted(module.id) || canDownloadWebFiles()
+    }
+
+    fun canRunBackground(module: AdbModule): Boolean {
+        return isModuleTrusted(module.id) || allowBackgroundActions()
+    }
+
+    fun isModuleTrusted(moduleId: String): Boolean {
+        return ShizukuSettings.getPreferences()
+            .getStringSet(KEY_TRUSTED_MODULES, emptySet())
+            ?.contains(moduleId)
+            ?: false
+    }
+
+    fun setModuleTrusted(moduleId: String, trusted: Boolean) {
+        val prefs = ShizukuSettings.getPreferences()
+        val current = prefs.getStringSet(KEY_TRUSTED_MODULES, emptySet()).orEmpty().toMutableSet()
+        if (trusted) {
+            current += moduleId
+        } else {
+            current -= moduleId
+        }
+        prefs.edit().putStringSet(KEY_TRUSTED_MODULES, current).apply()
     }
 
     fun recommandForWebUi(): Boolean {

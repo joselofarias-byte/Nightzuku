@@ -39,8 +39,12 @@ class ModuleWebViewActivity : AppActivity() {
         setContent {
             var pendingCommand by remember { mutableStateOf<ModuleCommandRequest?>(null) }
             var pendingDecision by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
-            val webNetworkAllowed = ModuleSettings.canUseWebNetwork()
-            val exposeBridge = module.enabled && ModuleSettings.canExposeWebBridge() && !webNetworkAllowed
+            val trusted = ModuleSettings.isModuleTrusted(module.id)
+            val webNetworkAllowed = ModuleSettings.canUseWebNetwork(module)
+            val exposeBridge = module.enabled &&
+                ModuleSettings.canExposeWebBridge(module) &&
+                (module.declaresShellBridge || trusted) &&
+                (!webNetworkAllowed || trusted)
 
             ShizukuExpressiveTheme {
                 ShizukuScaffold(
@@ -54,8 +58,8 @@ class ModuleWebViewActivity : AppActivity() {
                                 settings.domStorageEnabled = true
                                 settings.allowFileAccess = true
                                 settings.allowContentAccess = false
-                                settings.allowFileAccessFromFileURLs = false
-                                settings.allowUniversalAccessFromFileURLs = false
+                                settings.allowFileAccessFromFileURLs = trusted
+                                settings.allowUniversalAccessFromFileURLs = trusted
                                 settings.blockNetworkLoads = !webNetworkAllowed
                                 settings.cacheMode = WebSettings.LOAD_DEFAULT
                                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW

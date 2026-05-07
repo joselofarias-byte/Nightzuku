@@ -167,6 +167,9 @@
     <string name="modules_disabled">Выключен</string>
     <string name="modules_enable">Включить</string>
     <string name="modules_disable">Выключить</string>
+    <string name="modules_full_trust">Full Trust</string>
+    <string name="modules_trust">Trust</string>
+    <string name="modules_untrust">Untrust</string>
     <string name="modules_run_action">Action</string>
     <string name="modules_run_service">Service</string>
     <string name="modules_running">Выполняется скрипт модуля…</string>

@@ -102,6 +102,7 @@ MODDIR=/data/user/0/<package>/files/adb_modules/<id>
 ASH_STANDALONE=1
 SHIZUKU_MODULE_ID=<id>
 SHIZUKU_MODULE_MODE=safe|custom|full
+SHIZUKU_MODULE_TRUSTED=0|1
 SHIZUKU_MODULE_BACKGROUND=0|1
 ```
 
@@ -120,6 +121,17 @@ Use `service.sh` for controlled background setup. It runs only when:
 
 The manager auto-runs enabled services once per Shizuku binder session. Manual Service
 button execution uses the same policy.
+
+## Full Trust
+
+Full Trust is a per-module override for modules you explicitly trust. Long-press
+a module card to reveal **Trust**. After trusting, the module gets a Full Trust
+chip and the action changes to **Untrust**.
+
+Trusted modules bypass the global Action, Service, background, WebUI bridge,
+WebView internet, WebUI download, `usesShellBridge=true`, and ReCommand gates.
+Core safety limits such as path traversal rejection, process timeouts, output
+caps, and download size caps still apply.
 
 ## ReCommand and AI Checker
 

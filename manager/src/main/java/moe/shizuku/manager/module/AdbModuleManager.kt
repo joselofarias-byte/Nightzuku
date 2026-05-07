@@ -101,14 +101,14 @@ object AdbModuleManager {
     }
 
     suspend fun runAction(module: AdbModule): ModuleActionResult = withContext(Dispatchers.IO) {
-        check(ModuleSettings.canRunAction()) { "action.sh is blocked by module access policy." }
+        check(ModuleSettings.canRunAction(module)) { "action.sh is blocked by module access policy." }
         val script = module.actionScript?.takeIf { it.isFile } ?: error("This module has no action.sh.")
         runModuleScript(module, script, module.lastActionLog)
     }
 
     suspend fun runService(module: AdbModule): ModuleActionResult = withContext(Dispatchers.IO) {
-        check(ModuleSettings.canRunService()) { "service.sh is blocked by module access policy." }
-        check(ModuleSettings.allowBackgroundActions()) { "Background actions are disabled." }
+        check(ModuleSettings.canRunService(module)) { "service.sh is blocked by module access policy." }
+        check(ModuleSettings.canRunBackground(module)) { "Background actions are disabled." }
         val script = module.serviceScript?.takeIf { it.isFile } ?: error("This module has no service.sh.")
         runModuleScript(module, script, module.lastServiceLog)
     }
@@ -116,13 +116,11 @@ object AdbModuleManager {
     suspend fun runEnabledServicesIfAllowed(context: Context): List<Pair<AdbModule, ModuleActionResult>> =
         withContext(Dispatchers.IO) {
             if (servicesStartedForBinder) return@withContext emptyList()
-            if (!ModuleSettings.canRunService()) return@withContext emptyList()
-            if (!ModuleSettings.allowBackgroundActions()) return@withContext emptyList()
             if (!Shizuku.pingBinder()) return@withContext emptyList()
 
             servicesStartedForBinder = true
             listModules(context)
-                .filter { it.enabled && it.hasService }
+                .filter { it.enabled && it.hasService && ModuleSettings.canRunService(it) && ModuleSettings.canRunBackground(it) }
                 .map { module -> module to runService(module) }
         }
 
@@ -142,7 +140,8 @@ object AdbModuleManager {
             "ASH_STANDALONE=1",
             "SHIZUKU_MODULE_ID=${module.id}",
             "SHIZUKU_MODULE_MODE=${ModuleSettings.getAccessMode().value}",
-            "SHIZUKU_MODULE_BACKGROUND=${if (ModuleSettings.allowBackgroundActions()) "1" else "0"}"
+            "SHIZUKU_MODULE_TRUSTED=${if (ModuleSettings.isModuleTrusted(module.id)) "1" else "0"}",
+            "SHIZUKU_MODULE_BACKGROUND=${if (ModuleSettings.canRunBackground(module)) "1" else "0"}"
         )
         val remote = service.newProcess(
             arrayOf("sh", script.absolutePath),
@@ -273,6 +272,7 @@ object AdbModuleManager {
                 appendLine("finished=$finished")
                 appendLine("exitCode=${result.exitCode}")
                 appendLine("mode=${ModuleSettings.getAccessMode().value}")
+                appendLine("trusted=${ModuleSettings.isModuleTrusted(module.id)}")
                 appendLine()
                 appendLine("[stdout]")
                 appendLine(result.stdout.trim())

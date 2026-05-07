@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class
 )
@@ -24,8 +25,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -173,6 +175,7 @@ class ModulesActivity : AppActivity() {
                         ModuleCard(
                             module = module,
                             busy = runningModuleId == module.id,
+                            trusted = ModuleSettings.isModuleTrusted(module.id),
                             modifier = Modifier.animateItem(),
                             onToggle = {
                                 scope.launch {
@@ -181,7 +184,7 @@ class ModulesActivity : AppActivity() {
                                 }
                             },
                             onRunAction = {
-                                if (ModuleSettings.recommandForAction()) {
+                                if (!ModuleSettings.isModuleTrusted(module.id) && ModuleSettings.recommandForAction()) {
                                     pendingCommand = ModuleCommandRequest(
                                         module = module,
                                         source = ModuleCommandSource.ACTION,
@@ -209,7 +212,11 @@ class ModulesActivity : AppActivity() {
                                         .putExtra(ModuleWebViewActivity.EXTRA_MODULE_ID, module.id)
                                 )
                             },
-                            onDelete = { deleteTarget = module }
+                            onDelete = { deleteTarget = module },
+                            onTrustChange = { trusted ->
+                                ModuleSettings.setModuleTrusted(module.id, trusted)
+                                modules = modules.toList()
+                            }
                         )
                     }
                 }
@@ -339,16 +346,21 @@ private fun EmptyModulesCard(onInstall: () -> Unit) {
 private fun ModuleCard(
     module: AdbModule,
     busy: Boolean,
+    trusted: Boolean,
     modifier: Modifier = Modifier,
     onToggle: () -> Unit,
     onRunAction: () -> Unit,
     onRunService: () -> Unit,
     onOpenWebUi: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTrustChange: (Boolean) -> Unit
 ) {
     var expanded by remember(module.id) { mutableStateOf(true) }
+    var showTrustAction by remember(module.id, trusted) { mutableStateOf(false) }
     val containerColor by animateColorAsState(
-        targetValue = if (module.enabled) {
+        targetValue = if (trusted) {
+            MaterialTheme.colorScheme.tertiaryContainer
+        } else if (module.enabled) {
             MaterialTheme.colorScheme.surfaceContainer
         } else {
             MaterialTheme.colorScheme.surfaceContainerLowest
@@ -360,7 +372,13 @@ private fun ModuleCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.extraLarge)
-            .clickable { expanded = !expanded }
+            .combinedClickable(
+                onClick = { expanded = !expanded },
+                onLongClick = {
+                    expanded = true
+                    showTrustAction = true
+                }
+            )
             .animateContentSize(animationSpec = tween(280)),
         shape = MaterialTheme.shapes.extraLarge,
         color = containerColor,
@@ -404,7 +422,7 @@ private fun ModuleCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                ModuleChips(module)
+                ModuleChips(module, trusted)
                 AnimatedVisibility(
                     visible = busy,
                     enter = fadeIn(tween(180)) + expandVertically(tween(180)),
@@ -423,7 +441,13 @@ private fun ModuleCard(
                         onRunAction = onRunAction,
                         onRunService = onRunService,
                         onOpenWebUi = onOpenWebUi,
-                        onDelete = onDelete
+                        onDelete = onDelete,
+                        trusted = trusted,
+                        showTrustAction = showTrustAction,
+                        onTrustChange = {
+                            showTrustAction = false
+                            onTrustChange(it)
+                        }
                     )
                 }
             }
@@ -432,7 +456,7 @@ private fun ModuleCard(
 }
 
 @Composable
-private fun ModuleChips(module: AdbModule) {
+private fun ModuleChips(module: AdbModule, trusted: Boolean) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -442,6 +466,9 @@ private fun ModuleChips(module: AdbModule) {
             label = { Text(module.id) }
         )
         AssistChip(onClick = {}, label = { Text(module.formattedSize) })
+        if (trusted) {
+            AssistChip(onClick = {}, label = { Text(stringResource(R.string.modules_full_trust)) })
+        }
     }
 }
 
@@ -475,10 +502,13 @@ private fun RunningRow() {
 private fun ModuleActions(
     module: AdbModule,
     busy: Boolean,
+    trusted: Boolean,
+    showTrustAction: Boolean,
     onRunAction: () -> Unit,
     onRunService: () -> Unit,
     onOpenWebUi: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTrustChange: (Boolean) -> Unit
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -488,7 +518,7 @@ private fun ModuleActions(
             label = R.string.modules_run_action,
             icon = R.drawable.ic_outline_play_arrow_24,
             primary = true,
-            enabled = !busy && module.enabled && module.hasAction && ModuleSettings.canRunAction(),
+            enabled = !busy && module.enabled && module.hasAction && ModuleSettings.canRunAction(module),
             onClick = onRunAction
         )
         ModuleButton(
@@ -500,9 +530,21 @@ private fun ModuleActions(
         ModuleButton(
             label = R.string.modules_run_service,
             icon = R.drawable.ic_terminal_24,
-            enabled = !busy && module.enabled && module.hasService && ModuleSettings.canRunService(),
+            enabled = !busy &&
+                module.enabled &&
+                module.hasService &&
+                ModuleSettings.canRunService(module) &&
+                ModuleSettings.canRunBackground(module),
             onClick = onRunService
         )
+        if (showTrustAction || trusted) {
+            ModuleButton(
+                label = if (trusted) R.string.modules_untrust else R.string.modules_trust,
+                icon = R.drawable.ic_warning_24,
+                enabled = !busy,
+                onClick = { onTrustChange(!trusted) }
+            )
+        }
         ModuleButton(
             label = R.string.modules_delete,
             icon = R.drawable.ic_close_24,
