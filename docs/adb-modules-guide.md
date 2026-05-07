@@ -125,8 +125,9 @@ button execution uses the same policy.
 ## Full Trust
 
 Full Trust is a per-module override for modules you explicitly trust. Long-press
-a module card to reveal **Trust**. After trusting, the module gets a Full Trust
-chip and the action changes to **Untrust**.
+a module card to reveal **Trust**. Long-press again to hide the action. After
+trusting, the module gets a Full Trust chip. Long-press the trusted module to
+reveal **Untrust**.
 
 Trusted modules bypass the global Action, Service, background, WebUI bridge,
 WebView internet, WebUI download, `usesShellBridge=true`, and ReCommand gates.

@@ -376,7 +376,7 @@ private fun ModuleCard(
                 onClick = { expanded = !expanded },
                 onLongClick = {
                     expanded = true
-                    showTrustAction = true
+                    showTrustAction = !showTrustAction
                 }
             )
             .animateContentSize(animationSpec = tween(280)),
@@ -537,7 +537,7 @@ private fun ModuleActions(
                 ModuleSettings.canRunBackground(module),
             onClick = onRunService
         )
-        if (showTrustAction || trusted) {
+        if (showTrustAction) {
             ModuleButton(
                 label = if (trusted) R.string.modules_untrust else R.string.modules_trust,
                 icon = R.drawable.ic_warning_24,

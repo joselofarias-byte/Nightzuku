@@ -236,7 +236,7 @@ If the module is disabled, missing `usesShellBridge=true`, or blocked by Safe/Cu
 
 ### Full Trust
 
-Full Trust is a per-module override for modules the user explicitly trusts. In the modules screen, long-press a module card to reveal **Trust**. After trusting, the action becomes **Untrust** and the module gets a Full Trust chip.
+Full Trust is a per-module override for modules the user explicitly trusts. In the modules screen, long-press a module card to reveal **Trust**. Long-press again to hide the action. After trusting, the module gets a Full Trust chip. Long-press the trusted module to reveal **Untrust**.
 
 Trusted modules:
 
