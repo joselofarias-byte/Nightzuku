@@ -1,31 +1,21 @@
-# 🛑 STRICT CONTRIBUTING GUIDELINES 🛑
+# Contributing Guidelines
 
-Welcome to the Shizuku-modern repository. 
-We operate under a **ZERO-TOLERANCE POLICY** for low-effort contributions. This document outlines the absolute requirements for participating in this project. Read it carefully. Ignorance is not an excuse.
+Thank you for contributing to the Shizuku-modern repository. Please follow these guidelines to ensure a smooth review process.
 
-## 1. Issue Reporting (Bug Reports & Feature Requests)
-Do not treat the issue tracker as a tech-support forum.
+## Issue Reporting
+- **Use Templates:** Use the provided GitHub Issue templates and fill them out completely.
+- **Search for Duplicates:** Search open and closed issues before posting. An automated bot flags similar issues.
+- **Provide Text Logs:** Provide logs as text in Markdown code blocks (```log). Do not upload screenshots of text logs.
+- **Provide Reproduction Steps:** Include clear, step-by-step instructions to reproduce the issue.
 
-- **Use the Templates:** You MUST use the provided GitHub Issue templates. If you delete the template text or fail to fill it out completely, your issue will be closed automatically.
-- **Search First:** Duplicates will be closed. We have an automated bot that flags similar issues. Check open and closed issues before posting.
-- **No Screenshots of Text:** If you have an error, you must paste the actual log text inside Markdown code blocks (```log). Screenshots of logcats are an instant rejection.
-- **Reproducibility is Mandatory:** If you report a bug, you must provide EXACT steps to reproduce it. If we cannot reproduce it, the issue will be closed.
+## Pull Requests
+- **Scope:** Keep PRs focused on a single issue or feature.
+- **Compile and Test:** Ensure your code compiles (`./gradlew assembleRelease`) without new warnings.
+- **Architecture:** Follow the existing architecture. This fork uses Jetpack Compose, Material 3 Expressive, and targets Android 16/17 SDKs. Use `enableEdgeToEdge()` for window insets.
+- **UI Changes:** Include before and after screenshots (or a video) for UI changes.
+- **Git History:** Squash commits into logical units with clear messages.
 
-## 2. Pull Request (PR) Requirements
-We welcome code contributions, but they must meet our rigorous standards.
-
-- **One PR = One Purpose:** Do not bundle unrelated changes (e.g., fixing a bug and reformatting an unrelated file) into a single PR.
-- **Compile & Test:** Your code MUST compile locally via `./gradlew assembleRelease` without any new warnings. 
-- **Architectural Alignment:** Follow the existing architecture. This fork heavily uses Jetpack Compose, Material 3 Expressive, and strictly adheres to the Android 16/17 target SDKs. Do not introduce legacy Android UI concepts or bypass Edge-to-Edge inset handling.
-- **UI Changes Require Proof:** If your PR alters the UI, you MUST attach Before & After screenshots (or a video) in the PR description.
-- **Clean Git History:** Squash your commits into logical, working units before opening a PR. Use meaningful commit messages.
-
-## 3. Code Style & Standards
-- **Kotlin:** Follow standard Kotlin idioms. No trailing spaces.
-- **Compose:** Avoid deep nesting. Prefer state hoisting. Use `ShizukuExpressiveTheme` for all new UI components.
-- **Linting:** Ensure your code passes all internal linters before submitting.
-
-## 4. Conduct
-We are direct and expect technical competence. Be precise, factual, and strictly focused on the codebase.
-
-By contributing to this repository, you agree to follow these rules without exception.
+## Code Style
+- Follow standard Kotlin idioms.
+- Use state hoisting and avoid deep nesting in Compose. Use `ShizukuExpressiveTheme`.
+- Run internal linters before submitting.

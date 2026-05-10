@@ -1,33 +1,26 @@
 <!-- 
-🛑 STRICT PULL REQUEST TEMPLATE 🛑
-
-READ THIS BEFORE SUBMITTING:
-1. Low-effort PRs (e.g., "fixed typo", "updated dependencies" without context) will be CLOSED AND REJECTED.
-2. If this PR does not pass the CI checks, it will be ignored.
-3. If this PR changes the UI, YOU MUST PROVIDE BEFORE/AFTER SCREENSHOTS.
+Please ensure your pull request adheres to the following guidelines.
 -->
 
-### 🎯 Objective
-<!-- Exactly what does this PR solve? Link the specific Issue number (e.g., "Fixes #123"). -->
+### Objective
+<!-- Describe the purpose of your changes and link any related issues (e.g., "Fixes #123"). -->
 
-### 🛠️ Technical Implementation
-<!-- Explain HOW you solved the problem. What architectural choices did you make and why? -->
+### Implementation
+<!-- Briefly explain your technical approach and any architectural choices. -->
 
-### 🧪 Rigorous Testing Matrix
+### Testing
 <!-- 
-You MUST provide explicit proof of testing. 
+Describe how you tested this change.
 Example:
-- [x] Compiled Release APK (API 37 target).
+- [x] Compiled Release APK (API 37).
 - [x] Tested ADB mode on Pixel 7 (Android 14).
-- [x] Tested Root mode on OnePlus (Android 13).
 -->
 
-### ✅ Developer Declaration
-<!-- Check all boxes to confirm your compliance. -->
-- [ ] I have rigidly followed the existing Kotlin/Compose code style.
-- [ ] The code compiles locally with ZERO new warnings.
-- [ ] I did not introduce unnecessary third-party dependencies.
-- [ ] I have squashed my commits into a clean logical history.
+### Checklist
+- [ ] Code follows the existing Kotlin/Compose style.
+- [ ] Code compiles locally without new warnings.
+- [ ] No unnecessary third-party dependencies were introduced.
+- [ ] Commits are logical and well-described.
 
-### 🖼️ Visual Evidence (Mandatory for UI changes)
-<!-- Attach screenshots or videos here. If no UI change, write "N/A". -->
+### Screenshots (if applicable)
+<!-- Attach before/after screenshots for UI changes. Write "N/A" if not applicable. -->

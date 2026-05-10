@@ -1,36 +1,31 @@
-name: 🚨 STRICT BUG REPORT 🚨
-description: IF YOU DO NOT FILL THIS OUT COMPLETELY, YOUR ISSUE WILL BE DELETED WITHOUT WARNING.
+name: Bug Report
+description: Report a bug in Shizuku
 labels: [ "bug" ]
 
 body:
   - type: markdown
     attributes:
       value: |
-        # 🛑 ZERO-TOLERANCE POLICY
-        This repository maintains a **STRICT** issue policy. We are developers, not your tech support. 
-        If you provide vague descriptions like "it doesn't work", "app crash", or if you fail to attach proper logcats, your issue will be **closed and locked immediately**. 
-        Do not waste our time, and we won't waste yours.
+        Please provide detailed information so we can reproduce and fix the issue. Incomplete reports may be closed.
   
   - type: checkboxes
-    id: strict_requirements
+    id: requirements
     attributes:
-      label: 📋 MANDATORY CHECKLIST (FAILURE TO CHECK ALL = INSTANT CLOSE)
-      description: You MUST physically verify these statements.
+      label: Requirements
       options:
-        - label: I am using the EXACT latest version from GitHub Releases (I have checked the releases page today).
+        - label: I am using the latest version from GitHub Releases.
           required: true
-        - label: I am NOT using a custom, untested, or broken ROM (e.g., heavily modded MIUI/HyperOS, unknown GSI).
+        - label: I am using a standard, tested ROM (no custom/untested forks).
           required: true
-        - label: I have searched the issue tracker and this is DEFINITELY NOT a duplicate.
+        - label: I have searched existing issues and this is not a duplicate.
           required: true
-        - label: I am providing actual text logs, NOT screenshots of text.
+        - label: I am providing text logs, not screenshots of logs.
           required: true
 
   - type: input
     id: shizuku_version
     attributes:
-      label: 📦 EXACT Shizuku Version
-      description: "Do not write 'latest'. Write the exact tag, e.g., v13.6.0.r24"
+      label: Shizuku Version
       placeholder: e.g. v13.6.0.r24
     validations:
       required: true
@@ -38,8 +33,7 @@ body:
   - type: dropdown
     id: mode
     attributes:
-      label: ⚙️ Operation Mode
-      description: How is Shizuku running?
+      label: Operation Mode
       options:
         - ADB Mode
         - Root Mode
@@ -50,34 +44,31 @@ body:
   - type: input
     id: device_info
     attributes:
-      label: 📱 Exact Device Model & ROM
-      description: "Provide the commercial name, model number, and exact OS version (e.g., Pixel 7 Pro (Cheetah) - Android 14 QPR3)."
-      placeholder: e.g. Pixel 7 Pro - Android 14 (Stock)
+      label: Device Model & OS Version
+      placeholder: e.g. Pixel 7 Pro - Android 14
     validations:
       required: true
 
   - type: textarea
     id: reproducer
     attributes:
-      label: 👣 EXACT Steps to Reproduce
-      description: Provide a numbered list. Assume we know nothing about your setup.
+      label: Steps to Reproduce
       placeholder: |
-        1. Open the app...
-        2. Tap on X...
-        3. Observe Y happening instead of Z.
+        1. Open the app
+        2. Tap on X
+        3. Observe Y
     validations:
       required: true
 
   - type: textarea
     id: logs
     attributes:
-      label: 📝 CRASH LOGS / LOGCAT (MANDATORY)
+      label: Logcat / Crash Logs
       description: |
-        You MUST provide the relevant `adb logcat` output or crash trace. 
-        DO NOT PASTE SCREENSHOTS. Wrap logs in ```log blocks.
+        Provide the relevant `adb logcat` output or crash trace. Wrap logs in ```log blocks.
       placeholder: |
         ```log
-        Paste your logcat here.
+        Paste logcat here.
         ```
     validations:
       required: true
