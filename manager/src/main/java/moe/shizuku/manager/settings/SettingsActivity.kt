@@ -5,20 +5,16 @@ package moe.shizuku.manager.settings
 import android.content.ComponentName
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.text.TextUtils
-import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -33,11 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
-import moe.shizuku.manager.ShizukuSettings.KEEP_START_ON_BOOT
 import moe.shizuku.manager.ShizukuSettings.LANGUAGE
 import moe.shizuku.manager.ShizukuSettings.NIGHT_MODE
 import moe.shizuku.manager.app.AppActivity
@@ -90,9 +84,7 @@ class SettingsActivity : AppActivity() {
             var showNightDialog by remember { mutableStateOf(false) }
             var showModuleModeDialog by remember { mutableStateOf(false) }
             var showCustomPermissionsDialog by remember { mutableStateOf(false) }
-            var showAiDialog by remember { mutableStateOf(false) }
-            var aiUnlocked by remember { mutableStateOf(ModuleSettings.isAiCheckerUnlocked()) }
-            var contributorTapTimes by remember { mutableStateOf<List<Long>>(emptyList()) }
+
             var moduleAccessMode by remember {
                 mutableStateOf(ModuleSettings.getAccessMode())
             }
@@ -107,12 +99,6 @@ class SettingsActivity : AppActivity() {
             }
             var recommandAction by remember {
                 mutableStateOf(ModuleSettings.recommandForAction())
-            }
-            var aiModel by remember {
-                mutableStateOf(ModuleSettings.getAiModel())
-            }
-            var aiApiKey by remember {
-                mutableStateOf(ModuleSettings.getAiApiKey())
             }
             var recreateTick by remember { mutableIntStateOf(0) }
 
@@ -169,31 +155,7 @@ class SettingsActivity : AppActivity() {
                                     icon = R.drawable.ic_outline_info_24,
                                     title = stringResource(R.string.settings_translation_contributors),
                                     summary = contributors,
-                                    onClick = {
-                                        val now = SystemClock.elapsedRealtime()
-                                        val taps = (contributorTapTimes + now)
-                                            .filter { now - it <= AI_UNLOCK_WINDOW_MS }
-                                            .takeLast(AI_UNLOCK_TAPS)
-                                        contributorTapTimes = taps
-                                        if (taps.size >= AI_UNLOCK_TAPS) {
-                                            val nextUnlocked = !aiUnlocked
-                                            ModuleSettings.setAiCheckerUnlocked(nextUnlocked)
-                                            aiUnlocked = nextUnlocked
-                                            contributorTapTimes = emptyList()
-                                            if (!nextUnlocked) {
-                                                showAiDialog = false
-                                            }
-                                            Toast.makeText(
-                                                this@SettingsActivity,
-                                                if (nextUnlocked) {
-                                                    R.string.modules_ai_unlocked
-                                                } else {
-                                                    R.string.modules_ai_hidden
-                                                },
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
+                                    onClick = { }
                                 )
                                 GroupDivider()
                             }
@@ -252,6 +214,17 @@ class SettingsActivity : AppActivity() {
                     }
 
                     item {
+                        SettingsGroup(title = "Lab Features") {
+                            SettingsRow(
+                                icon = R.drawable.ic_settings_outline_24dp,
+                                title = "Lab Features",
+                                summary = "Experimental features",
+                                onClick = { startActivity(android.content.Intent(this@SettingsActivity, LabFeaturesActivity::class.java)) }
+                            )
+                        }
+                    }
+
+                    item {
                         SettingsGroup(title = stringResource(R.string.modules_settings_title)) {
                             SettingsRow(
                                 icon = R.drawable.ic_settings_outline_24dp,
@@ -301,15 +274,6 @@ class SettingsActivity : AppActivity() {
                                     recommandAction = enabled
                                 }
                             )
-                            if (aiUnlocked) {
-                                GroupDivider()
-                                SettingsRow(
-                                    icon = R.drawable.ic_settings_outline_24dp,
-                                    title = stringResource(R.string.modules_ai),
-                                    summary = stringResource(aiModel.labelRes),
-                                    onClick = { showAiDialog = true }
-                                )
-                            }
                         }
                     }
                 }
@@ -393,6 +357,7 @@ class SettingsActivity : AppActivity() {
                     )
                 }
 
+
                 if (showCustomPermissionsDialog) {
                     CustomPermissionsDialog(
                         value = customPermissions,
@@ -404,28 +369,8 @@ class SettingsActivity : AppActivity() {
                         }
                     )
                 }
-
-                if (showAiDialog && aiUnlocked) {
-                    AiSettingsDialog(
-                        model = aiModel,
-                        apiKey = aiApiKey,
-                        onDismiss = { showAiDialog = false },
-                        onSave = { model, apiKey ->
-                            ModuleSettings.setAiModel(model)
-                            ModuleSettings.setAiApiKey(apiKey)
-                            aiModel = model
-                            aiApiKey = apiKey
-                            showAiDialog = false
-                        }
-                    )
-                }
             }
         }
-    }
-
-    companion object {
-        private const val AI_UNLOCK_TAPS = 5
-        private const val AI_UNLOCK_WINDOW_MS = 1800L
     }
 
     private data class LocaleOption(
@@ -540,68 +485,6 @@ private fun CustomPermissionsDialog(
         },
         confirmButton = {
             TextButton(onClick = { onSave(draft) }) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = MaterialTheme.shapes.extraLarge
-    )
-}
-
-@Composable
-private fun AiSettingsDialog(
-    model: ModuleSettings.AiModel,
-    apiKey: String,
-    onDismiss: () -> Unit,
-    onSave: (ModuleSettings.AiModel, String) -> Unit
-) {
-    var draftModel by remember(model) { mutableStateOf(model) }
-    var draftApiKey by remember(apiKey) { mutableStateOf(apiKey) }
-    val models = ModuleSettings.AiModel.entries
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.modules_ai)) },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                models.forEach { item ->
-                    SettingsRow(
-                        icon = R.drawable.ic_settings_outline_24dp,
-                        title = stringResource(item.labelRes),
-                        summary = item.modelId,
-                        onClick = { draftModel = item },
-                        trailing = {
-                            RadioButton(
-                                selected = item == draftModel,
-                                onClick = { draftModel = item }
-                            )
-                        }
-                    )
-                }
-                OutlinedTextField(
-                    value = draftApiKey,
-                    onValueChange = { draftApiKey = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    label = { Text(stringResource(R.string.modules_ai_api_key)) },
-                    supportingText = { Text(stringResource(R.string.modules_ai_api_key_summary)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(draftModel, draftApiKey) }) {
                 Text(stringResource(android.R.string.ok))
             }
         },
