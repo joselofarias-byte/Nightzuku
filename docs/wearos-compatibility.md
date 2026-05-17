@@ -1,4 +1,4 @@
-# Wear OS Compatibility (Android 15-17 / Wear OS 5-7)
+# Wear OS Compatibility (Android 15-16 / Wear OS 5-6.1)
 
 This document details the Wear OS compatibility enhancements introduced in the Shizuku modern fork.
 
