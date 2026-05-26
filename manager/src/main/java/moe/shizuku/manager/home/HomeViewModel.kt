@@ -40,8 +40,8 @@ class HomeViewModel : ViewModel() {
         val permissionTest =
             Shizuku.checkRemotePermission("android.permission.GRANT_RUNTIME_PERMISSIONS") == PackageManager.PERMISSION_GRANTED
 
-        // Before a526d6bb, server will not exit on uninstall, manager installed later will get not permission
-        // Run a random remote transaction here, report no permission as not running
+
+
         ShizukuSystemApis.checkPermission(Manifest.permission.API_V23, BuildConfig.APPLICATION_ID, 0)
         return ServiceStatus(uid, apiVersion, patchVersion, seContext, permissionTest)
     }

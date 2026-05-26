@@ -283,7 +283,7 @@ const val ANDROID_PUBKEY_MODULUS_SIZE_WORDS = ANDROID_PUBKEY_MODULUS_SIZE / 4
 const val RSAPublicKey_Size = 524
 
 private fun BigInteger.toAdbEncoded(): IntArray {
-    // little-endian integer with padding zeros in the end
+
 
     val endcoded = IntArray(ANDROID_PUBKEY_MODULUS_SIZE_WORDS)
     val r32 = BigInteger.ZERO.setBit(32)
@@ -298,14 +298,14 @@ private fun BigInteger.toAdbEncoded(): IntArray {
 }
 
 private fun RSAPublicKey.adbEncoded(name: String): ByteArray {
-    // https://cs.android.com/android/platform/superproject/+/android-10.0.0_r30:system/core/libcrypto_utils/android_pubkey.c
+
 
     /*
     typedef struct RSAPublicKey {
-        uint32_t modulus_size_words; // ANDROID_PUBKEY_MODULUS_SIZE
-        uint32_t n0inv; // n0inv = -1 / N[0] mod 2^32
+        uint32_t modulus_size_words;
+        uint32_t n0inv;
         uint8_t modulus[ANDROID_PUBKEY_MODULUS_SIZE];
-        uint8_t rr[ANDROID_PUBKEY_MODULUS_SIZE]; // rr = (2^(rsa_size)) ^ 2 mod N
+        uint8_t rr[ANDROID_PUBKEY_MODULUS_SIZE];
         uint32_t exponent;
     } RSAPublicKey;
     */

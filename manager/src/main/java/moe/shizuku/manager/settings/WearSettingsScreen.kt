@@ -41,7 +41,7 @@ fun WearSettingsScreen(
     moduleAccessMode: moe.shizuku.manager.module.ModuleSettings.AccessMode,
     onModuleAccessModeClick: () -> Unit,
     onCustomPermissionsClick: () -> Unit,
-    // Dialog props
+
     showNightDialog: Boolean,
     nightLabels: List<String>,
     nightValues: List<Int>,

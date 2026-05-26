@@ -57,6 +57,8 @@ class AdbPairingTutorialActivity : AppActivity() {
 
         setContent {
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@AdbPairingTutorialActivity)
+            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@AdbPairingTutorialActivity)
+
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                     moe.shizuku.manager.ui.compose.WearScreenScaffold { state ->
@@ -141,6 +143,16 @@ class AdbPairingTutorialActivity : AppActivity() {
                             }
                         }
                     }
+                }
+            } else if (isTv) {
+                moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                    TvAdbPairingTutorialScreen(
+                        onNavigateUp = { finish() },
+                        notificationEnabled = notificationEnabled,
+                        onOpenNotificationSettings = ::openNotificationSettings,
+                        onOpenDeveloperOptions = ::openDeveloperOptions,
+                        onFinish = { finish() }
+                    )
                 }
             } else {
                 ShizukuExpressiveTheme {

@@ -98,7 +98,7 @@ action=scripts/action.sh
 Scripts run from the module directory. Use these variables:
 
 ```sh
-MODDIR=/data/user/0/<package>/files/adb_modules/<id>
+MODDIR=/data/user/0/kerneldroid.nightzuku/files/adb_modules/<id>
 ASH_STANDALONE=1
 SHIZUKU_MODULE_ID=<id>
 SHIZUKU_MODULE_MODE=safe|custom|full
@@ -110,29 +110,19 @@ Do not hardcode Magisk/KSU paths. Use `$MODDIR`.
 
 ## Action vs Service
 
-Use `action.sh` for a user-triggered command.
+Use `action.sh` for user-triggered commands.
 
-Use `service.sh` for controlled background setup. It runs only when:
-
-- the module is enabled;
-- access mode is Full, or Custom with Service enabled;
-- background actions are enabled;
+Use `service.sh` for background setup. It runs when:
+- The module is enabled.
+- Access mode is Full, or Custom with Service enabled.
+- Background actions are enabled in Settings.
 - Nightzuku binder is available.
 
-The manager auto-runs enabled services once per Nightzuku binder session. Manual Service
-button execution uses the same policy.
+The manager auto-runs enabled services once per binder session.
 
 ## Full Trust
 
-Full Trust is a per-module override for modules you explicitly trust. Long-press
-a module card to reveal **Trust**. Long-press again to hide the action. After
-trusting, the module gets a Full Trust chip. Long-press the trusted module to
-reveal **Untrust**.
-
-Trusted modules bypass the global Action, Service, background, WebUI bridge,
-WebView internet, WebUI download, `usesShellBridge=true`, and ReCommand gates.
-Core safety limits such as path traversal rejection, process timeouts, output
-caps, and download size caps still apply.
+Full Trust is a per-module override. Long-press a module card to toggle. Trusted modules bypass global policy gates while respecting core safety limits (timeouts, output caps).
 
 ## Safety Limits
 

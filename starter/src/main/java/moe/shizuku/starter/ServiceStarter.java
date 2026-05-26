@@ -45,8 +45,8 @@ public class ServiceStarter {
             "--nice-name='%s' moe.shizuku.starter.ServiceStarter " +
             "--token='%s' --package='%s' --class='%s' --uid=%d%s)&";
 
-    // DeathRecipient will automatically be unlinked when all references to the
-    // binder is dropped, so we hold the reference here.
+
+
     @SuppressWarnings("FieldCanBeLocal")
     private static IBinder shizukuBinder;
 
@@ -107,8 +107,8 @@ public class ServiceStarter {
                 Log.e(TAG, String.format("provider is dead %s %d", name, userId));
 
                 if (retry) {
-                    // For unknown reason, sometimes this could happens
-                    // Kill Shizuku app and try again could work
+
+
                     ActivityManagerApis.forceStopPackageNoThrow(packageName, userId);
                     Log.e(TAG, String.format("kill %s in user %d and try again", packageName, userId));
                     Thread.sleep(1000);

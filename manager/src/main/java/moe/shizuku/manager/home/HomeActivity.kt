@@ -458,9 +458,37 @@ private fun HomeScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val isWatch = androidx.compose.runtime.remember(context) { moe.shizuku.manager.utils.EnvironmentUtils.isWatch(context) }
+    val isTv = androidx.compose.runtime.remember(context) { moe.shizuku.manager.utils.EnvironmentUtils.isTV(context) }
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
             WearHomeScreen(
+                serviceResource = serviceResource,
+                grantedResource = grantedResource,
+                localNetworkPermissionState = localNetworkPermissionState,
+                isPrimaryUser = isPrimaryUser,
+                isRooted = isRooted,
+                onRefresh = onRefresh,
+                onSettings = onSettings,
+                onAbout = onAbout,
+                onStop = onStop,
+                onModules = onModules,
+                onManageApps = onManageApps,
+                onTerminal = onTerminal,
+                onStartRoot = onStartRoot,
+                onStartWirelessAdb = onStartWirelessAdb,
+                onPairWirelessAdb = onPairWirelessAdb,
+                onOpenWirelessGuide = onOpenWirelessGuide,
+                onShowAdbCommand = onShowAdbCommand,
+                onOpenAdbHelp = onOpenAdbHelp,
+                onOpenAdbPermissionHelp = onOpenAdbPermissionHelp,
+                onLearnMore = onLearnMore,
+                onCopyDiagnostics = onCopyDiagnostics,
+                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission
+            )
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            TVHomeScreen(
                 serviceResource = serviceResource,
                 grantedResource = grantedResource,
                 localNetworkPermissionState = localNetworkPermissionState,

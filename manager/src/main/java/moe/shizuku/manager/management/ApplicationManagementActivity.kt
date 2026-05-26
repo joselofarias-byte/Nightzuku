@@ -98,6 +98,7 @@ class ApplicationManagementActivity : AppActivity() {
             var showAdbLimitedDialog by remember { mutableStateOf(false) }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@ApplicationManagementActivity)
+            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@ApplicationManagementActivity)
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                 val pm = androidx.compose.ui.platform.LocalContext.current.packageManager
@@ -137,6 +138,37 @@ class ApplicationManagementActivity : AppActivity() {
                     }
                 }
 
+                }
+            } else if (isTv) {
+                moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        TvApplicationManagementScreen(
+                            packages = packages,
+                            tick = tick,
+                            onNavigateUp = { finish() },
+                            onToggle = { pkg ->
+                                val applicationInfo = pkg.applicationInfo ?: return@TvApplicationManagementScreen
+                                try {
+                                    if (AuthorizationManager.granted(pkg.packageName, applicationInfo.uid)) {
+                                        AuthorizationManager.revoke(pkg.packageName, applicationInfo.uid)
+                                    } else {
+                                        AuthorizationManager.grant(pkg.packageName, applicationInfo.uid)
+                                    }
+                                    permissionTick.intValue++
+                                    viewModel.load(onlyCount = true)
+                                } catch (_: SecurityException) {
+                                    showAdbLimitedDialog = true
+                                }
+                            },
+                            onSelectAll = { selectAll(packages, it) }
+                        )
+
+                        if (showAdbLimitedDialog) {
+                            moe.shizuku.manager.home.HomeAdbLimitedDialog(
+                                onDismiss = { showAdbLimitedDialog = false }
+                            )
+                        }
+                    }
                 }
             } else {
                 ShizukuExpressiveTheme {

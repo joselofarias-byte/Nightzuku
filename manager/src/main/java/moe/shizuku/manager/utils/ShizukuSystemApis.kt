@@ -27,7 +27,7 @@ object ShizukuSystemApis {
     private var getApplicationInfoMethod: Method? = null
     @Volatile
     private var getListMethod: Method? = null
- 
+
     @Volatile
     private var sPermissionManager: Any? = null
     @Volatile
@@ -36,13 +36,13 @@ object ShizukuSystemApis {
     private var revokeRuntimePermissionMethod: Method? = null
     @Volatile
     private var checkPermissionMethod: Method? = null
- 
+
     init {
         SystemServiceBinder.setOnGetBinderListener {
             return@setOnGetBinderListener ShizukuBinderWrapper(it)
         }
     }
- 
+
     @Synchronized
     private fun getPackageManager(): Any? {
         if (sPackageManager == null) {
@@ -85,7 +85,7 @@ object ShizukuSystemApis {
         }
         return sPackageManager
     }
- 
+
     @Synchronized
     private fun getPermissionManager(): Any? {
         if (sPermissionManager == null) {
@@ -128,18 +128,18 @@ object ShizukuSystemApis {
         }
         return sPermissionManager
     }
- 
+
     private fun invokeCompat(method: Method?, target: Any?, vararg args: Any?): Any? {
         if (method == null || target == null) return null
         val paramTypes = method.parameterTypes
         val finalArgs = arrayOfNulls<Any>(paramTypes.size)
-        
+
         if (paramTypes.size == args.size + 1) {
             val lastIdx = args.size - 1
             System.arraycopy(args, 0, finalArgs, 0, lastIdx)
-            finalArgs[lastIdx] = 0 // DEVICE_ID_DEFAULT
+            finalArgs[lastIdx] = 0
             finalArgs[lastIdx + 1] = args[lastIdx]
-            
+
             for (i in (lastIdx + 2) until paramTypes.size) {
                 if (paramTypes[i] == Int::class.javaPrimitiveType) finalArgs[i] = 0
                 else if (paramTypes[i] == String::class.java) finalArgs[i] = null
@@ -152,9 +152,9 @@ object ShizukuSystemApis {
         }
         return method.invoke(target, *finalArgs)
     }
- 
+
     private val users = arrayListOf<UserInfoCompat>()
- 
+
     private fun getUsers(): List<UserInfoCompat> {
         return if (!Shizuku.pingBinder()) {
             arrayListOf(UserInfoCompat(UserHandleCompat.myUserId(), "Owner"))
@@ -169,7 +169,7 @@ object ShizukuSystemApis {
             arrayListOf(UserInfoCompat(UserHandleCompat.myUserId(), "Owner"))
         }
     }
- 
+
     fun getUsers(useCache: Boolean = true): List<UserInfoCompat> {
         synchronized(users) {
             if (!useCache || users.isEmpty()) {
@@ -179,14 +179,14 @@ object ShizukuSystemApis {
             return users
         }
     }
- 
+
     fun getUserInfo(userId: Int): UserInfoCompat {
         return getUsers(useCache = true).firstOrNull { it.id == userId } ?: UserInfoCompat(
             UserHandleCompat.myUserId(),
             "Unknown"
         )
     }
- 
+
     @Suppress("UNCHECKED_CAST")
     fun getInstalledPackages(flags: Long, userId: Int): List<PackageInfo> {
         if (!Shizuku.pingBinder()) {

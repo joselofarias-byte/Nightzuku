@@ -25,12 +25,12 @@ The entire user interface for Wear OS has been rewritten using the official `and
 * **TransformingLazyColumn:** All lists (Authorized Apps, ADB Modules, Settings) use the watch-specific components that automatically adapt to circular displays, scaling and curving elements as they scroll off the edges.
 * **Edge-to-Edge Components:** We use native Wear OS Material 3 buttons, cards, and switches that respect the circular screen geometry.
 * **Dynamic Color (Monet):** Full support for dynamic color schemes (Monet) on Wear OS 4+ devices, automatically matching the user's watch face or system theme.
-* **Optimized Layouts:** Removed the previous 0.8x scaling hack. The UI now natively adapts to small, high-density circular screens with proper paddings and touch targets.
+* **Optimized Layouts:** The UI natively adapts to small, high-density circular screens with proper paddings and touch targets.
 
 ### 3. Native Wear Compose Material 3 Dialogs
-Legacy `MaterialAlertDialogBuilder` and XML dialogs have been replaced with native `androidx.wear.compose.material3.AlertDialog`.
-* **Visual Consistency:** Dialogs now feature a solid `MaterialTheme.colorScheme.background` (true black) instead of the previous white background issues.
-* **Scroll Support:** Dialog content is now scrollable, ensuring long messages or lists are fully accessible on round displays.
+Legacy dialogs have been replaced with native `androidx.wear.compose.material3.AlertDialog`.
+* **Visual Consistency:** Dialogs feature a true black background for visual consistency.
+* **Scroll Support:** Dialog content is scrollable, ensuring accessibility on round displays.
 * **Platform UI:** Uses native Wear OS Material 3 buttons and layouts.
 
 ### 4. WebView Fallback for WearOS

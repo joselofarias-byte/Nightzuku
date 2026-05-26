@@ -1,10 +1,13 @@
 @file:OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
-    androidx.compose.material3.ExperimentalMaterial3Api::class
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.tv.material3.ExperimentalTvMaterial3Api::class
 )
 
 package moe.shizuku.manager.module
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -42,15 +45,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -81,6 +83,10 @@ import androidx.wear.compose.material3.Button as WearButton
 import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButton
 import androidx.wear.compose.material3.MaterialTheme as WearMaterialTheme
 import androidx.wear.compose.material3.Text as WearText
+import androidx.tv.material3.Button as TvButton
+import androidx.tv.material3.OutlinedButton as TvOutlinedButton
+import androidx.tv.material3.Text as TvText
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import moe.shizuku.manager.ui.compose.MonospaceLog
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuIcon
@@ -149,9 +155,10 @@ class ModulesActivity : AppActivity() {
             }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@ModulesActivity)
+            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@ModulesActivity)
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
-                    
+
                 WearModulesScreen(
                     modules = modules,
                     busyId = runningModuleId,
@@ -162,7 +169,7 @@ class ModulesActivity : AppActivity() {
                         }
                     },
                     onRunAction = { module -> runModuleAction(module) },
-                    onRunService = { module -> 
+                    onRunService = { module ->
                         scope.launch {
                             runningModuleId = module.id
                             output = runCatching {
@@ -196,7 +203,7 @@ class ModulesActivity : AppActivity() {
                         show = true,
                         onDismissRequest = { output = null },
                         title = { WearText(title) },
-                        text = { 
+                        text = {
                             WearText(
                                 text = text,
                                 style = WearMaterialTheme.typography.bodySmall,
@@ -238,6 +245,102 @@ class ModulesActivity : AppActivity() {
                     )
                 }
 
+                }
+            } else if (isTv) {
+                moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        TvModulesScreen(
+                            modules = modules,
+                            onNavigateUp = { finish() },
+                            onInstallZip = { zipLauncher.launch(MODULE_MIME_TYPES) },
+                            onToggle = { module ->
+                                scope.launch {
+                                    AdbModuleManager.setEnabled(module, !module.enabled)
+                                    reload()
+                                }
+                            },
+                            onRunAction = { module ->
+                                if (!ModuleSettings.isModuleTrusted(module.id) && ModuleSettings.recommandForAction()) {
+                                    pendingCommand = ModuleCommandRequest(
+                                        module = module,
+                                        source = ModuleCommandSource.ACTION,
+                                        command = module.actionCommandPreview()
+                                    )
+                                } else {
+                                    runModuleAction(module)
+                                }
+                            },
+                            onRunService = { module ->
+                                scope.launch {
+                                    runningModuleId = module.id
+                                    output = runCatching {
+                                        val result = AdbModuleManager.runService(module)
+                                        context.getString(R.string.modules_service_result, result.exitCode) to result.combinedOutput
+                                    }.getOrElse {
+                                        context.getString(R.string.modules_service_failed) to (it.message ?: it.javaClass.simpleName)
+                                    }
+                                    runningModuleId = null
+                                }
+                            },
+                            onDelete = { deleteTarget = it },
+                            onTrustChange = { module, trusted ->
+                                scope.launch {
+                                    ModuleSettings.setModuleTrusted(module.id, trusted)
+                                    AdbModuleManager.setEnabled(module, trusted)
+                                    reload()
+                                }
+                            },
+                            onOpenWebUi = { module ->
+                                startActivity(
+                                    Intent(this@ModulesActivity, ModuleWebViewActivity::class.java)
+                                        .putExtra(ModuleWebViewActivity.EXTRA_MODULE_ID, module.id)
+                                )
+                            }
+                        )
+
+                        output?.let { (title, text) ->
+                            AlertDialog(
+                                onDismissRequest = { output = null },
+                                title = { TvText(title) },
+                                text = { MonospaceLog(text) },
+                                confirmButton = {
+                                    TvButton(onClick = { output = null }) {
+                                        TvText(stringResource(android.R.string.ok))
+                                    }
+                                },
+                                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                                shape = TvMaterialTheme.shapes.extraLarge
+                            )
+                        }
+
+                        deleteTarget?.let { module ->
+                            AlertDialog(
+                                onDismissRequest = { deleteTarget = null },
+                                title = { TvText(stringResource(R.string.modules_delete_title)) },
+                                text = { TvText(stringResource(R.string.modules_delete_message, module.name)) },
+                                confirmButton = {
+                                    TvButton(
+                                        onClick = {
+                                            scope.launch {
+                                                AdbModuleManager.delete(module)
+                                                deleteTarget = null
+                                                reload()
+                                            }
+                                        }
+                                    ) {
+                                        TvText(stringResource(R.string.modules_delete))
+                                    }
+                                },
+                                dismissButton = {
+                                    TvOutlinedButton(onClick = { deleteTarget = null }) {
+                                        TvText(stringResource(android.R.string.cancel))
+                                    }
+                                },
+                                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                                shape = TvMaterialTheme.shapes.extraLarge
+                            )
+                        }
+                    }
                 }
             } else {
                 ShizukuExpressiveTheme {
@@ -332,7 +435,7 @@ class ModulesActivity : AppActivity() {
                                 Text(stringResource(android.R.string.ok))
                             }
                         },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
                         shape = MaterialTheme.shapes.extraLarge
                     )
                 }
@@ -360,7 +463,7 @@ class ModulesActivity : AppActivity() {
                                 Text(stringResource(android.R.string.cancel))
                             }
                         },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
                         shape = MaterialTheme.shapes.extraLarge
                     )
                 }

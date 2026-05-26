@@ -36,7 +36,7 @@ fun WearStarterScreen(
         stringResource(R.string.notification_service_starting)
     }
     val fallbackText = stringResource(R.string.starting_root_shell)
-    
+
     val icon = if (startedWithRoot) Icons.Rounded.PlayArrow else Icons.Rounded.Usb
 
     WearScreenScaffold { state ->

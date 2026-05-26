@@ -96,7 +96,7 @@ class StarterActivity : AppActivity() {
             val outputResource by viewModel.output.observeAsState()
             val output = outputResource?.data.orEmpty()
             val failed = outputResource?.status == Status.ERROR
-            var errorToShow by remember(outputResource) { 
+            var errorToShow by remember(outputResource) {
                 mutableIntStateOf(if (outputResource?.status == Status.ERROR) {
                     when (outputResource?.error) {
                         is AdbKeyException -> R.string.adb_error_key_store
@@ -109,6 +109,7 @@ class StarterActivity : AppActivity() {
             }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@StarterActivity)
+            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@StarterActivity)
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                     Box {
@@ -117,7 +118,25 @@ class StarterActivity : AppActivity() {
                             failed = failed,
                             startedWithRoot = startedWithRoot
                         )
-                        
+
+                        if (errorToShow != 0) {
+                            moe.shizuku.manager.home.HomeErrorDialog(
+                                message = stringResource(errorToShow),
+                                onDismiss = { errorToShow = 0 }
+                            )
+                        }
+                    }
+                }
+            } else if (isTv) {
+                moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                    Box {
+                        TvStarterScreen(
+                            onNavigateUp = { finish() },
+                            output = output,
+                            failed = failed,
+                            startedWithRoot = startedWithRoot
+                        )
+
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),

@@ -55,8 +55,8 @@ class AdbPairingService : Service() {
         Log.i(tag, "Pairing service port: $port")
         if (port <= 0) return@Observer
 
-        // Since the service could be killed before user finishing input,
-        // we need to put the port into Intent
+
+
         val notification = createInputNotification(port)
 
         getSystemService(NotificationManager::class.java).notify(notificationId, notification)
@@ -282,7 +282,7 @@ class AdbPairingService : Service() {
     }
 
     private fun replyNotificationAction(port: Int): Notification.Action {
-        // Ensure pending intent is created
+
         val action = replyNotificationAction
 
         PendingIntent.getForegroundService(

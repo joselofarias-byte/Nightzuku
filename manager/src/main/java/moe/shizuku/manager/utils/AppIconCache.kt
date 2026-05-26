@@ -34,12 +34,12 @@ object AppIconCache : CoroutineScope {
     private var appIconLoaders = mutableMapOf<Int, AppIconLoader>()
 
     init {
-        // Initialize app icon lru cache
+
         val maxMemory = Runtime.getRuntime().maxMemory() / 1024
         val availableCacheSize = (maxMemory / 4).toInt()
         lruCache = AppIconLruCache(availableCacheSize)
 
-        // Initialize load icon scheduler
+
         val availableProcessorsCount = try {
             Runtime.getRuntime().availableProcessors()
         } catch (ignored: Exception) {
@@ -102,7 +102,7 @@ object AppIconCache : CoroutineScope {
                     getOrLoadBitmap(context, info, userId, size)
                 }
             } catch (e: CancellationException) {
-                // do nothing if canceled
+
                 return@launch
             } catch (e: Throwable) {
                 null

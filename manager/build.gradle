@@ -191,6 +191,9 @@ dependencies {
     implementation 'androidx.wear.compose:compose-foundation:1.5.0-alpha04'
     implementation 'androidx.wear.compose:compose-material3:1.0.0-alpha30'
 
+    implementation 'androidx.tv:tv-foundation:1.0.0'
+    implementation 'androidx.tv:tv-material:1.1.0'
+
     implementation 'androidx.activity:activity-compose:1.13.0'
     implementation 'androidx.browser:browser:1.10.0'
     implementation 'androidx.core:core-ktx:1.19.0-alpha01'

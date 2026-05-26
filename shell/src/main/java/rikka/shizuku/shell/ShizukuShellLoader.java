@@ -66,11 +66,11 @@ public class ShizukuShellLoader {
             am = ActivityManagerNative.asInterface(amBinder);
         }
 
-        // broadcastIntent will fail on Android 8.x
-        //  com.android.server.am.ActivityManagerService.isInstantApp(ActivityManagerService.java:18547)
-        //  com.android.server.am.ActivityManagerService.broadcastIntentLocked(ActivityManagerService.java:18972)
-        //  com.android.server.am.ActivityManagerService.broadcastIntent(ActivityManagerService.java:19703)
-        //
+
+
+
+
+
         try {
             am.broadcastIntent(null, intent, null, null, 0, null, null,
                     null, -1, null, true, false, 0);

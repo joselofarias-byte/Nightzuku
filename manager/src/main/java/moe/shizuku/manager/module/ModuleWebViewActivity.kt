@@ -91,7 +91,7 @@ class ModuleWebViewActivity : AppActivity() {
                                         settings.blockNetworkLoads = !webNetworkAllowed
                                         settings.cacheMode = WebSettings.LOAD_DEFAULT
                                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                                        
+
                                         settings.useWideViewPort = true
                                         settings.loadWithOverviewMode = true
                                         settings.textZoom = 85
@@ -260,7 +260,7 @@ class ModuleWebViewActivity : AppActivity() {
                                     settings.blockNetworkLoads = !webNetworkAllowed
                                     settings.cacheMode = WebSettings.LOAD_DEFAULT
                                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                                    
+
                                     settings.useWideViewPort = true
                                     settings.loadWithOverviewMode = true
                                     if (isWatch) settings.textZoom = 85

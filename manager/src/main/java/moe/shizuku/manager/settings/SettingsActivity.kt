@@ -1,8 +1,9 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.tv.material3.ExperimentalTvMaterial3Api::class)
 
 package moe.shizuku.manager.settings
 
 import android.content.ComponentName
+import androidx.compose.foundation.isSystemInDarkTheme
 import android.os.Build
 import android.os.Bundle
 import android.text.TextUtils
@@ -11,6 +12,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -36,7 +38,18 @@ import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
+import androidx.tv.material3.Text as TvText
+import androidx.tv.material3.Button as TvButton
+import androidx.tv.material3.OutlinedButton as TvOutlinedButton
+import androidx.tv.material3.Surface as TvSurface
+import androidx.tv.material3.ClickableSurfaceDefaults as TvClickableSurfaceDefaults
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.ShizukuSettings.LANGUAGE
@@ -54,6 +67,7 @@ import moe.shizuku.manager.ui.compose.SettingsGroup
 import moe.shizuku.manager.ui.compose.SettingsRow
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
+import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.ui.compose.SwitchSettingsRow
 import moe.shizuku.manager.ui.compose.htmlToPlainText
 import moe.shizuku.manager.utils.CustomTabsHelper
@@ -135,7 +149,8 @@ class SettingsActivity : AppActivity() {
             }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@SettingsActivity)
-            
+            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@SettingsActivity)
+
             androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                 if (isWatch) {
                     moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -173,6 +188,47 @@ class SettingsActivity : AppActivity() {
                         currentNightMode = nightMode,
                         onNightModeSelect = { },
                         onNightDialogDismiss = { }
+                    )
+                }
+            } else if (isTv) {
+                moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                    TvSettingsScreen(
+                        onNavigateUp = { finish() },
+                        startOnBoot = startOnBoot,
+                        onStartOnBootChange = { enabled ->
+                            packageManager.setComponentEnabled(componentName, enabled)
+                            startOnBoot = packageManager.isComponentEnabled(componentName)
+                        },
+                        languageSummary = languageSummary,
+                        onLanguageClick = { showLanguageDialog = true },
+                        nightSummary = nightSummary,
+                        onNightModeClick = { showNightDialog = true },
+                        blackNightTheme = blackNightTheme,
+                        onBlackNightThemeChange = { enabled ->
+                            prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
+                            blackNightTheme = enabled
+                            if (rikka.core.util.ResourceUtils.isNightMode(resources.configuration)) {
+                                recreateTick++
+                            }
+                        },
+                        useSystemColor = useSystemColor,
+                        onUseSystemColorChange = { enabled ->
+                            prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
+                            useSystemColor = enabled
+                            recreateTick++
+                        },
+                        moduleAccessMode = moduleAccessMode,
+                        onModuleAccessModeClick = { showModuleModeDialog = true },
+                        recommandWebUi = recommandWebUi,
+                        onRecommandWebUiChange = { enabled ->
+                            ModuleSettings.setRecommandForWebUi(enabled)
+                            recommandWebUi = enabled
+                        },
+                        recommandAction = recommandAction,
+                        onRecommandActionChange = { enabled ->
+                            ModuleSettings.setRecommandForAction(enabled)
+                            recommandAction = enabled
+                        }
                     )
                 }
             } else {
@@ -324,7 +380,7 @@ class SettingsActivity : AppActivity() {
                 }
             }
 
-            // Shared Dialog Logic
+
             if (showLanguageDialog) {
                 val choices = remember {
                     localeOptions.map {
@@ -335,6 +391,23 @@ class SettingsActivity : AppActivity() {
                 if (isWatch) {
                     moe.shizuku.manager.ui.compose.WearShizukuTheme {
                         WearChoiceDialog(
+                            title = stringResource(R.string.settings_language),
+                            choices = choices,
+                            selectedIndex = selectedIndex,
+                            onDismiss = { showLanguageDialog = false },
+                            onSelect = { index ->
+                                val tag = localeOptions[index].tag
+                                prefs.edit().putString(LANGUAGE, tag).apply()
+                                languageTag = tag
+                                LocaleDelegate.defaultLocale = if (tag == "SYSTEM") LocaleDelegate.systemLocale else Locale.forLanguageTag(tag)
+                                showLanguageDialog = false
+                                recreate()
+                            }
+                        )
+                    }
+                } else if (isTv) {
+                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                        TvChoiceDialog(
                             title = stringResource(R.string.settings_language),
                             choices = choices,
                             selectedIndex = selectedIndex,
@@ -400,6 +473,23 @@ class SettingsActivity : AppActivity() {
                             }
                         )
                     }
+                } else if (isTv) {
+                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                        TvChoiceDialog(
+                            title = stringResource(rikka.core.R.string.dark_theme),
+                            choices = choices,
+                            selectedIndex = selectedIndex,
+                            onDismiss = { showNightDialog = false },
+                            onSelect = { index ->
+                                val value = nightValues[index]
+                                prefs.edit().putInt(NIGHT_MODE, value).apply()
+                                nightMode = value
+                                AppCompatDelegate.setDefaultNightMode(value)
+                                showNightDialog = false
+                                recreate()
+                            }
+                        )
+                    }
                 } else {
                     ShizukuExpressiveTheme {
                         ChoiceDialog(
@@ -449,6 +539,21 @@ class SettingsActivity : AppActivity() {
                             }
                         )
                     }
+                } else if (isTv) {
+                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                        TvChoiceDialog(
+                            title = stringResource(R.string.modules_access_mode),
+                            choices = choices,
+                            selectedIndex = selectedIndex,
+                            onDismiss = { showModuleModeDialog = false },
+                            onSelect = { index ->
+                                val mode = moduleModes[index]
+                                ModuleSettings.setAccessMode(mode)
+                                moduleAccessMode = mode
+                                showModuleModeDialog = false
+                            }
+                        )
+                    }
                 } else {
                     ShizukuExpressiveTheme {
                         ChoiceDialog(
@@ -480,6 +585,18 @@ class SettingsActivity : AppActivity() {
                             }
                         )
                     }
+                } else if (isTv) {
+                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                        TvCustomPermissionsDialog(
+                            value = customPermissions,
+                            onDismiss = { showCustomPermissionsDialog = false },
+                            onSave = { value ->
+                                ModuleSettings.setCustomPermissions(value)
+                                customPermissions = value
+                                showCustomPermissionsDialog = false
+                            }
+                        )
+                    }
                 } else {
                     ShizukuExpressiveTheme {
                         CustomPermissionsDialog(
@@ -494,7 +611,7 @@ class SettingsActivity : AppActivity() {
                     }
                 }
             }
-            } // Close Box
+            }
         }
     }
 
@@ -547,8 +664,8 @@ private fun WearChoiceDialog(
                 ) {
                 item {
                     WearText(
-                        text = title, 
-                        textAlign = TextAlign.Center, 
+                        text = title,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                         color = WearMaterialTheme.colorScheme.primary,
                         style = WearMaterialTheme.typography.titleMedium
@@ -607,8 +724,8 @@ private fun WearCustomPermissionsDialog(
                 ) {
                 item {
                     WearText(
-                        text = title, 
-                        textAlign = TextAlign.Center, 
+                        text = title,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                         color = WearMaterialTheme.colorScheme.primary,
                         style = WearMaterialTheme.typography.titleMedium
@@ -797,4 +914,206 @@ private fun ChoiceDialog(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = MaterialTheme.shapes.extraLarge
     )
+}
+
+@Composable
+private fun TvChoiceDialog(
+    title: String,
+    choices: List<ChoiceOption>,
+    selectedIndex: Int,
+    onDismiss: () -> Unit,
+    onSelect: (Int) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { TvText(title) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                for ((index, choice) in choices.withIndex()) {
+                    TvChoiceRow(
+                        icon = choice.icon,
+                        title = choice.title,
+                        summary = choice.summary,
+                        selected = index == selectedIndex,
+                        onClick = { onSelect(index) }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TvOutlinedButton(onClick = onDismiss) {
+                TvText(stringResource(android.R.string.cancel))
+            }
+        },
+        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+        shape = TvMaterialTheme.shapes.extraLarge
+    )
+}
+
+@Composable
+private fun TvChoiceRow(
+    icon: Int?,
+    title: String,
+    summary: String?,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val alpha = if (isSystemInDarkTheme()) 0.3f else 0.12f
+    TvSurface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = TvClickableSurfaceDefaults.shape(TvMaterialTheme.shapes.medium),
+        colors = TvClickableSurfaceDefaults.colors(
+            containerColor = if (selected) TvMaterialTheme.colorScheme.primaryContainer.copy(alpha = alpha) else Color.Transparent,
+            focusedContainerColor = if (selected) TvMaterialTheme.colorScheme.primaryContainer else TvMaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (icon != null) {
+                ShizukuIcon(icon = icon, modifier = Modifier.size(24.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                TvText(text = title, style = TvMaterialTheme.typography.titleMedium)
+                if (summary != null) {
+                    TvText(
+                        text = summary,
+                        style = TvMaterialTheme.typography.bodySmall,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (selected) {
+                ShizukuIcon(imageVector = Icons.Rounded.Check, modifier = Modifier.size(24.dp), tint = TvMaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvCustomPermissionsDialog(
+    value: ModuleSettings.CustomPermissions,
+    onDismiss: () -> Unit,
+    onSave: (ModuleSettings.CustomPermissions) -> Unit
+) {
+    var draft by remember(value) { mutableStateOf(value) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { TvText(stringResource(R.string.modules_custom_permissions)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                TvSwitchSettingsRow(
+                    icon = R.drawable.ic_outline_play_arrow_24,
+                    title = stringResource(R.string.modules_permission_action),
+                    summary = stringResource(R.string.modules_permission_action_summary),
+                    checked = draft.action,
+                    onCheckedChange = { draft = draft.copy(action = it) }
+                )
+                TvSwitchSettingsRow(
+                    icon = R.drawable.ic_terminal_24,
+                    title = stringResource(R.string.modules_permission_service),
+                    summary = stringResource(R.string.modules_permission_service_summary),
+                    checked = draft.service,
+                    onCheckedChange = { draft = draft.copy(service = it) }
+                )
+                TvSwitchSettingsRow(
+                    icon = R.drawable.ic_code_24dp,
+                    title = stringResource(R.string.modules_permission_web_bridge),
+                    summary = stringResource(R.string.modules_permission_web_bridge_summary),
+                    checked = draft.webBridge,
+                    onCheckedChange = { enabled ->
+                        draft = if (enabled) {
+                            draft.copy(webBridge = true, webNetwork = false)
+                        } else {
+                            draft.copy(webBridge = false)
+                        }
+                    }
+                )
+                TvSwitchSettingsRow(
+                    icon = R.drawable.ic_baseline_link_24,
+                    title = stringResource(R.string.modules_permission_web_network),
+                    summary = stringResource(R.string.modules_permission_web_network_summary),
+                    checked = draft.webNetwork,
+                    onCheckedChange = { enabled ->
+                        draft = if (enabled) {
+                            draft.copy(webNetwork = true, webBridge = false)
+                        } else {
+                            draft.copy(webNetwork = false)
+                        }
+                    }
+                )
+                TvSwitchSettingsRow(
+                    icon = R.drawable.ic_outline_arrow_upward_24,
+                    title = stringResource(R.string.modules_permission_web_download),
+                    summary = stringResource(R.string.modules_permission_web_download_summary),
+                    checked = draft.webDownload,
+                    onCheckedChange = { draft = draft.copy(webDownload = it) }
+                )
+            }
+        },
+        confirmButton = {
+            TvButton(onClick = { onSave(draft) }) {
+                TvText(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            TvOutlinedButton(onClick = onDismiss) {
+                TvText(stringResource(android.R.string.cancel))
+            }
+        },
+        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+        shape = TvMaterialTheme.shapes.extraLarge
+    )
+}
+
+@Composable
+private fun TvSwitchSettingsRow(
+    icon: Int,
+    title: String,
+    summary: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    TvSurface(
+        onClick = { onCheckedChange(!checked) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = TvClickableSurfaceDefaults.shape(TvMaterialTheme.shapes.medium),
+        colors = TvClickableSurfaceDefaults.colors(
+            containerColor = if (checked) TvMaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f) else Color.Transparent,
+            focusedContainerColor = if (checked) TvMaterialTheme.colorScheme.primaryContainer else TvMaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            ShizukuIcon(icon = icon, modifier = Modifier.size(24.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                TvText(text = title, style = TvMaterialTheme.typography.titleMedium)
+                TvText(
+                    text = summary,
+                    style = TvMaterialTheme.typography.bodySmall,
+                    color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            moe.shizuku.manager.ui.compose.ExpressiveSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
+        }
+    }
 }

@@ -17,13 +17,13 @@ import rikka.hidden.compat.PermissionManagerApis;
 public class Android17Compat {
 
     private static final String TAG = "ShizukuAndroid17Compat";
-    private static final int DEVICE_ID_DEFAULT = 0; // Context.DEVICE_ID_DEFAULT
+    private static final int DEVICE_ID_DEFAULT = 0;
 
     private static volatile Object sPackageManager;
     private static volatile Method sGetInstalledPackagesMethod;
     private static volatile Method sGetPackageInfoMethod;
     private static volatile Method sGetApplicationInfoMethod;
-    
+
     private static volatile Object sPermissionManager;
     private static volatile Method sGrantRuntimePermissionMethod;
     private static volatile Method sRevokeRuntimePermissionMethod;
@@ -175,7 +175,7 @@ public class Android17Compat {
                 if (sCheckPermissionUidMethod != null) {
                     Class<?>[] paramTypes = sCheckPermissionUidMethod.getParameterTypes();
                     if (paramTypes.length == 3 && paramTypes[1] == int.class && paramTypes[2] == int.class) {
-                        // (String permission, int deviceId, int uid)
+
                         return (int) sCheckPermissionUidMethod.invoke(pm, permissionName, DEVICE_ID_DEFAULT, uid);
                     }
                     return (int) sCheckPermissionUidMethod.invoke(pm, permissionName, uid);
@@ -265,7 +265,7 @@ public class Android17Compat {
     private static Object invokeMethod(Object obj, Method method, Object... prefixArgs) throws Exception {
         Class<?>[] paramTypes = method.getParameterTypes();
         Object[] args = new Object[paramTypes.length];
-        
+
         int prefixLen = prefixArgs.length - 1;
         int userIdIdx = prefixArgs.length - 1;
         Object userId = prefixArgs[userIdIdx];

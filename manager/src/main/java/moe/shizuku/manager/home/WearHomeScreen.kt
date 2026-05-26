@@ -85,14 +85,14 @@ internal fun WearHomeScreen(
                 ) {
                     Column {
                         WearText(
-                            text = if (running) stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name)) 
+                            text = if (running) stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
                                    else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
                             style = WearMaterialTheme.typography.titleMedium
                         )
                     }
                 }
             }
-            
+
             if (running) {
                 item {
                     WearButton(
@@ -148,7 +148,7 @@ internal fun WearHomeScreen(
                     }
                 }
             }
-            
+
             item {
                 WearButton(
                     onClick = onSettings,
@@ -161,7 +161,7 @@ internal fun WearHomeScreen(
                     }
                 }
             }
-            
+
             item {
                 WearButton(
                     onClick = onRefresh,
@@ -174,7 +174,7 @@ internal fun WearHomeScreen(
                     }
                 }
             }
-            
+
             item {
                 WearButton(
                     onClick = onAbout,
@@ -187,7 +187,7 @@ internal fun WearHomeScreen(
                     }
                 }
             }
-            
+
             if (running) {
                 item {
                     WearButton(

@@ -81,6 +81,7 @@ class ShellTutorialActivity : AppActivity() {
             val dexName = DEX_NAME
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@ShellTutorialActivity)
+            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@ShellTutorialActivity)
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                     moe.shizuku.manager.ui.compose.WearScreenScaffold { state ->
@@ -149,6 +150,16 @@ class ShellTutorialActivity : AppActivity() {
                             }
                         }
                     }
+                }
+            } else if (isTv) {
+                moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                    TvShellTutorialScreen(
+                        onNavigateUp = { finish() },
+                        shName = shName,
+                        dexName = dexName,
+                        onExportFiles = { openDocumentsTree.launch(null) },
+                        onViewHelp = { CustomTabsHelper.launchUrlOrCopy(this@ShellTutorialActivity, Helps.RISH.get()) }
+                    )
                 }
             } else {
                 ShizukuExpressiveTheme {

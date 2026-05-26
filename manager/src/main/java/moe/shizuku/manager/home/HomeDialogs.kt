@@ -1,4 +1,8 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.wear.compose.material3.ExperimentalWearMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.wear.compose.material3.ExperimentalWearMaterial3Api::class,
+    androidx.tv.material3.ExperimentalTvMaterial3Api::class
+)
 
 package moe.shizuku.manager.home
 
@@ -42,10 +46,16 @@ import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButto
 import androidx.wear.compose.material3.MaterialTheme as WearMaterialTheme
 import androidx.wear.compose.material3.Text as WearText
 import androidx.wear.compose.material3.ExperimentalWearMaterial3Api
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
+import androidx.tv.material3.Text as TvText
+import androidx.tv.material3.Button as TvButton
+import androidx.tv.material3.OutlinedButton as TvOutlinedButton
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
+import moe.shizuku.manager.ui.compose.MonospaceLog
 import moe.shizuku.manager.adb.AdbInvalidPairingCodeException
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
@@ -63,6 +73,7 @@ fun HomeAboutDialog(
 ) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
+    val isTv = EnvironmentUtils.isTV(context)
     val versionName = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
 
     if (isWatch) {
@@ -84,6 +95,26 @@ fun HomeAboutDialog(
                     }
                 }
             }
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.app_name)) },
+                text = { TvText(versionName ?: "") },
+                confirmButton = {
+                    TvButton(onClick = onSourceCode) {
+                        TvText(stringResource(R.string.about_source_code_button))
+                    }
+                },
+                dismissButton = {
+                    TvOutlinedButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.ok))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
         }
     } else {
         AlertDialog(
@@ -111,6 +142,7 @@ fun HomeStopDialog(
 ) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
+    val isTv = EnvironmentUtils.isTV(context)
 
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -131,6 +163,26 @@ fun HomeStopDialog(
                     }
                 }
             }
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.action_stop)) },
+                text = { TvText(stringResource(R.string.dialog_stop_message)) },
+                confirmButton = {
+                    TvButton(onClick = { onConfirm(); onDismiss() }) {
+                        TvText(stringResource(android.R.string.ok))
+                    }
+                },
+                dismissButton = {
+                    TvOutlinedButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.cancel))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
         }
     } else {
         AlertDialog(
@@ -160,6 +212,7 @@ fun HomeAdbCommandDialog(
 ) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
+    val isTv = EnvironmentUtils.isTV(context)
 
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -167,8 +220,8 @@ fun HomeAdbCommandDialog(
                 show = true,
                 onDismissRequest = onDismiss,
                 title = { WearText(stringResource(R.string.home_adb_button_view_command)) },
-                text = { 
-                    WearText(command, style = WearMaterialTheme.typography.bodySmall) 
+                text = {
+                    WearText(command, style = WearMaterialTheme.typography.bodySmall)
                 }
             ) {
                 item {
@@ -187,6 +240,35 @@ fun HomeAdbCommandDialog(
                     }
                 }
             }
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.home_adb_button_view_command)) },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        MonospaceLog(command)
+                    }
+                },
+                confirmButton = {
+                    TvButton(onClick = { onCopy(); onDismiss() }) {
+                        TvText(stringResource(R.string.home_adb_dialog_view_command_copy_button))
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TvButton(onClick = { onSend(); onDismiss() }) {
+                            TvText(stringResource(R.string.home_adb_dialog_view_command_button_send))
+                        }
+                        TvOutlinedButton(onClick = onDismiss) {
+                            TvText(stringResource(android.R.string.cancel))
+                        }
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
         }
     } else {
         AlertDialog(
@@ -224,7 +306,7 @@ fun HomeAdbDiscoveryDialog(
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
     val portState = remember { mutableIntStateOf(-1) }
-    
+
     val openDevSettings = {
         val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -237,14 +319,14 @@ fun HomeAdbDiscoveryDialog(
             portState.intValue = it
         }
         adbMdns.start()
-        
+
         if (context.checkSelfPermission(WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED) {
             val cr = context.contentResolver
             Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
             Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
             Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
         }
-        
+
         onDispose {
             adbMdns.stop()
         }
@@ -252,6 +334,7 @@ fun HomeAdbDiscoveryDialog(
 
     val currentPort = portState.intValue
     val manualPort = remember { EnvironmentUtils.getAdbTcpPort() }
+    val isTv = EnvironmentUtils.isTV(context)
 
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -293,6 +376,48 @@ fun HomeAdbDiscoveryDialog(
                 }
             }
         }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.dialog_adb_discovery)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        TvText(stringResource(R.string.dialog_adb_discovery_message))
+                        TvText(
+                            text = stringResource(R.string.dialog_adb_discovery_message_toggle_wireless_debugging),
+                            color = TvMaterialTheme.colorScheme.primary
+                        )
+                        if (currentPort in 1..65535) {
+                            TvText("Discovered port: $currentPort", color = TvMaterialTheme.colorScheme.primary)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (currentPort in 1..65535) {
+                            TvButton(onClick = { onStart(currentPort) }) {
+                                TvText("Start ($currentPort)")
+                            }
+                        } else if (manualPort != -1) {
+                            TvButton(onClick = { onStart(manualPort) }) {
+                                TvText("Start ($manualPort)")
+                            }
+                        }
+                        TvButton(onClick = openDevSettings) {
+                            TvText(stringResource(R.string.development_settings))
+                        }
+                    }
+                },
+                dismissButton = {
+                    TvOutlinedButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.cancel))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
+        }
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -325,7 +450,7 @@ fun HomeAdbDiscoveryDialog(
             }
         )
     }
-    
+
     LaunchedEffect(currentPort) {
         if (currentPort in 1..65535) {
             onStart(currentPort)
@@ -337,6 +462,7 @@ fun HomeAdbDiscoveryDialog(
 fun HomeWadbNotEnabledDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
+    val isTv = EnvironmentUtils.isTV(context)
 
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -352,6 +478,21 @@ fun HomeWadbNotEnabledDialog(onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.dialog_wireless_adb_not_enabled)) },
+                text = { },
+                confirmButton = {
+                    TvButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.ok))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
         }
     } else {
         AlertDialog(
@@ -377,10 +518,11 @@ private sealed class PairingStatus {
 fun HomeAdbPairDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
-    
+    val isTv = EnvironmentUtils.isTV(context)
+
     val result = remember { MutableLiveData<PairingStatus>(PairingStatus.Idle) }
     val port = remember { MutableLiveData<Int>() }
-    
+
     DisposableEffect(Unit) {
         val adbMdns = AdbMdns(context, AdbMdns.TLS_PAIRING) { port.postValue(it) }
         adbMdns.start()
@@ -485,6 +627,47 @@ fun HomeAdbPairDialog(onDismiss: () -> Unit) {
                 }
             }
         }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.dialog_adb_pairing_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        OutlinedTextField(
+                            value = pairingCode,
+                            onValueChange = { pairingCode = it.filter(Char::isDigit).take(6) },
+                            label = { Text(stringResource(R.string.dialog_adb_pairing_paring_code)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = pairingCodeError != null,
+                            supportingText = pairingCodeError?.let { { Text(it) } },
+                            enabled = !isPairing
+                        )
+                        OutlinedTextField(
+                            value = portText,
+                            onValueChange = { portText = it.filter(Char::isDigit).take(5) },
+                            label = { Text(stringResource(R.string.dialog_adb_port)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = portError != null,
+                            supportingText = portError?.let { { Text(it) } },
+                            enabled = !isPairing
+                        )
+                    }
+                },
+                confirmButton = {
+                    TvButton(onClick = onPair, enabled = !isPairing) {
+                        TvText(stringResource(android.R.string.ok))
+                    }
+                },
+                dismissButton = {
+                    TvOutlinedButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.cancel))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
+        }
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -529,6 +712,7 @@ fun HomeAdbPairDialog(onDismiss: () -> Unit) {
 fun HomeAdbLimitedDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
+    val isTv = EnvironmentUtils.isTV(context)
     val message = stringResource(R.string.app_management_dialog_adb_is_limited_message, moe.shizuku.manager.Helps.ADB.get())
 
     if (isWatch) {
@@ -545,6 +729,21 @@ fun HomeAdbLimitedDialog(onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.app_management_dialog_adb_is_limited_title)) },
+                text = { TvText(message) },
+                confirmButton = {
+                    TvButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.ok))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
         }
     } else {
         AlertDialog(
@@ -564,6 +763,7 @@ fun HomeAdbLimitedDialog(onDismiss: () -> Unit) {
 fun HomeErrorDialog(message: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
+    val isTv = EnvironmentUtils.isTV(context)
 
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -579,6 +779,21 @@ fun HomeErrorDialog(message: String, onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
+    } else if (isTv) {
+        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { TvText(stringResource(R.string.starter)) },
+                text = { TvText(message) },
+                confirmButton = {
+                    TvButton(onClick = onDismiss) {
+                        TvText(stringResource(android.R.string.ok))
+                    }
+                },
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                shape = TvMaterialTheme.shapes.extraLarge
+            )
         }
     } else {
         AlertDialog(

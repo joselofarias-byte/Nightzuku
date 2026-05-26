@@ -73,7 +73,7 @@ fun WearModulesScreen(
             item {
                 WearScreenTitle(icon = Icons.Rounded.Extension, title = stringResource(R.string.modules_title))
             }
-            
+
             item {
                 WearButton(
                     onClick = onInstallZip,
@@ -107,10 +107,10 @@ fun WearModulesScreen(
                 val isBusy = busyId == module.id
                 val trusted = ModuleSettings.isModuleTrusted(module.id)
                 var expanded by remember { mutableStateOf(false) }
-                
-                val containerColor = if (trusted) WearMaterialTheme.colorScheme.tertiaryContainer 
+
+                val containerColor = if (trusted) WearMaterialTheme.colorScheme.tertiaryContainer
                                     else WearMaterialTheme.colorScheme.surfaceContainer
-                val contentColor = if (trusted) WearMaterialTheme.colorScheme.onTertiaryContainer 
+                val contentColor = if (trusted) WearMaterialTheme.colorScheme.onTertiaryContainer
                                   else WearMaterialTheme.colorScheme.onSurface
                 val iconTint = if (trusted) WearMaterialTheme.colorScheme.tertiary else WearMaterialTheme.colorScheme.primary
 
@@ -157,7 +157,7 @@ fun WearModulesScreen(
                             style = WearMaterialTheme.typography.labelSmall,
                             color = if (trusted) contentColor.copy(alpha = 0.8f) else WearMaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        
+
                         AnimatedVisibility(visible = module.enabled && !isBusy && expanded) {
                             FlowRow(
                                 modifier = Modifier
@@ -190,7 +190,7 @@ fun WearModulesScreen(
                                         WearIcon(Icons.Rounded.Terminal, contentDescription = null)
                                     }
                                 }
-                                
+
                                 WearIconButton(
                                     onClick = { onTrustChange(module, !trusted) },
                                     modifier = Modifier.size(WearIconButtonDefaults.DefaultButtonSize),

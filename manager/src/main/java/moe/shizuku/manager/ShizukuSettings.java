@@ -47,7 +47,7 @@ public class ShizukuSettings {
                 try {
                     return super.getSharedPreferences(name, mode);
                 } catch (IllegalStateException e) {
-                    // SharedPreferences in credential encrypted storage are not available until after user is unlocked
+
                     return new EmptySharedPreferencesImpl();
                 }
             }
