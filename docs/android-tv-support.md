@@ -52,6 +52,4 @@ All TV features respect the Nightzuku package identity:
 ## Verification
 
 The TV UI has been verified on:
-- Android TV 11, 12, 13, and 14.
-- Google TV devices.
-- High-definition and 4K TV panels.
+- Android TV 16 emulator*
