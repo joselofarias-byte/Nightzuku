@@ -110,14 +110,26 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         }
     }
 
+    // ponytail: 60 s is generous for any legitimate slow-boot ROM.
+    // if a system service truly never starts the server must not hang forever.
+    private static final int WAIT_SERVICE_TIMEOUT_S = 60;
+
     private static void waitSystemService(String name) {
+        int waited = 0;
         while (ServiceManager.getService(name) == null) {
+            if (waited >= WAIT_SERVICE_TIMEOUT_S) {
+                LOGGER.e("service " + name + " did not start within "
+                        + WAIT_SERVICE_TIMEOUT_S + "s, exiting.");
+                System.exit(51); // 51 = system service wait timeout
+            }
             try {
-                LOGGER.i("service " + name + " is not started, wait 1s.");
+                LOGGER.i("service " + name + " is not started, wait 1s. ("
+                        + waited + "/" + WAIT_SERVICE_TIMEOUT_S + ")");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
                 LOGGER.w(e.getMessage(), e);
             }
+            waited++;
         }
     }
 
