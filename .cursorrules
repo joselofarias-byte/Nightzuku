@@ -1,0 +1,13 @@
+Use AGENTS.md as the project constitution.
+
+Rules:
+- Minimal safe changes only.
+- No speculative abstractions.
+- No unnecessary dependencies.
+- Prefer Android/Kotlin/Java standard APIs.
+- Preserve Shizuku/root/non-root fallback paths.
+- Preserve Stellar/Nightzuku root emulation behavior.
+- Do not risk recording reliability or data integrity.
+- Verify settings, permissions, storage, recording and export after related changes.
+- Verify shell command failure handling after shell-related changes.
+- Mark intentional shortcuts with `// ponytail:`.

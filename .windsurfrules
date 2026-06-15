@@ -1,0 +1,8 @@
+Use AGENTS.md as the source of truth.
+
+Default behavior:
+- Ponytail first: reduce scope and avoid overengineering.
+- Agent Skills second: implement with evidence.
+- Improve last: audit quality and reliability.
+
+Never simplify away permissions, storage, SAF/MediaStore, recording reliability, Shizuku/root binder behavior, root emulation behavior, shell command error handling, Android compatibility or critical error handling.
