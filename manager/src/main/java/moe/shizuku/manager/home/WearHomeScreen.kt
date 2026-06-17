@@ -36,7 +36,11 @@ import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.ui.compose.WearScreenScaffold
 import moe.shizuku.manager.ui.compose.WearScreenTitle
 import moe.shizuku.manager.utils.EnvironmentUtils
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Color
+import androidx.wear.compose.material3.CardDefaults as WearCardDefaults
 import rikka.lifecycle.Resource
+import rikka.lifecycle.Status
 
 @Composable
 internal fun WearHomeScreen(
@@ -79,8 +83,44 @@ internal fun WearHomeScreen(
             }
 
             item {
+                val dark = isSystemInDarkTheme()
+                val (containerColor, contentColor) = when {
+                    serviceResource == null || serviceResource.status == Status.LOADING -> {
+                        if (dark) {
+                            Color(0xFF4D3800) to Color(0xFFFFD54F)
+                        } else {
+                            Color(0xFFFFF0C2) to Color(0xFF6B4B00)
+                        }
+                    }
+                    serviceResource.status == Status.ERROR -> {
+                        if (dark) {
+                            Color(0xFF5A1D1D) to Color(0xFFFFB4AB)
+                        } else {
+                            Color(0xFFFFDAD6) to Color(0xFF410002)
+                        }
+                    }
+                    running -> {
+                        if (dark) {
+                            Color(0xFF0F3816) to Color(0xFF8CE090)
+                        } else {
+                            Color(0xFFC7F3C9) to Color(0xFF0F521A)
+                        }
+                    }
+                    else -> {
+                        if (dark) {
+                            Color(0xFF333333) to Color(0xFFB0B0B0)
+                        } else {
+                            Color(0xFFE0E0E0) to Color(0xFF555555)
+                        }
+                    }
+                }
+
                 WearCard(
                     onClick = {},
+                    colors = WearCardDefaults.cardColors(
+                        containerColor = containerColor,
+                        contentColor = contentColor
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column {

@@ -45,6 +45,7 @@ import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.lifecycle.Resource
+import rikka.lifecycle.Status
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
 
@@ -133,7 +134,7 @@ internal fun TVHomeScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
-                TvStatusCard(status = status)
+                TvStatusCard(serviceResource = serviceResource, status = status)
             }
 
             if (adbPermission) {
@@ -299,7 +300,10 @@ private fun TvNavigationButton(
 }
 
 @Composable
-private fun TvStatusCard(status: ServiceStatus) {
+private fun TvStatusCard(
+    serviceResource: Resource<ServiceStatus>?,
+    status: ServiceStatus
+) {
     val context = LocalContext.current
     val running = status.isRunning
     val title = if (running) {
@@ -309,10 +313,44 @@ private fun TvStatusCard(status: ServiceStatus) {
     }
     val summary = remember(status, running) { buildServiceSummary(context, status) }
 
+    val dark = isSystemInDarkTheme()
+    val (iconContainerColor, iconContentColor) = when {
+        serviceResource == null || serviceResource.status == Status.LOADING -> {
+            // Starting / waiting / pending -> Amber
+            if (dark) {
+                Color(0xFF4D3800) to Color(0xFFFFD54F)
+            } else {
+                Color(0xFFFFF0C2) to Color(0xFF6B4B00)
+            }
+        }
+        serviceResource.status == Status.ERROR -> {
+            // Error -> Red
+            TvMaterialTheme.colorScheme.errorContainer to TvMaterialTheme.colorScheme.onErrorContainer
+        }
+        running -> {
+            // Connected / running / success -> Green
+            if (dark) {
+                Color(0xFF0F3816) to Color(0xFF8CE090)
+            } else {
+                Color(0xFFC7F3C9) to Color(0xFF0F521A)
+            }
+        }
+        else -> {
+            // Disconnected / stopped -> Gray
+            if (dark) {
+                Color(0xFF333333) to Color(0xFFB0B0B0)
+            } else {
+                Color(0xFFE0E0E0) to Color(0xFF555555)
+            }
+        }
+    }
+
     TvHomeCard(
         icon = if (running) R.drawable.ic_server_ok_24dp else R.drawable.ic_server_error_24dp,
         title = title,
-        body = summary
+        body = summary,
+        iconContainerColor = iconContainerColor,
+        iconContentColor = iconContentColor
     )
 }
 
@@ -404,6 +442,8 @@ private fun TvHomeCard(
     title: String,
     body: String,
     enabled: Boolean = true,
+    iconContainerColor: Color = TvMaterialTheme.colorScheme.primaryContainer,
+    iconContentColor: Color = TvMaterialTheme.colorScheme.onPrimaryContainer,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit = {}
 ) {
@@ -426,12 +466,12 @@ private fun TvHomeCard(
             TvSurface(
                 modifier = Modifier.size(56.dp),
                 shape = CircleShape,
-                colors = TvSurfaceDefaults.colors(containerColor = TvMaterialTheme.colorScheme.primaryContainer)
+                colors = TvSurfaceDefaults.colors(containerColor = iconContainerColor)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     ShizukuIcon(
                         icon = icon,
-                        tint = TvMaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = iconContentColor,
                         modifier = Modifier.size(32.dp)
                     )
                 }

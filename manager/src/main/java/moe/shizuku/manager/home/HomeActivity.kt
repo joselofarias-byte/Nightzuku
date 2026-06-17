@@ -21,6 +21,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -787,10 +789,44 @@ private fun StatusCard(
         buildServiceSummary(context, status)
     }
 
+    val dark = isSystemInDarkTheme()
+    val (iconContainerColor, iconContentColor) = when {
+        serviceResource == null || serviceResource.status == Status.LOADING -> {
+            // Starting / waiting / pending -> Amber
+            if (dark) {
+                Color(0xFF4D3800) to Color(0xFFFFD54F)
+            } else {
+                Color(0xFFFFF0C2) to Color(0xFF6B4B00)
+            }
+        }
+        serviceResource.status == Status.ERROR -> {
+            // Error / failed / denied -> Red (M3 Error colors)
+            MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        }
+        running -> {
+            // Connected / running / authorized / success -> Green
+            if (dark) {
+                Color(0xFF0F3816) to Color(0xFF8CE090)
+            } else {
+                Color(0xFFC7F3C9) to Color(0xFF0F521A)
+            }
+        }
+        else -> {
+            // Disconnected / stopped / unavailable -> Neutral Gray
+            if (dark) {
+                Color(0xFF333333) to Color(0xFFB0B0B0)
+            } else {
+                Color(0xFFE0E0E0) to Color(0xFF555555)
+            }
+        }
+    }
+
     HomeCard(
         icon = if (running) R.drawable.ic_server_ok_24dp else R.drawable.ic_server_error_24dp,
         title = title,
-        body = summary
+        body = summary,
+        iconContainerColor = iconContainerColor,
+        iconContentColor = iconContentColor
     ) {
         if (serviceResource == null) {
             Spacer(Modifier.height(12.dp))
@@ -1015,6 +1051,8 @@ private fun HomeCard(
     body: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit = {}
 ) {
@@ -1039,13 +1077,13 @@ private fun HomeCard(
             Surface(
                 modifier = Modifier.size(44.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
+                color = iconContainerColor
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     ShizukuIcon(
                         icon = icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = iconContentColor,
                         modifier = Modifier.size(24.dp)
                     )
                 }
