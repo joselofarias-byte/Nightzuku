@@ -84,19 +84,28 @@ fun TvShellTutorialScreen(
             item {
                 TvTutorialStepCard(
                     number = 2,
-                    title = htmlToPlainText(stringResource(R.string.terminal_tutorial_2, shName)),
-                    body = htmlToPlainText(stringResource(
-                        R.string.terminal_tutorial_2_description,
-                        "Termux", "PKG", "com.termux", "com.termux"
-                    ))
-                )
+                    title = stringResource(R.string.terminal_tutorial_2),
+                    body = stringResource(R.string.terminal_tutorial_2_command)
+                ) {
+                    TvText(
+                        text = stringResource(R.string.terminal_tutorial_2_description),
+                        style = TvMaterialTheme.typography.bodySmall,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             item {
                 TvTutorialStepCard(
                     number = 3,
-                    title = htmlToPlainText(stringResource(R.string.terminal_tutorial_3, "sh $shName")),
-                    body = htmlToPlainText(stringResource(R.string.terminal_tutorial_3_description, shName, "PATH"))
-                )
+                    title = stringResource(R.string.terminal_tutorial_3),
+                    body = stringResource(R.string.terminal_tutorial_3_command)
+                ) {
+                    TvText(
+                        text = stringResource(R.string.terminal_tutorial_3_description),
+                        style = TvMaterialTheme.typography.bodySmall,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

@@ -8,6 +8,14 @@
     <plurals name="home_app_management_authorized_apps_count">
         <item quantity="other">已授权 %d 个应用</item>
     </plurals>
+    <plurals name="home_app_management_unauthorized_apps_count">
+        <item quantity="other">未授权 %d 个应用</item>
+    </plurals>
+    <string name="home_app_management_no_authorized_apps">无已授权应用</string>
+    <string name="home_app_management_no_unauthorized_apps">无未授权应用</string>
+    <string name="app_management_search_placeholder">搜索应用</string>
+    <string name="app_management_search_empty">未找到应用</string>
+    <string name="app_management_search_clear">清除输入</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">在终端中使用 Nightzuku</string>

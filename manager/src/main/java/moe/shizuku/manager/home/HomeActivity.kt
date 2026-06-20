@@ -117,6 +117,7 @@ abstract class HomeActivity : AppActivity() {
     private val homeModel by viewModels { HomeViewModel() }
     private val appsModel by appsViewModel()
     private val permissionRefreshTick = mutableIntStateOf(0)
+    private var isInitialResume = true
 
     private var pendingLocalNetworkAction: (() -> Unit)? = null
 
@@ -139,6 +140,7 @@ abstract class HomeActivity : AppActivity() {
         setContent {
             val serviceResource by homeModel.serviceStatus.observeAsState()
             val grantedResource by appsModel.grantedCount.observeAsState()
+            val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
             val localNetworkPermissionState = remember(permissionRefreshTick.intValue) {
                 buildLocalNetworkPermissionState()
             }
@@ -172,6 +174,7 @@ abstract class HomeActivity : AppActivity() {
                     HomeScreen(
                         serviceResource = serviceResource,
                         grantedResource = grantedResource,
+                        unauthorizedResource = unauthorizedResource,
                         localNetworkPermissionState = localNetworkPermissionState,
                         isPrimaryUser = UserHandleCompat.myUserId() == 0,
                         isRooted = EnvironmentUtils.isRooted(),
@@ -299,6 +302,11 @@ abstract class HomeActivity : AppActivity() {
     override fun onResume() {
         super.onResume()
         checkServerStatus()
+        if (isInitialResume) {
+            isInitialResume = false
+        } else {
+            appsModel.load(onlyCount = true)
+        }
         permissionRefreshTick.intValue++
     }
 
@@ -437,6 +445,7 @@ private data class HomeButtonSpec(
 private fun HomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
@@ -493,6 +502,7 @@ private fun HomeScreen(
             TVHomeScreen(
                 serviceResource = serviceResource,
                 grantedResource = grantedResource,
+                unauthorizedResource = unauthorizedResource,
                 localNetworkPermissionState = localNetworkPermissionState,
                 isPrimaryUser = isPrimaryUser,
                 isRooted = isRooted,
@@ -519,6 +529,7 @@ private fun HomeScreen(
         PhoneHomeScreen(
             serviceResource = serviceResource,
             grantedResource = grantedResource,
+            unauthorizedResource = unauthorizedResource,
             localNetworkPermissionState = localNetworkPermissionState,
             isPrimaryUser = isPrimaryUser,
             isRooted = isRooted,
@@ -546,6 +557,7 @@ private fun HomeScreen(
 @Composable private fun PhoneHomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
@@ -662,7 +674,8 @@ private fun HomeScreen(
                 item {
                     ManageAppsCard(
                         status = status,
-                        grantedCount = grantedCount,
+                        grantedResource = grantedResource,
+                        unauthorizedResource = unauthorizedResource,
                         onClick = onManageApps
                     )
                 }
@@ -838,21 +851,42 @@ private fun StatusCard(
 @Composable
 private fun ManageAppsCard(
     status: ServiceStatus,
-    grantedCount: Int,
+    grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
     val running = status.isRunning
-    val title = if (running) {
-        context.resources.getQuantityString(
-            R.plurals.home_app_management_authorized_apps_count,
-            grantedCount,
-            grantedCount
-        )
+    val showCount = running &&
+            grantedResource?.status == Status.SUCCESS && grantedResource?.data != null &&
+            unauthorizedResource?.status == Status.SUCCESS && unauthorizedResource?.data != null
+
+    val title = if (showCount) {
+        val count = grantedResource.data!!
+        if (count == 0) {
+            stringResource(R.string.home_app_management_no_authorized_apps)
+        } else {
+            context.resources.getQuantityString(
+                R.plurals.home_app_management_authorized_apps_count,
+                count,
+                count
+            )
+        }
     } else {
         stringResource(R.string.home_app_management_title)
     }
-    val body = if (running) {
+    val body = if (showCount) {
+        val count = unauthorizedResource.data!!
+        if (count == 0) {
+            stringResource(R.string.home_app_management_no_unauthorized_apps)
+        } else {
+            context.resources.getQuantityString(
+                R.plurals.home_app_management_unauthorized_apps_count,
+                count,
+                count
+            )
+        }
+    } else if (running) {
         stringResource(R.string.home_app_management_view_authorized_apps)
     } else {
         stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
@@ -909,13 +943,18 @@ private fun WirelessAdbCard(
         htmlStringResource(R.string.home_wireless_adb_description_pre_11)
     }
     val permissionLine = if (localNetworkPermissionState.required) {
+        val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+            stringResource(R.string.permission_nearby_wifi_devices)
+        } else {
+            localNetworkPermissionState.label
+        }
         stringResource(
             if (localNetworkPermissionState.granted) {
                 R.string.home_local_network_granted
             } else {
                 R.string.home_local_network_missing
             },
-            localNetworkPermissionState.label
+            permissionLabel
         )
     } else {
         null
@@ -983,12 +1022,17 @@ private fun LocalNetworkPermissionCard(
     localNetworkPermissionState: LocalNetworkPermissionState,
     onRequestLocalNetworkPermission: () -> Unit
 ) {
+    val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+        stringResource(R.string.permission_nearby_wifi_devices)
+    } else {
+        localNetworkPermissionState.label
+    }
     HomeCard(
         icon = R.drawable.ic_warning_24,
         title = stringResource(R.string.home_local_network_title),
         body = stringResource(
             R.string.home_local_network_description,
-            localNetworkPermissionState.label
+            permissionLabel
         )
     ) {
         HomeButtons(

@@ -132,7 +132,7 @@ class SettingsActivity : AppActivity() {
             val localeOptions = remember(languageTag) {
                 buildLocaleOptions(languageTag)
             }
-            val languageSummary = localeOptions.firstOrNull { it.tag == languageTag }?.summary
+            val languageSummary = localeOptions.firstOrNull { it.tag == languageTag }?.title
                 ?: stringResource(rikka.core.R.string.follow_system)
             val nightValues = resources.getIntArray(R.array.night_mode_value).toList()
             val nightLabels = stringArrayResource(R.array.night_mode).toList()
@@ -625,8 +625,14 @@ class SettingsActivity : AppActivity() {
                 LocaleOption(tag.toString(), getString(rikka.core.R.string.follow_system), null)
             } else {
                 val locale = Locale.forLanguageTag(displayLocaleTags[index].toString())
-                val localeName = if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(locale) else locale.getDisplayName(locale)
-                val localizedLocaleName = if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(currentLocale) else locale.getDisplayName(currentLocale)
+                var localeName = if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(locale) else locale.getDisplayName(locale)
+                if (displayLocaleTags[index].toString() == "es") {
+                    localeName = "Español"
+                }
+                var localizedLocaleName = if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(currentLocale) else locale.getDisplayName(currentLocale)
+                if (displayLocaleTags[index].toString() == "es" && currentLocale.language == "es") {
+                    localizedLocaleName = "Español"
+                }
                 LocaleOption(
                     tag = tag.toString(),
                     title = if (tag.toString() == currentTag) localizedLocaleName else localeName,

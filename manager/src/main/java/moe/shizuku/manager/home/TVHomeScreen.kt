@@ -53,6 +53,7 @@ import rikka.shizuku.ShizukuApiConstants
 internal fun TVHomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
@@ -77,6 +78,7 @@ internal fun TVHomeScreen(
     val context = LocalContext.current
     val status = serviceResource?.data ?: ServiceStatus()
     val grantedCount = grantedResource?.data ?: 0
+    val unauthorizedCount = unauthorizedResource?.data ?: 0
     val running = status.isRunning
     val adbPermission = status.permission
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
@@ -139,18 +141,37 @@ internal fun TVHomeScreen(
 
             if (adbPermission) {
                 item {
+                    val showCount = running &&
+                            grantedResource?.status == Status.SUCCESS && grantedResource?.data != null &&
+                            unauthorizedResource?.status == Status.SUCCESS && unauthorizedResource?.data != null
                     TvSimpleActionCard(
                         icon = R.drawable.ic_system_icon,
-                        title = if (running) {
-                            context.resources.getQuantityString(
-                                R.plurals.home_app_management_authorized_apps_count,
-                                grantedCount,
-                                grantedCount
-                            )
+                        title = if (showCount) {
+                            val count = grantedResource.data!!
+                            if (count == 0) {
+                                stringResource(R.string.home_app_management_no_authorized_apps)
+                            } else {
+                                context.resources.getQuantityString(
+                                    R.plurals.home_app_management_authorized_apps_count,
+                                    count,
+                                    count
+                                )
+                            }
                         } else {
                             stringResource(R.string.home_app_management_title)
                         },
-                        body = if (running) {
+                        body = if (showCount) {
+                            val count = unauthorizedResource.data!!
+                            if (count == 0) {
+                                stringResource(R.string.home_app_management_no_unauthorized_apps)
+                            } else {
+                                context.resources.getQuantityString(
+                                    R.plurals.home_app_management_unauthorized_apps_count,
+                                    count,
+                                    count
+                                )
+                            }
+                        } else if (running) {
                             stringResource(R.string.home_app_management_view_authorized_apps)
                         } else {
                             stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
@@ -233,12 +254,17 @@ internal fun TVHomeScreen(
 
             if (localNetworkPermissionState.required && !localNetworkPermissionState.granted) {
                 item {
+                    val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+                        stringResource(R.string.permission_nearby_wifi_devices)
+                    } else {
+                        localNetworkPermissionState.label
+                    }
                     TvHomeCard(
                         icon = R.drawable.ic_warning_24,
                         title = stringResource(R.string.home_local_network_title),
                         body = stringResource(
                             R.string.home_local_network_description,
-                            localNetworkPermissionState.label
+                            permissionLabel
                         )
                     ) {
                         TvButton(onClick = onRequestLocalNetworkPermission) {

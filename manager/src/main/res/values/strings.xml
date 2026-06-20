@@ -34,6 +34,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_local_network_missing">%1$s is not granted.</string>
     <string name="home_local_network_grant">Grant access</string>
     <string name="home_local_network_permission_denied">Local network access is required for Wireless debugging.</string>
+    <string name="permission_nearby_wifi_devices">Nearby Wi-Fi devices</string>
 
     <!-- Adb -->
     <string name="dialog_adb_discovery">Searching for wireless debugging service</string>
@@ -82,6 +83,12 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
         <item quantity="one"><![CDATA[Authorized %d application]]></item>
         <item quantity="other"><![CDATA[Authorized %d applications]]></item>
     </plurals>
+    <plurals name="home_app_management_unauthorized_apps_count">
+        <item quantity="one"><![CDATA[%d unauthorized application]]></item>
+        <item quantity="other"><![CDATA[%d unauthorized applications]]></item>
+    </plurals>
+    <string name="home_app_management_no_authorized_apps">No authorized applications</string>
+    <string name="home_app_management_no_unauthorized_apps">No unauthorized applications</string>
     <string name="home_app_management_view_authorized_apps"><![CDATA[Tap to manage authorized apps]]></string>
     <string name="home_app_management_empty">Apps that has requested or declared Nightzuku will show here.</string>
 
@@ -101,22 +108,28 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_adb_is_limited_description">Your device manufacturer has restricted adb permissions and apps using Nightzuku will not work properly.\n\nUsually, this limitation can be lifted by adjusting some options in \"Developer options\". Please read the help for details on how to do this.\n\nYou may need to restart Nightzuku for the operation to take effect.</string>
 
     <!-- Application management -->
-    <string name="app_management_select_all">Select all</string>
-    <string name="app_management_deselect_all">Deselect all</string>
+    <string name="app_management_select_all">Authorize all</string>
+    <string name="app_management_deselect_all">Unauthorize all</string>
     <string name="app_management_dialog_adb_is_limited_title">The permission of adb is limited</string>
     <string name="app_management_dialog_adb_is_limited_message"><![CDATA[It\'s highly possible that your device manufacturer limits the permission of adb.<p>There may be a solution for your system in <b><a href=\"%1$s\">this document</a></b>.]]></string>
     <string name="app_management_item_summary_requires_root">* requires Nightzuku runs with root</string>
+    <string name="app_management_search_placeholder">Search apps</string>
+    <string name="app_management_search_empty">No apps found</string>
+    <string name="app_management_search_clear">Clear query</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">Use Nightzuku in terminal apps</string>
     <string name="home_terminal_description">Run commands through Nightzuku in terminal apps you like</string>
-    <string name="terminal_tutorial_1">First, Export files to any where you want. You will find two files, %1$s and %2$s.</string>
+    <string name="terminal_tutorial_1">Export the files. You will receive %1$s and %2$s in Downloads.</string>
     <string name="terminal_tutorial_1_description">If there are files with the same name in the selected folder, they will be deleted.\n\nThe export function uses SAF (Storage Access Framework). It\'s reported that MIUI breaks the functions of SAF. If you are using MIUI, you may have to extract the file from Nightzuku\'s apk or download from GitHub.</string>
     <string name="terminal_export_files">Export files</string>
-    <string name="terminal_tutorial_2">Then, use any text editor to open and edit %1$s.</string>
-    <string name="terminal_tutorial_2_description">For example, if you want to use Nightzuku in %1$s, you should replace %2$s with %3$s (%4$s is the package name of %1$s).</string>
-    <string name="terminal_tutorial_3">Finally, move the files to somewhere where your terminal app can access, you will be able to use %1$s to run commands through Nightzuku.</string>
-    <string name="terminal_tutorial_3_description">Some tips: grant execute permission to %1$s and add it to %2$s, you will able to use %1$s directly.</string>
+    <string name="terminal_tutorial_2">For Termux, copy and run these commands:</string>
+    <string name="terminal_tutorial_2_description">For Termux, no manual package replacement is needed.</string>
+    <string name="terminal_tutorial_2_command">termux-setup-storage\nmkdir -p ~/.nightzuku\ncp ~/storage/downloads/rish ~/.nightzuku/rish\ncp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex\nchmod +x ~/.nightzuku/rish\nchmod 444 ~/.nightzuku/rish_shizuku.dex\nls -l ~/.nightzuku/rish ~/.nightzuku/rish_shizuku.dex\n~/.nightzuku/rish</string>
+    <string name="terminal_tutorial_3">For other terminal apps:</string>
+    <string name="terminal_tutorial_3_description">Set RISH_APPLICATION_ID manually if using another terminal app.</string>
+    <string name="terminal_tutorial_3_command">sh ~/.nightzuku/rish</string>
+    <string name="copy_commands">Copy commands</string>
     <string name="rish_description"><![CDATA[
 With %1$s, in any terminal app, you can connect to and interact with the shell runs by Nightzuku.
 <p>About the detailed usage %1$s, tap to view the document.
