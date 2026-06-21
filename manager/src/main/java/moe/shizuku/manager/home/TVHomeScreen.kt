@@ -600,19 +600,41 @@ private fun buildDiagnostics(
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
-        "${localNetworkPermissionState.label}: " + if (localNetworkPermissionState.granted) "granted" else "missing"
+        val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+            context.getString(R.string.permission_nearby_wifi_devices)
+        } else {
+            localNetworkPermissionState.label
+        }
+        val statusLabel = if (localNetworkPermissionState.granted) {
+            context.getString(R.string.diagnostic_permission_granted)
+        } else {
+            context.getString(R.string.diagnostic_permission_missing)
+        }
+        "$permissionLabel: $statusLabel"
     } else {
-        "not required"
+        context.getString(R.string.diagnostic_permission_not_required)
     }
+
+    val serviceStatusLabel = if (status.isRunning) {
+        context.getString(R.string.diagnostic_running)
+    } else {
+        context.getString(R.string.diagnostic_stopped)
+    }
+    val adbPermissionLabel = if (status.permission) {
+        context.getString(R.string.diagnostic_full)
+    } else {
+        context.getString(R.string.diagnostic_limited)
+    }
+
     return buildString {
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
         appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
-        appendLine("Service: ${if (status.isRunning) "running" else "stopped"}")
-        appendLine("Server uid: ${status.uid}")
-        appendLine("Server API: ${status.apiVersion}.${status.patchVersion}")
+        appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
+        appendLine("${context.getString(R.string.diagnostic_server_uid)}: ${status.uid}")
+        appendLine("${context.getString(R.string.diagnostic_server_api)}: ${status.apiVersion}.${status.patchVersion}")
         appendLine("SELinux: ${status.seContext ?: "unknown"}")
-        appendLine("ADB permission: ${if (status.permission) "full" else "limited"}")
-        appendLine("Authorized apps: $grantedCount")
-        appendLine("Local network: $localNetwork")
+        appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
+        appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
+        appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
     }.trim()
 }

@@ -211,7 +211,6 @@ class ShellTutorialActivity : AppActivity() {
                             StepRow(
                                 number = 2,
                                 title = stringResource(R.string.terminal_tutorial_2),
-                                body = stringResource(R.string.terminal_tutorial_2_description),
                                 action = {
                                     androidx.compose.foundation.layout.Column(
                                         verticalArrangement = Arrangement.spacedBy(8.dp)

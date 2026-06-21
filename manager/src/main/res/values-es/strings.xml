@@ -33,6 +33,20 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="home_local_network_missing">El permiso de %1$s no está concedido.</string>
     <string name="home_local_network_grant">Conceder permiso</string>
     <string name="permission_nearby_wifi_devices">dispositivos Wi-Fi cercanos</string>
+    <string name="diagnostic_local_network">Red local</string>
+    <string name="diagnostic_permission_granted">concedido</string>
+    <string name="diagnostic_permission_missing">falta</string>
+    <string name="diagnostic_permission_denied">denegado</string>
+    <string name="diagnostic_permission_not_required">no requerido</string>
+    <string name="diagnostic_service">Servicio</string>
+    <string name="diagnostic_running">en ejecución</string>
+    <string name="diagnostic_stopped">detenido</string>
+    <string name="diagnostic_server_uid">UID del servidor</string>
+    <string name="diagnostic_server_api">API del servidor</string>
+    <string name="diagnostic_adb_permission">Permiso ADB</string>
+    <string name="diagnostic_full">completo</string>
+    <string name="diagnostic_limited">limitado</string>
+    <string name="diagnostic_authorized_apps">Aplicaciones autorizadas</string>
     <string name="home_local_network_permission_denied">El acceso a la red local es requerido para la Depuración inalámbrica.</string>
 
     <!-- Adb -->

@@ -35,6 +35,20 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_local_network_grant">Grant access</string>
     <string name="home_local_network_permission_denied">Local network access is required for Wireless debugging.</string>
     <string name="permission_nearby_wifi_devices">Nearby Wi-Fi devices</string>
+    <string name="diagnostic_local_network">Local network</string>
+    <string name="diagnostic_permission_granted">granted</string>
+    <string name="diagnostic_permission_missing">missing</string>
+    <string name="diagnostic_permission_denied">denied</string>
+    <string name="diagnostic_permission_not_required">not required</string>
+    <string name="diagnostic_service">Service</string>
+    <string name="diagnostic_running">running</string>
+    <string name="diagnostic_stopped">stopped</string>
+    <string name="diagnostic_server_uid">Server uid</string>
+    <string name="diagnostic_server_api">Server API</string>
+    <string name="diagnostic_adb_permission">ADB permission</string>
+    <string name="diagnostic_full">full</string>
+    <string name="diagnostic_limited">limited</string>
+    <string name="diagnostic_authorized_apps">Authorized apps</string>
 
     <!-- Adb -->
     <string name="dialog_adb_discovery">Searching for wireless debugging service</string>

@@ -86,13 +86,7 @@ fun TvShellTutorialScreen(
                     number = 2,
                     title = stringResource(R.string.terminal_tutorial_2),
                     body = stringResource(R.string.terminal_tutorial_2_command)
-                ) {
-                    TvText(
-                        text = stringResource(R.string.terminal_tutorial_2_description),
-                        style = TvMaterialTheme.typography.bodySmall,
-                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                )
             }
             item {
                 TvTutorialStepCard(
