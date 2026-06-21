@@ -125,10 +125,10 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="terminal_export_files">Export files</string>
     <string name="terminal_tutorial_2">For Termux, copy and run these commands:</string>
     <string name="terminal_tutorial_2_description">For Termux, no manual package replacement is needed.</string>
-    <string name="terminal_tutorial_2_command">termux-setup-storage\nmkdir -p ~/.nightzuku\ncp ~/storage/downloads/rish ~/.nightzuku/rish\ncp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex\nchmod +x ~/.nightzuku/rish\nchmod 444 ~/.nightzuku/rish_shizuku.dex\nls -l ~/.nightzuku/rish ~/.nightzuku/rish_shizuku.dex\n~/.nightzuku/rish</string>
-    <string name="terminal_tutorial_3">For other terminal apps:</string>
-    <string name="terminal_tutorial_3_description">Set RISH_APPLICATION_ID manually if using another terminal app.</string>
-    <string name="terminal_tutorial_3_command">sh ~/.nightzuku/rish</string>
+    <string name="terminal_tutorial_2_command">termux-setup-storage\nmkdir -p ~/.nightzuku\ncp ~/storage/downloads/rish ~/.nightzuku/rish\ncp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex\nchmod +x ~/.nightzuku/rish\nchmod 444 ~/.nightzuku/rish_shizuku.dex\nls -l ~/.nightzuku/rish ~/.nightzuku/rish_shizuku.dex</string>
+    <string name="terminal_tutorial_3">Run in Termux:</string>
+    <string name="terminal_tutorial_3_description">For another terminal app, set RISH_APPLICATION_ID manually before running rish.</string>
+    <string name="terminal_tutorial_3_command">cd ~/.nightzuku\n./rish</string>
     <string name="copy_commands">Copy commands</string>
     <string name="rish_description"><![CDATA[
 With %1$s, in any terminal app, you can connect to and interact with the shell runs by Nightzuku.

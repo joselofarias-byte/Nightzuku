@@ -124,6 +124,20 @@ internal fun TVHomeScreen(
                     label = R.string.action_stop,
                     onClick = onStop
                 )
+            } else {
+                if (isRooted) {
+                    TvNavigationButton(
+                        icon = R.drawable.ic_server_restart,
+                        label = R.string.home_root_button_start,
+                        onClick = onStartRoot
+                    )
+                } else if (canUseWirelessAdb) {
+                    TvNavigationButton(
+                        icon = R.drawable.ic_server_restart,
+                        label = R.string.home_root_button_start,
+                        onClick = onStartWirelessAdb
+                    )
+                }
             }
         }
 
@@ -136,7 +150,15 @@ internal fun TVHomeScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
-                TvStatusCard(serviceResource = serviceResource, status = status)
+                TvStatusCard(
+                    serviceResource = serviceResource,
+                    status = status,
+                    onStop = onStop,
+                    onStartRoot = onStartRoot,
+                    onStartWirelessAdb = onStartWirelessAdb,
+                    isRooted = isRooted,
+                    canUseWirelessAdb = canUseWirelessAdb
+                )
             }
 
             if (adbPermission) {
@@ -328,7 +350,12 @@ private fun TvNavigationButton(
 @Composable
 private fun TvStatusCard(
     serviceResource: Resource<ServiceStatus>?,
-    status: ServiceStatus
+    status: ServiceStatus,
+    onStop: () -> Unit,
+    onStartRoot: () -> Unit,
+    onStartWirelessAdb: () -> Unit,
+    isRooted: Boolean,
+    canUseWirelessAdb: Boolean
 ) {
     val context = LocalContext.current
     val running = status.isRunning
@@ -377,7 +404,25 @@ private fun TvStatusCard(
         body = summary,
         iconContainerColor = iconContainerColor,
         iconContentColor = iconContentColor
-    )
+    ) {
+        if (serviceResource != null) {
+            if (running) {
+                TvButton(onClick = onStop) {
+                    TvText(stringResource(R.string.action_stop))
+                }
+            } else {
+                if (isRooted) {
+                    TvButton(onClick = onStartRoot) {
+                        TvText(stringResource(R.string.home_root_button_start))
+                    }
+                } else if (canUseWirelessAdb) {
+                    TvButton(onClick = onStartWirelessAdb) {
+                        TvText(stringResource(R.string.home_root_button_start))
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

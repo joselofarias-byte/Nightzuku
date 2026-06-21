@@ -625,16 +625,42 @@ private fun HomeScreen(
                             expanded = moreOpen,
                             onDismissRequest = { moreOpen = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_stop)) },
-                                leadingIcon = {
-                                    ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)
-                                },
-                                onClick = {
-                                    moreOpen = false
-                                    onStop()
+                            if (running) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_stop)) },
+                                    leadingIcon = {
+                                        ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        moreOpen = false
+                                        onStop()
+                                    }
+                                )
+                            } else {
+                                if (isRooted) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_root_button_start)) },
+                                        leadingIcon = {
+                                            ShizukuIcon(R.drawable.ic_server_start_24dp, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            moreOpen = false
+                                            onStartRoot()
+                                        }
+                                    )
+                                } else if (canUseWirelessAdb) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_root_button_start)) },
+                                        leadingIcon = {
+                                            ShizukuIcon(R.drawable.ic_server_start_24dp, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            moreOpen = false
+                                            onStartWirelessAdb()
+                                        }
+                                    )
                                 }
-                            )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_about)) },
                                 leadingIcon = {
@@ -666,7 +692,12 @@ private fun HomeScreen(
             item {
                 StatusCard(
                     serviceResource = serviceResource,
-                    status = status
+                    status = status,
+                    onStop = onStop,
+                    onStartRoot = onStartRoot,
+                    onStartWirelessAdb = onStartWirelessAdb,
+                    isRooted = isRooted,
+                    canUseWirelessAdb = canUseWirelessAdb
                 )
             }
 
@@ -789,7 +820,12 @@ private fun HomeScreen(
 @Composable
 private fun StatusCard(
     serviceResource: Resource<ServiceStatus>?,
-    status: ServiceStatus
+    status: ServiceStatus,
+    onStop: () -> Unit,
+    onStartRoot: () -> Unit,
+    onStartWirelessAdb: () -> Unit,
+    isRooted: Boolean,
+    canUseWirelessAdb: Boolean
 ) {
     val context = LocalContext.current
     val running = status.isRunning
@@ -841,9 +877,38 @@ private fun StatusCard(
         iconContainerColor = iconContainerColor,
         iconContentColor = iconContentColor
     ) {
-        if (serviceResource == null) {
+        if (serviceResource == null || serviceResource.status == Status.LOADING) {
             Spacer(Modifier.height(12.dp))
             LoadingIndicator(Modifier.size(32.dp))
+        } else {
+            val buttons = mutableListOf<HomeButtonSpec>()
+            if (running) {
+                buttons += HomeButtonSpec(
+                    label = R.string.action_stop,
+                    icon = R.drawable.ic_close_24,
+                    primary = true,
+                    onClick = onStop
+                )
+            } else {
+                if (isRooted) {
+                    buttons += HomeButtonSpec(
+                        label = R.string.home_root_button_start,
+                        icon = R.drawable.ic_server_start_24dp,
+                        primary = true,
+                        onClick = onStartRoot
+                    )
+                } else if (canUseWirelessAdb) {
+                    buttons += HomeButtonSpec(
+                        label = R.string.home_root_button_start,
+                        icon = R.drawable.ic_server_start_24dp,
+                        primary = true,
+                        onClick = onStartWirelessAdb
+                    )
+                }
+            }
+            if (buttons.isNotEmpty()) {
+                HomeButtons(buttons)
+            }
         }
     }
 }

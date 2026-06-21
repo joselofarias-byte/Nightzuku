@@ -244,8 +244,27 @@ class ShellTutorialActivity : AppActivity() {
                                 title = stringResource(R.string.terminal_tutorial_3),
                                 body = stringResource(R.string.terminal_tutorial_3_description),
                                 action = {
-                                    SelectionContainer {
-                                        MonospaceLog(text = stringResource(R.string.terminal_tutorial_3_command))
+                                    androidx.compose.foundation.layout.Column(
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SelectionContainer {
+                                            MonospaceLog(text = stringResource(R.string.terminal_tutorial_3_command))
+                                        }
+                                        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                        val context = androidx.compose.ui.platform.LocalContext.current
+                                        val commandText = stringResource(R.string.terminal_tutorial_3_command)
+                                        androidx.compose.material3.TextButton(
+                                            onClick = {
+                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(commandText))
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_copied_to_clipboard, context.getString(R.string.copy_commands)),
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        ) {
+                                            Text(stringResource(R.string.copy_commands))
+                                        }
                                     }
                                 }
                             )
