@@ -18,6 +18,10 @@ import androidx.compose.material3.Text
 import androidx.wear.compose.material3.Card as WearCard
 import androidx.wear.compose.material3.MaterialTheme as WearMaterialTheme
 import androidx.wear.compose.material3.Text as WearText
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -238,10 +242,10 @@ class ShellTutorialActivity : AppActivity() {
                             )
                         }
                         item {
+                            var showAdvancedDialog by remember { mutableStateOf(false) }
                             StepRow(
                                 number = 3,
                                 title = stringResource(R.string.terminal_tutorial_3),
-                                body = stringResource(R.string.terminal_tutorial_3_description),
                                 action = {
                                     androidx.compose.foundation.layout.Column(
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -264,9 +268,28 @@ class ShellTutorialActivity : AppActivity() {
                                         ) {
                                             Text(stringResource(R.string.copy_commands))
                                         }
+                                        androidx.compose.material3.TextButton(
+                                            onClick = { showAdvancedDialog = true }
+                                        ) {
+                                            Text(stringResource(R.string.terminal_tutorial_advanced_title))
+                                        }
                                     }
                                 }
                             )
+                            if (showAdvancedDialog) {
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showAdvancedDialog = false },
+                                    title = { Text(stringResource(R.string.terminal_tutorial_advanced_dialog_title)) },
+                                    text = { Text(stringResource(R.string.terminal_tutorial_advanced_dialog_message)) },
+                                    confirmButton = {
+                                        androidx.compose.material3.TextButton(
+                                            onClick = { showAdvancedDialog = false }
+                                        ) {
+                                            Text(stringResource(android.R.string.ok))
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }

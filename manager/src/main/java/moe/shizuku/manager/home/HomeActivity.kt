@@ -208,6 +208,7 @@ abstract class HomeActivity : AppActivity() {
                         onOpenAdbPermissionHelp = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.ADB_PERMISSION.get()) },
                         onLearnMore = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.HOME.get()) },
                         onCopyDiagnostics = { copyDiagnostics(it) },
+                        onShareDiagnostics = { shareDiagnostics(it) },
                         onRequestLocalNetworkPermission = {
                             requestLocalNetworkPermission { permissionRefreshTick.intValue++ }
                         }
@@ -416,6 +417,14 @@ abstract class HomeActivity : AppActivity() {
         Toast.makeText(this, R.string.home_diagnostics_copied, Toast.LENGTH_SHORT).show()
     }
 
+    private fun shareDiagnostics(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.home_diagnostics_share)))
+    }
+
     companion object {
         private const val SDK_ANDROID_16 = 36
         private const val SDK_ANDROID_17 = 37
@@ -465,6 +474,7 @@ private fun HomeScreen(
     onOpenAdbPermissionHelp: () -> Unit,
     onLearnMore: () -> Unit,
     onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit,
     onRequestLocalNetworkPermission: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -549,6 +559,7 @@ private fun HomeScreen(
             onOpenAdbPermissionHelp = onOpenAdbPermissionHelp,
             onLearnMore = onLearnMore,
             onCopyDiagnostics = onCopyDiagnostics,
+            onShareDiagnostics = onShareDiagnostics,
             onRequestLocalNetworkPermission = onRequestLocalNetworkPermission
         )
     }
@@ -577,6 +588,7 @@ private fun HomeScreen(
     onOpenAdbPermissionHelp: () -> Unit,
     onLearnMore: () -> Unit,
     onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit,
     onRequestLocalNetworkPermission: () -> Unit
 ) {
     val context = LocalContext.current
@@ -801,7 +813,8 @@ private fun HomeScreen(
             item {
                 DiagnosticsCard(
                     diagnostics = diagnostics,
-                    onCopyDiagnostics = onCopyDiagnostics
+                    onCopyDiagnostics = onCopyDiagnostics,
+                    onShareDiagnostics = onShareDiagnostics
                 )
             }
 
@@ -1116,7 +1129,8 @@ private fun LocalNetworkPermissionCard(
 @Composable
 private fun DiagnosticsCard(
     diagnostics: String,
-    onCopyDiagnostics: (String) -> Unit
+    onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit
 ) {
     HomeCard(
         icon = R.drawable.ic_outline_info_24,
@@ -1130,6 +1144,12 @@ private fun DiagnosticsCard(
                     icon = R.drawable.ic_content_copy_24,
                     primary = true,
                     onClick = { onCopyDiagnostics(diagnostics) }
+                ),
+                HomeButtonSpec(
+                    label = R.string.home_diagnostics_share,
+                    icon = R.drawable.ic_share_24dp,
+                    primary = false,
+                    onClick = { onShareDiagnostics(diagnostics) }
                 )
             )
         )
@@ -1334,6 +1354,7 @@ private fun buildDiagnostics(
     }
 
     return buildString {
+        appendLine("${context.getString(R.string.diagnostic_status_label)}: $serviceStatusLabel")
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
         appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
         appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
