@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="translation_contributors" />
     <string name="app_name" translatable="false">Nightzuku</string>
@@ -104,7 +104,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
         <item quantity="other"><![CDATA[%d aplicaciones no autorizadas]]></item>
     </plurals>
     <string name="home_app_management_no_authorized_apps">Ninguna aplicación autorizada</string>
-    <string name="home_app_management_no_unauthorized_apps">Ninguna aplicación no autorizada</string>
+    <string name="home_app_management_no_unauthorized_apps">Ninguna pendiente de autorización</string>
     <string name="home_app_management_view_authorized_apps"><![CDATA[Toca para gestionar las aplicaciones autorizadas]]></string>
     <string name="home_app_management_empty">Las aplicaciones que hayan solicitado o declarado Nightzuku aparecerán aquí.</string>
 

@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="app_name" translatable="false">Nightzuku</string>
 
     <!-- To translators: you can leave your here -->
@@ -105,7 +105,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
         <item quantity="other"><![CDATA[%d unauthorized applications]]></item>
     </plurals>
     <string name="home_app_management_no_authorized_apps">No authorized applications</string>
-    <string name="home_app_management_no_unauthorized_apps">No unauthorized applications</string>
+    <string name="home_app_management_no_unauthorized_apps">No applications pending authorization</string>
     <string name="home_app_management_view_authorized_apps"><![CDATA[Tap to manage authorized apps]]></string>
     <string name="home_app_management_empty">Apps that has requested or declared Nightzuku will show here.</string>
 
