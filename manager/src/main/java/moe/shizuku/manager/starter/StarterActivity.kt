@@ -73,14 +73,14 @@ class StarterActivity : AppActivity() {
             if (!waitingForService && output.endsWith("info: shizuku_starter exit with 0")) {
                 waitingForService = true
                 viewModel.appendOutput("")
-                viewModel.appendOutput("Waiting for service...")
+                viewModel.appendOutput(getString(R.string.starter_waiting_for_service))
 
                 val listener = object : Shizuku.OnBinderReceivedListener {
                     override fun onBinderReceived() {
                         Shizuku.removeBinderReceivedListener(this)
                         binderReceivedListener = null
                         runOnUiThread {
-                            viewModel.appendOutput("Service started, this window will be automatically closed in 3 seconds")
+                            viewModel.appendOutput(getString(R.string.starter_service_started))
                             window?.decorView?.postDelayed({
                                 if (!isFinishing) finish()
                             }, 3000)
@@ -198,6 +198,7 @@ class StarterActivity : AppActivity() {
 
 private class ViewModel(context: Context, root: Boolean, host: String?, port: Int) : androidx.lifecycle.ViewModel() {
 
+    private val context = context.applicationContext
     private val sb = StringBuilder()
     private val outputLock = Any()
     private val _output = MutableLiveData<Resource<String>>()
@@ -279,7 +280,7 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
 
     private fun startAdb(host: String, port: Int) {
         synchronized(outputLock) {
-            sb.append("Starting with wireless adb in port $port...").append('\n').append('\n')
+            sb.append(context.getString(R.string.starter_starting_wireless_adb, port.toString())).append('\n').append('\n')
         }
         postResult()
 

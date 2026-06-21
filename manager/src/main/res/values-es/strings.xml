@@ -274,6 +274,9 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="starter">Iniciador</string>
     <string name="starting_root_shell">Iniciando shell de root…</string>
     <string name="start_with_root_failed">No se puede iniciar el servicio porque no se ha concedido el permiso de root o este dispositivo no tiene root.</string>
+    <string name="starter_starting_wireless_adb">Iniciando con ADB inalámbrico en el puerto %s...</string>
+    <string name="starter_waiting_for_service">Esperando el servicio...</string>
+    <string name="starter_service_started">Servicio iniciado. Esta ventana se cerrará automáticamente en 3 segundos.</string>
 
     <!-- Misc -->
     <string name="dialog_cannot_open_browser_title">No se puede abrir el navegador</string>
