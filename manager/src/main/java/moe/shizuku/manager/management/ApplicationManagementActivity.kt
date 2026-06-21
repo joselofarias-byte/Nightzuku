@@ -96,7 +96,7 @@ class ApplicationManagementActivity : AppActivity() {
             if (it.status == Status.ERROR) {
                 finish()
                 val tr = it.error
-                Toast.makeText(this, Objects.toString(tr, "unknown"), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.application_management_load_failed), Toast.LENGTH_SHORT).show()
                 tr.printStackTrace()
             }
         }

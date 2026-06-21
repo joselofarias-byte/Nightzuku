@@ -300,4 +300,5 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="shizuku_connectors_summary">Allow plugins to activate Nightzuku</string>
     <string name="unsafe_warning_title">Warning</string>
     <string name="unsafe_warning_message">Enabling this feature is UNSAFE. Are you sure?</string>
+    <string name="application_management_load_failed">Could not load applications.</string>
 </resources>

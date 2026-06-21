@@ -165,7 +165,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="follow_system">Sigue el sistema</string>
     <string name="settings_startup">Inicio</string>
     <string name="settings_translation_contributors">Colaboradores de la traducción</string>
-    <string name="settings_translation">Participar en la traducción</string>
+    <string name="settings_translation">Ayudar a traducir Nightzuku</string>
     <string name="settings_translation_summary">Ayúdanos a traducir %s a tu idioma</string>
     <string name="settings_start_on_boot">Iniciar al arrancar (root)</string>
     <string name="settings_start_on_boot_summary">Para dispositivos con root, Nightzuku puede iniciarse automáticamente al arrancar</string>
@@ -300,4 +300,5 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="shizuku_connectors_summary">Permitir que los complementos activen Nightzuku</string>
     <string name="unsafe_warning_title">Advertencia</string>
     <string name="unsafe_warning_message">Habilitar esta función NO ES SEGURO. ¿Estás seguro?</string>
+    <string name="application_management_load_failed">No se pudieron cargar las aplicaciones.</string>
 </resources>
