@@ -81,6 +81,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="adb_pairing_tutorial_content_finish">Back to Nightzuku and start Nightzuku.</string>
     <string name="adb_pairing_tutorial_content_network">Nightzuku needs to access local network. It is controlled by the network permission.</string>
     <string name="adb_pairing_tutorial_content_network_limation_not_foreground">Some systems (such as MIUI) disallow apps to access the network when they are not visible, even if the app uses foreground service as standard. Please disable battery optimization features for Nightzuku on such systems.</string>
+    <string name="adb_pairing_foreground_denied">OP_START_FOREGROUND is denied. Cannot start pairing service.</string>
     <string name="home_discovered_port">Discovered port: %s</string>
     <string name="home_start_with_port">Start (%s)</string>
 

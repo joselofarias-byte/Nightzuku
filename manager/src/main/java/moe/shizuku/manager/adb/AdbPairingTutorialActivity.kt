@@ -1,4 +1,4 @@
-package moe.shizuku.manager.adb
+﻿package moe.shizuku.manager.adb
 
 import android.app.AppOpsManager
 import android.app.ForegroundServiceStartNotAllowedException
@@ -295,7 +295,7 @@ class AdbPairingTutorialActivity : AppActivity() {
                 val mode = getSystemService(AppOpsManager::class.java)
                     .noteOpNoThrow("android:start_foreground", android.os.Process.myUid(), packageName, null, null)
                 if (mode == AppOpsManager.MODE_ERRORED) {
-                    Toast.makeText(this, "OP_START_FOREGROUND is denied. What are you doing?", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, getString(R.string.adb_pairing_foreground_denied), Toast.LENGTH_LONG).show()
                 }
                 startService(intent)
             }
