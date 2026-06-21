@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="translation_contributors" />
     <string name="app_name" translatable="false">Nightzuku</string>
@@ -50,6 +50,8 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="home_local_network_permission_denied">El acceso a la red local es requerido para la Depuración inalámbrica.</string>
 
     <!-- Adb -->
+    <string name="home_discovered_port">Puerto detectado: %s</string>
+    <string name="home_start_with_port">Iniciar (%s)</string>
     <string name="dialog_adb_discovery">Buscando el servicio de depuración inalámbrica</string>
     <string name="dialog_adb_discovery_message">Por favor, habilita \"Depuración inalámbrica\" en \"Opciones de desarrollador\". La \"Depuración inalámbrica\" se deshabilita automáticamente cuando cambia la red.\n\nNota: no deshabilites las \"Opciones de desarrollador\" ni la \"Depuración USB\", de lo contrario, Nightzuku se detendrá.</string>
     <string name="dialog_adb_discovery_message_toggle_wireless_debugging">Por favor, intenta deshabilitar y habilitar la \"Depuración inalámbrica\" si continúa buscando.</string>
