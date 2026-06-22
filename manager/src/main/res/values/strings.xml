@@ -107,7 +107,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_app_management_no_authorized_apps">No authorized applications</string>
     <string name="home_app_management_no_unauthorized_apps">No applications pending authorization</string>
     <string name="home_app_management_view_authorized_apps"><![CDATA[Tap to manage authorized apps]]></string>
-    <string name="home_app_management_empty">Apps that has requested or declared Nightzuku will show here.</string>
+    <string name="home_app_management_empty">Apps that have requested or declared Nightzuku will show here.</string>
 
     <!-- Home - Learn more -->
     <string name="home_learn_more_title">Learn Nightzuku</string>

@@ -48,6 +48,7 @@ import moe.shizuku.manager.utils.UserHandleCompat
 fun TvApplicationManagementScreen(
     packages: List<PackageInfo>,
     tick: Int,
+    isLoading: Boolean,
     onNavigateUp: () -> Unit,
     onToggle: (PackageInfo) -> Unit,
     onSelectAll: (Boolean) -> Unit
@@ -88,7 +89,7 @@ fun TvApplicationManagementScreen(
         }
 
 
-        if (packages.isEmpty()) {
+        if (!isLoading && packages.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -98,7 +99,7 @@ fun TvApplicationManagementScreen(
                     style = TvMaterialTheme.typography.headlineSmall
                 )
             }
-        } else {
+        } else if (!isLoading) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(300.dp),
                 modifier = Modifier.fillMaxSize(),

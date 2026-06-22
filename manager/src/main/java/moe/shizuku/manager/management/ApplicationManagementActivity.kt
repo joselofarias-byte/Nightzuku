@@ -161,6 +161,7 @@ class ApplicationManagementActivity : AppActivity() {
                         TvApplicationManagementScreen(
                             packages = packages,
                             tick = tick,
+                            isLoading = packagesResource == null,
                             onNavigateUp = { finish() },
                             onToggle = { pkg ->
                                 val applicationInfo = pkg.applicationInfo ?: return@TvApplicationManagementScreen
