@@ -138,7 +138,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <!-- Terminal -->
     <string name="home_terminal_title">Usar Nightzuku en Termux</string>
     <string name="home_terminal_description">Ejecuta comandos mediante Nightzuku desde Termux.</string>
-    <string name="terminal_tutorial_1">Exporta los archivos a Descargas.</string>
+    <string name="terminal_tutorial_1">Exporta %1$s y %2$s a Descargas.</string>
     <string name="terminal_tutorial_1_description">Si ya existen archivos con el mismo nombre, se sobrescribirán sin confirmación.\n\nLa función de exportación utiliza SAF (Storage Access Framework). Algunas versiones de MIUI pueden causar problemas con SAF. Si estás utilizando MIUI, es posible que tengas que extraer el archivo de la apk de Nightzuku o descargarlo desde GitHub.</string>
     <string name="terminal_export_files">Exportar archivos</string>
     <string name="terminal_tutorial_2">Para Termux, copia y ejecuta estos comandos:</string>

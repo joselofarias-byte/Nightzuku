@@ -33,3 +33,11 @@ nightzuku-plus-build.txt
 nightzuku-c*-build.txt
 
 .claude/
+
+# Local review/build artifacts
+*.txt
+*PATCH.md
+*AUDIT.md
+*POLISH.md
+*WALKTHROUGH.md
+*LOCALIZATION.md

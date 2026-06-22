@@ -1,4 +1,4 @@
-﻿@file:OptIn(
+@file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.wear.compose.material3.ExperimentalWearMaterial3Api::class,
     androidx.tv.material3.ExperimentalTvMaterial3Api::class
