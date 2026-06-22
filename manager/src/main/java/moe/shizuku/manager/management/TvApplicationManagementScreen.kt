@@ -225,7 +225,7 @@ private fun TvAppCard(
                 )
                 if (granted) {
                     TvText(
-                        text = stringResource(android.R.string.ok),
+                        text = stringResource(R.string.modules_enabled),
                         style = TvMaterialTheme.typography.labelSmall,
                         color = TvMaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold

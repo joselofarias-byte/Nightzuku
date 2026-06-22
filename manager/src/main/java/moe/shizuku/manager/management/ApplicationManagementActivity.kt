@@ -55,23 +55,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.authorization.AuthorizationManager
-import moe.shizuku.manager.ktx.toHtml
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.ui.compose.ShizukuScaffold
 import moe.shizuku.manager.utils.ShizukuSystemApis
 import moe.shizuku.manager.utils.UserHandleCompat
-import rikka.html.text.HtmlCompat
 import rikka.lifecycle.Status
 import rikka.shizuku.Shizuku
 import java.text.Collator
-import java.util.Objects
 
 class ApplicationManagementActivity : AppActivity() {
 
@@ -412,8 +407,6 @@ class ApplicationManagementActivity : AppActivity() {
         permissionTick.intValue++
     }
 
-    private fun showAdbLimitedDialog() {
-    }
 }
 
 @Composable
