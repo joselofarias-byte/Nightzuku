@@ -13,7 +13,7 @@
     <string name="home_adb_title"><![CDATA[Iniciar conectando a una computadora]]></string>
     <string name="home_adb_description"><![CDATA[Para dispositivos sin root, debes usar adb para iniciar Nightzuku (requiere conexión a una computadora). Este proceso debe repetirse cada vez que se reinicie el dispositivo. Por favor, <b><a href=\"%1$s\">lee la ayuda</a></b>.
 
-Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desinstalar la aplicación oficial anterior de Shizuku primero para evitar conflictos.]]></string>
+Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desinstala la aplicación oficial de Shizuku en caso de estar instalada.]]></string>
     <string name="home_adb_button_view_help">Leer ayuda</string>
     <string name="home_adb_button_view_command">Ver comando</string>
     <string name="home_adb_dialog_view_command_message"><![CDATA[<font face="monospace">%1$s</font><br><br>* Existen otras consideraciones, por favor confirma que has leído la ayuda primero.]]></string>
@@ -24,7 +24,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="home_wireless_adb_title"><![CDATA[Iniciar mediante Depuración inalámbrica]]></string>
     <string name="home_wireless_adb_description"><![CDATA[En Android 11 o superior, puedes habilitar la Depuración inalámbrica e iniciar Nightzuku directamente desde tu dispositivo, sin conectar a una computadora.<p>Por favor, consulta la guía paso a paso primero.
 
-Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desinstalar la aplicación oficial anterior de Shizuku primero para evitar conflictos.]]></string>
+Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desinstala la aplicación oficial de Shizuku en caso de estar instalada.]]></string>
     <string name="home_wireless_adb_description_pre_11"><![CDATA[Antes de Android 11, se requiere la conexión a una computadora para habilitar la Depuración inalámbrica.]]></string>
     <string name="home_wireless_adb_view_guide_button">Guía paso a paso</string>
     <string name="home_local_network_title">Acceso a la red local</string>
@@ -88,7 +88,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desin
     <string name="home_root_title"><![CDATA[Iniciar (para dispositivos con root)]]></string>
     <string name="home_root_description"><![CDATA[Además, Nightzuku se puede iniciar automáticamente al arrancar. Si no es así, comprueba si tu sistema o herramientas de terceros han restringido a Nightzuku.<br>Puedes consultar %s.
 
-Nota: Nightzuku es el sucesor moderno de Shizuku. Por favor, asegúrate de desinstalar la aplicación oficial anterior de Shizuku primero para evitar conflictos.]]></string>
+Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desinstala la aplicación oficial de Shizuku en caso de estar instalada.]]></string>
     <string name="home_root_description_sui"><![CDATA[Si estás usando Magisk, puedes probar %1$s. Para usuarios con root, eventualmente reemplazará a Nightzuku. Nota: las aplicaciones existentes deben cambiar un poco para usar %2$s.]]></string>
     <string name="home_root_button_start">Iniciar</string>
     <string name="home_root_button_restart">Reiniciar</string>
