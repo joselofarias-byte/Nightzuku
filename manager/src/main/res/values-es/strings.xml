@@ -134,6 +134,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="app_management_search_placeholder">Buscar aplicaciones</string>
     <string name="app_management_search_empty">No se encontraron aplicaciones</string>
     <string name="app_management_search_clear">Borrar búsqueda</string>
+    <string name="more_options">Más opciones</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">Usar Nightzuku en Termux</string>

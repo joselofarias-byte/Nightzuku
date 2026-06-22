@@ -114,12 +114,13 @@ class ApplicationManagementActivity : AppActivity() {
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@ApplicationManagementActivity)
             val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@ApplicationManagementActivity)
+            var searchQuery by remember { mutableStateOf("") }
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                 val pm = LocalContext.current.packageManager
                 val apps = androidx.compose.runtime.remember(packages, tick) {
-                    packages.map { pkg ->
-                        val appInfo = pkg.applicationInfo!!
+                    packages.mapNotNull { pkg ->
+                        val appInfo = pkg.applicationInfo ?: return@mapNotNull null
                         WearAppItem(
                             label = appInfo.loadLabel(pm).toString(),
                             packageName = pkg.packageName,
@@ -188,13 +189,12 @@ class ApplicationManagementActivity : AppActivity() {
             } else {
                 ShizukuExpressiveTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    var searchQuery by remember { mutableStateOf("") }
                     val pm = LocalContext.current.packageManager
                     val processedApps = remember(packages, tick, searchQuery) {
                         val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
                         packages
-                            .map { pkg ->
-                                val appInfo = pkg.applicationInfo!!
+                            .mapNotNull { pkg ->
+                                val appInfo = pkg.applicationInfo ?: return@mapNotNull null
                                 val label = appInfo.loadLabel(pm).toString()
                                 val uid = appInfo.uid
                                 val userId = UserHandleCompat.getUserId(uid)
@@ -230,7 +230,7 @@ class ApplicationManagementActivity : AppActivity() {
 
                                 Box {
                                     IconButton(onClick = { menuExpanded = true }) {
-                                        ShizukuIcon(R.drawable.ic_more_vert_24)
+                                        ShizukuIcon(R.drawable.ic_more_vert_24, contentDescription = stringResource(R.string.more_options))
                                     }
                                     DropdownMenu(
                                         expanded = menuExpanded,

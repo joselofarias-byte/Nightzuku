@@ -135,6 +135,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="app_management_search_placeholder">Search apps</string>
     <string name="app_management_search_empty">No apps found</string>
     <string name="app_management_search_clear">Clear query</string>
+    <string name="more_options">More options</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">Use Nightzuku in Termux</string>

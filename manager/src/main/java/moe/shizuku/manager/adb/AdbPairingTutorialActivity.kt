@@ -1,4 +1,4 @@
-﻿package moe.shizuku.manager.adb
+package moe.shizuku.manager.adb
 
 import android.app.AppOpsManager
 import android.app.ForegroundServiceStartNotAllowedException
