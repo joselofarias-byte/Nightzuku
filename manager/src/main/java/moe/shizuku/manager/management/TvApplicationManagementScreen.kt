@@ -38,6 +38,7 @@ import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface as TvSurface
 import androidx.tv.material3.SurfaceDefaults as TvSurfaceDefaults
 import androidx.tv.material3.Text as TvText
+import androidx.compose.material3.LoadingIndicator
 import moe.shizuku.manager.R
 import moe.shizuku.manager.authorization.AuthorizationManager
 import moe.shizuku.manager.ui.compose.ShizukuIcon
@@ -89,7 +90,14 @@ fun TvApplicationManagementScreen(
         }
 
 
-        if (!isLoading && packages.isEmpty()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                LoadingIndicator(modifier = Modifier.size(48.dp))
+            }
+        } else if (packages.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -99,7 +107,7 @@ fun TvApplicationManagementScreen(
                     style = TvMaterialTheme.typography.headlineSmall
                 )
             }
-        } else if (!isLoading) {
+        } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(300.dp),
                 modifier = Modifier.fillMaxSize(),
