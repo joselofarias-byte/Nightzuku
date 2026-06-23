@@ -26,6 +26,7 @@ import androidx.wear.compose.material3.TitleCard as WearTitleCard
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ui.compose.WearScreenScaffold
 import moe.shizuku.manager.ui.compose.WearScreenTitle
+import androidx.wear.compose.material3.lazy.scrollTransform
 
 @Composable
 fun WearSettingsScreen(
@@ -66,14 +67,20 @@ fun WearSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                WearScreenTitle(icon = Icons.Rounded.RestartAlt, title = stringResource(R.string.settings_title))
+                WearScreenTitle(
+                    icon = Icons.Rounded.RestartAlt,
+                    title = stringResource(R.string.settings_title),
+                    modifier = Modifier.scrollTransform(this)
+                )
             }
 
             item {
                 WearSwitchButton(
                     checked = startOnBoot,
                     onCheckedChange = onStartOnBootChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     label = { WearText(startOnBootTitle) },
                     icon = { WearIcon(Icons.Rounded.RestartAlt, contentDescription = null) }
                 )
@@ -82,7 +89,9 @@ fun WearSettingsScreen(
             item {
                 WearTitleCard(
                     onClick = onNightModeClick,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     title = { WearText(nightModeTitle) },
                     subtitle = { WearText(nightModeSummary) }
                 )
@@ -92,7 +101,9 @@ fun WearSettingsScreen(
                 WearSwitchButton(
                     checked = blackNightTheme,
                     onCheckedChange = onBlackNightThemeChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     label = { WearText(blackThemeTitle) },
                     icon = { WearIcon(Icons.Rounded.DarkMode, contentDescription = null) }
                 )
@@ -102,7 +113,9 @@ fun WearSettingsScreen(
                 WearSwitchButton(
                     checked = useSystemColor,
                     onCheckedChange = onUseSystemColorChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     label = { WearText(systemColorTitle) },
                     icon = { WearIcon(Icons.Rounded.Palette, contentDescription = null) }
                 )
@@ -111,7 +124,9 @@ fun WearSettingsScreen(
             item {
                 WearTitleCard(
                     onClick = onModuleAccessModeClick,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     title = { WearText(accessModeTitle) },
                     subtitle = { WearText(accessModeSummary) }
                 )
@@ -121,7 +136,9 @@ fun WearSettingsScreen(
                 item {
                     WearTitleCard(
                         onClick = onCustomPermissionsClick,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this),
                         title = { WearText(customPermissionsTitle) }
                     )
                 }
@@ -130,7 +147,9 @@ fun WearSettingsScreen(
             item {
                 WearTitleCard(
                     onClick = onLabFeaturesClick,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     title = { WearText(labFeaturesTitle) }
                 )
             }

@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.wear.compose.material3.CardDefaults as WearCardDefaults
 import rikka.lifecycle.Resource
 import rikka.lifecycle.Status
+import androidx.wear.compose.material3.lazy.scrollTransform
 
 @Composable
 internal fun WearHomeScreen(
@@ -80,7 +81,11 @@ internal fun WearHomeScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                WearScreenTitle(icon = Icons.Rounded.PlayArrow, title = stringResource(R.string.app_name))
+                WearScreenTitle(
+                    icon = R.drawable.ic_system_icon,
+                    title = stringResource(R.string.app_name),
+                    modifier = Modifier.scrollTransform(this)
+                )
             }
 
             item {
@@ -122,7 +127,9 @@ internal fun WearHomeScreen(
                         containerColor = containerColor,
                         contentColor = contentColor
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Column {
                         WearText(
@@ -141,7 +148,9 @@ internal fun WearHomeScreen(
                 item {
                     WearButton(
                         onClick = onManageApps,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             WearIcon(Icons.Rounded.Apps, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -153,7 +162,9 @@ internal fun WearHomeScreen(
                 item {
                     WearButton(
                         onClick = onModules,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             WearIcon(Icons.Rounded.Extension, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -167,7 +178,9 @@ internal fun WearHomeScreen(
                     item {
                         WearButton(
                             onClick = onStartRoot,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .scrollTransform(this)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 WearIcon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -181,7 +194,9 @@ internal fun WearHomeScreen(
                     item {
                         WearButton(
                             onClick = onStartWirelessAdb,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .scrollTransform(this)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 WearIcon(Icons.Rounded.Usb, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -196,7 +211,9 @@ internal fun WearHomeScreen(
             item {
                 WearButton(
                     onClick = onSettings,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         WearIcon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -209,7 +226,9 @@ internal fun WearHomeScreen(
             item {
                 WearButton(
                     onClick = onRefresh,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         WearIcon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -222,7 +241,9 @@ internal fun WearHomeScreen(
             item {
                 WearButton(
                     onClick = onAbout,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         WearIcon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -236,7 +257,9 @@ internal fun WearHomeScreen(
                 item {
                     WearButton(
                         onClick = onStop,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             WearIcon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(24.dp))

@@ -299,14 +299,40 @@ fun WearScreenScaffold(
 @Composable
 fun WearScreenTitle(
     icon: ImageVector,
-    title: String
+    title: String,
+    modifier: Modifier = Modifier
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = modifier.padding(bottom = 8.dp)
     ) {
         WearIcon(
             imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = WearMaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.width(8.dp))
+        WearText(
+            text = title,
+            style = WearMaterialTheme.typography.titleMedium,
+            color = WearMaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+fun WearScreenTitle(
+    @DrawableRes icon: Int,
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.padding(bottom = 8.dp)
+    ) {
+        WearIcon(
+            painter = painterResource(id = icon),
             contentDescription = null,
             modifier = Modifier.size(24.dp),
             tint = WearMaterialTheme.colorScheme.primary
