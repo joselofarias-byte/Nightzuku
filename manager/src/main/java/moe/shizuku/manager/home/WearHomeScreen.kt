@@ -162,7 +162,7 @@ internal fun WearHomeScreen(
                         }
                     }
                 }
-            } else {
+            } else if (!isLoading) {
                 if (isRooted) {
                     item {
                         WearButton(
