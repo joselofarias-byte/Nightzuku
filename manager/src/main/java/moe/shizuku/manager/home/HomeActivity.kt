@@ -1367,7 +1367,6 @@ private fun buildDiagnostics(
     }
 
     return buildString {
-        appendLine("${context.getString(R.string.diagnostic_status_label)}: $serviceStatusLabel")
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
         appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
         appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")

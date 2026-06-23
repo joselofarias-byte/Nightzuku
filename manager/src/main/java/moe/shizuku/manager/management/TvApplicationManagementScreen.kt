@@ -233,7 +233,7 @@ private fun TvAppCard(
                 )
                 if (granted) {
                     TvText(
-                        text = stringResource(R.string.modules_enabled),
+                        text = stringResource(R.string.app_management_item_authorized),
                         style = TvMaterialTheme.typography.labelSmall,
                         color = TvMaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
