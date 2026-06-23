@@ -75,6 +75,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
@@ -143,6 +145,13 @@ abstract class HomeActivity : AppActivity() {
             val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
             val localNetworkPermissionState = remember(permissionRefreshTick.intValue) {
                 buildLocalNetworkPermissionState()
+            }
+
+            LaunchedEffect(Unit) {
+                while (isActive) {
+                    homeModel.reload()
+                    delay(5000)
+                }
             }
 
             LaunchedEffect(serviceResource?.status, serviceResource?.data?.uid) {
