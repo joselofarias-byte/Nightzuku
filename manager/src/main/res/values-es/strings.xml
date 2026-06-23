@@ -248,6 +248,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
 
     <!-- Stop -->
     <string name="action_stop">Detener Nightzuku</string>
+    <string name="action_back">Atrás</string>
     <string name="dialog_stop_message">El servicio de Nightzuku se detendrá.</string>
 
     <!-- Notification -->

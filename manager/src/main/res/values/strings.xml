@@ -248,6 +248,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
 
     <!-- Stop -->
     <string name="action_stop">Stop Nightzuku</string>
+    <string name="action_back">Back</string>
     <string name="dialog_stop_message">Nightzuku service will be stopped.</string>
 
     <!-- Notification -->

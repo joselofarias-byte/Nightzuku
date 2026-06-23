@@ -127,13 +127,13 @@ internal fun TVHomeScreen(
             } else {
                 if (isRooted) {
                     TvNavigationButton(
-                        icon = R.drawable.ic_server_restart,
+                        icon = R.drawable.ic_server_start_24dp,
                         label = R.string.home_root_button_start,
                         onClick = onStartRoot
                     )
                 } else if (canUseWirelessAdb) {
                     TvNavigationButton(
-                        icon = R.drawable.ic_server_restart,
+                        icon = R.drawable.ic_server_start_24dp,
                         label = R.string.home_root_button_start,
                         onClick = onStartWirelessAdb
                     )
