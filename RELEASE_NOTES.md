@@ -35,7 +35,7 @@ This is not the original Nightzuku/Shizuku project. It is a personal adaptation 
 
 The fork intentionally avoids broad changes to server, shell, rish, permissions, authorization, startup, Manifest, and Gradle unless explicitly reviewed.
 
-ADB pairing and Wireless Debugging should still be validated on real devices before considering this a final public release.
+ADB pairing and Wireless Debugging were validated on the maintainer's own device. Additional testing on other devices, Android versions, and Wear/TV environments is still recommended before treating this as a broadly validated public release.
 
 ## Español
 
@@ -70,4 +70,5 @@ Este no es el proyecto original Nightzuku/Shizuku. Es una adaptación personal e
 
 El fork evita cambios amplios en server, shell, rish, permisos, autorización, startup, Manifest y Gradle salvo que sean revisados explícitamente.
 
-ADB pairing y Wireless Debugging todavía deberían validarse en dispositivos reales antes de considerar este punto como release público final.
+ADB pairing y Wireless Debugging fueron validados en el dispositivo propio del mantenedor. Aun así, se recomienda probar en otros dispositivos, versiones de Android y entornos Wear/TV antes de tratarlo como un release ampliamente validado para todo público.
+
