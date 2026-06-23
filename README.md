@@ -9,6 +9,7 @@ More details / Más detalles:
 
 - [Personal Adaptation Notice / Aviso de adaptación personal](docs/ADAPTATION_NOTICE.md)
 - [Fork Improvements / Mejoras del fork](docs/FORK_IMPROVEMENTS.md)
+- [Fork Changelog / Registro de cambios del fork](CHANGELOG_FORK.md)
 
 # Nightzuku
 
@@ -131,4 +132,5 @@ All code is licensed under Apache 2.0.
 
 - **Icon Usage**: You may not use `manager/src/main/res/mipmap*/ic_launcher*.png` for anything other than displaying Nightzuku.
 - **Identity**: You may not use `Shizuku` as an app name or use `moe.shizuku.privileged.api` as an application ID in derived works. The current package identity is `kerneldroid.nightzuku`.
+
 
