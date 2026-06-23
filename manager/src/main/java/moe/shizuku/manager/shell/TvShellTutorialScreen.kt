@@ -53,7 +53,7 @@ fun TvShellTutorialScreen(
 
             TvMenuButton(
                 icon = R.drawable.ic_arrow_back_24,
-                label = android.R.string.cancel,
+                label = R.string.action_back,
                 onClick = onNavigateUp
             )
 
