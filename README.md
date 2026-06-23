@@ -1,3 +1,15 @@
+
+## Personal adaptation / Adaptación personal
+
+This repository is a personal fork/adaptation of the original Nightzuku/Shizuku project. I am not the original developer of the software. My work focuses on adapting the application to personal needs, adding Spanish support, and improving usability where possible.
+
+Este repositorio es un fork/adaptación personal del proyecto original Nightzuku/Shizuku. No soy el programador original del software. Mi trabajo se centra en adaptar la aplicación a mis necesidades, agregar soporte en español y mejorar la experiencia de uso cuando sea posible.
+
+More details / Más detalles:
+
+- [Personal Adaptation Notice / Aviso de adaptación personal](docs/ADAPTATION_NOTICE.md)
+- [Fork Improvements / Mejoras del fork](docs/FORK_IMPROVEMENTS.md)
+
 # Nightzuku
 
 **Nightzuku** is a customized modern fork of **Shizuku**, maintained by kerneldroid. It provides a robust, high-performance interface for applications to use system APIs directly with elevated permissions (root/ADB).
@@ -119,3 +131,4 @@ All code is licensed under Apache 2.0.
 
 - **Icon Usage**: You may not use `manager/src/main/res/mipmap*/ic_launcher*.png` for anything other than displaying Nightzuku.
 - **Identity**: You may not use `Shizuku` as an app name or use `moe.shizuku.privileged.api` as an application ID in derived works. The current package identity is `kerneldroid.nightzuku`.
+
