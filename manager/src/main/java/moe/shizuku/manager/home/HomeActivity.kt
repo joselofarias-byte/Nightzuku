@@ -75,6 +75,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import moe.shizuku.manager.BuildConfig
@@ -148,9 +150,11 @@ abstract class HomeActivity : AppActivity() {
             }
 
             LaunchedEffect(Unit) {
-                while (isActive) {
-                    homeModel.reload()
-                    delay(5000)
+                this@HomeActivity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    while (isActive) {
+                        homeModel.reload()
+                        delay(5000)
+                    }
                 }
             }
 
