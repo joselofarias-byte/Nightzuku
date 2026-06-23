@@ -359,10 +359,11 @@ private fun TvStatusCard(
 ) {
     val context = LocalContext.current
     val running = status.isRunning
-    val title = if (running) {
-        stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
-    } else {
-        stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+    val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
+    val title = when {
+        isLoading -> stringResource(R.string.home_status_checking)
+        running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
+        else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
     }
     val summary = remember(status, running) { buildServiceSummary(context, status) }
 
@@ -399,7 +400,11 @@ private fun TvStatusCard(
     }
 
     TvHomeCard(
-        icon = if (running) R.drawable.ic_server_ok_24dp else R.drawable.ic_server_error_24dp,
+        icon = when {
+            isLoading -> R.drawable.ic_server_restart
+            running -> R.drawable.ic_server_ok_24dp
+            else -> R.drawable.ic_server_error_24dp
+        },
         title = title,
         body = summary,
         iconContainerColor = iconContainerColor,

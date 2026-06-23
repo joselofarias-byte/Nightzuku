@@ -8,6 +8,7 @@
     <string name="home_status_service_not_running">%1$s no está en ejecución</string>
     <string name="home_status_service_version">Versión %2$s, %1$s</string>
     <string name="home_status_service_version_update"><![CDATA[Versión %2$s, %1$s<br>Iniciar de nuevo para actualizar a la versión %3$s]]></string>
+    <string name="home_status_checking">Comprobando el estado del servicio\u2026</string>
 
     <!-- Home - Adb -->
     <string name="home_adb_title"><![CDATA[Iniciar conectando a una computadora]]></string>

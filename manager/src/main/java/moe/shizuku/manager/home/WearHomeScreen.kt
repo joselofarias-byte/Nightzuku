@@ -69,6 +69,7 @@ internal fun WearHomeScreen(
 ) {
     val status = serviceResource?.data ?: ServiceStatus()
     val running = status.isRunning
+    val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
 
     WearScreenScaffold { state ->
@@ -125,8 +126,11 @@ internal fun WearHomeScreen(
                 ) {
                     Column {
                         WearText(
-                            text = if (running) stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
-                                   else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
+                            text = when {
+                                isLoading -> stringResource(R.string.home_status_checking)
+                                running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
+                                else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+                            },
                             style = WearMaterialTheme.typography.titleMedium
                         )
                     }
