@@ -127,6 +127,7 @@ class ApplicationManagementActivity : AppActivity() {
                 Box(modifier = Modifier.fillMaxSize()) {
                     WearApplicationManagementScreen(
                         apps = apps,
+                        isLoading = packagesResource == null,
                         onToggle = { app ->
                             try {
                                 if (app.granted) {

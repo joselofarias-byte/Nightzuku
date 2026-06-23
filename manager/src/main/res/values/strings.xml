@@ -132,7 +132,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="app_management_deselect_all">Unauthorize all</string>
     <string name="app_management_dialog_adb_is_limited_title">The permission of adb is limited</string>
     <string name="app_management_dialog_adb_is_limited_message"><![CDATA[It\'s highly possible that your device manufacturer limits the permission of adb.<p>There may be a solution for your system in <b><a href=\"%1$s\">this document</a></b>.]]></string>
-    <string name="app_management_item_summary_requires_root">* requires Nightzuku runs with root</string>
+    <string name="app_management_item_summary_requires_root">* requires Nightzuku to run as root</string>
     <string name="app_management_search_placeholder">Search apps</string>
     <string name="app_management_search_empty">No apps found</string>
     <string name="app_management_search_clear">Clear query</string>
