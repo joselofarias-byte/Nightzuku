@@ -387,3 +387,181 @@ Para reducir riesgos, este fork evitó modificaciones amplias en áreas sensible
 En términos simples, este fork mejora soporte en español, textos visibles en inglés y español, claridad del estado del servicio en Home, comportamiento de estados de carga, UX de Android TV, UX de Wear OS, consistencia de Application Management, accesibilidad en acciones con iconos, integración selectiva con upstream r49 y corrección del peer info de ADB pairing.
 
 El proyecto sigue siendo una adaptación personal del trabajo original, con cambios enfocados en usabilidad y mejoras controladas, no en reescribir la arquitectura original.
+
+## Audited sensitive historical changes / Cambios sensibles históricos auditados
+
+## English
+
+Some historical changes in this fork affect sensitive areas compared with upstream. They were reviewed before preparing this release candidate.
+
+These changes are not broad rewrites, but they are documented because they touch important parts of the application behavior.
+
+### Server startup wait timeout
+
+The server code includes a timeout while waiting for system services. This avoids waiting indefinitely if a required system service never becomes available.
+
+File:
+
+- server/src/main/java/rikka/shizuku/server/ShizukuService.java
+
+Decision:
+
+- keep;
+- document as intentional;
+- avoid further server changes unless strictly necessary.
+
+### Rish package targeting
+
+The rish loader targets the package ID used by this fork:
+
+- kerneldroid.nightzuku
+
+This is consistent with the current applicationId of the fork.
+
+Files:
+
+- shell/src/main/java/rikka/shizuku/shell/ShizukuShellLoader.java
+- manager/src/main/assets/rish
+
+Decision:
+
+- keep;
+- do not change unless package identity changes.
+
+### ADB loopback pairing behavior
+
+ADB pairing related code uses 127.0.0.1 and port-based discovery. This keeps the ADB pairing flow internally consistent across AdbMdns, AdbPairingService, and BootCompleteReceiver.
+
+Files:
+
+- manager/src/main/java/moe/shizuku/manager/adb/AdbMdns.kt
+- manager/src/main/java/moe/shizuku/manager/adb/AdbPairingService.kt
+- manager/src/main/java/moe/shizuku/manager/receiver/BootCompleteReceiver.kt
+
+Decision:
+
+- keep for now;
+- validate with real Wireless Debugging / ADB pairing tests before a final public release.
+
+### Manifest-sensitive components
+
+Manifest entries related to ADB pairing, binder requests, foreground service type, and permission-protected activities were reviewed.
+
+The RequestPermissionActivity remains protected by a system permission:
+
+- android.permission.INTERACT_ACROSS_USERS_FULL
+
+The REQUEST_BINDER receiver remains exported because it is part of the rish/binder delivery flow.
+
+File:
+
+- manager/src/main/AndroidManifest.xml
+
+Decision:
+
+- keep;
+- do not modify casually;
+- re-audit before changing startup, rish, shell, binder, or ADB behavior.
+
+### Gradle and dependency versions
+
+The fork uses dependency and Gradle versions that currently build successfully in the local environment.
+
+Files:
+
+- build.gradle
+- manager/build.gradle
+- gradle/wrapper/gradle-wrapper.properties
+
+Decision:
+
+- keep for this release candidate;
+- treat dependency upgrades as a separate future task.
+
+## Español
+
+Algunos cambios históricos de este fork afectan áreas sensibles comparadas con upstream. Fueron revisados antes de preparar este release candidate.
+
+Estos cambios no son reescrituras amplias, pero se documentan porque tocan partes importantes del comportamiento de la aplicación.
+
+### Timeout al esperar servicios del sistema
+
+El código del servidor incluye un timeout al esperar servicios del sistema. Esto evita esperas indefinidas si un servicio requerido nunca queda disponible.
+
+Archivo:
+
+- server/src/main/java/rikka/shizuku/server/ShizukuService.java
+
+Decisión:
+
+- mantener;
+- documentar como intencional;
+- evitar más cambios en server salvo necesidad estricta.
+
+### Target de paquete para rish
+
+El loader de rish apunta al package ID usado por este fork:
+
+- kerneldroid.nightzuku
+
+Esto es coherente con el applicationId actual del fork.
+
+Archivos:
+
+- shell/src/main/java/rikka/shizuku/shell/ShizukuShellLoader.java
+- manager/src/main/assets/rish
+
+Decisión:
+
+- mantener;
+- no cambiar salvo que cambie la identidad del paquete.
+
+### Comportamiento ADB pairing por loopback
+
+El código relacionado con ADB pairing usa 127.0.0.1 y detección basada en puerto. Esto mantiene coherente el flujo entre AdbMdns, AdbPairingService y BootCompleteReceiver.
+
+Archivos:
+
+- manager/src/main/java/moe/shizuku/manager/adb/AdbMdns.kt
+- manager/src/main/java/moe/shizuku/manager/adb/AdbPairingService.kt
+- manager/src/main/java/moe/shizuku/manager/receiver/BootCompleteReceiver.kt
+
+Decisión:
+
+- mantener por ahora;
+- validar con pruebas reales de Wireless Debugging / ADB pairing antes de un release público final.
+
+### Componentes sensibles del Manifest
+
+Se revisaron entradas del Manifest relacionadas con ADB pairing, binder requests, foreground service type y actividades protegidas por permisos.
+
+RequestPermissionActivity sigue protegida por un permiso de sistema:
+
+- android.permission.INTERACT_ACROSS_USERS_FULL
+
+El receiver REQUEST_BINDER sigue exportado porque forma parte del flujo de entrega binder/rish.
+
+Archivo:
+
+- manager/src/main/AndroidManifest.xml
+
+Decisión:
+
+- mantener;
+- no modificar casualmente;
+- volver a auditar antes de cambiar startup, rish, shell, binder o ADB.
+
+### Versiones Gradle y dependencias
+
+El fork usa versiones de dependencias y Gradle que actualmente compilan correctamente en el entorno local.
+
+Archivos:
+
+- build.gradle
+- manager/build.gradle
+- gradle/wrapper/gradle-wrapper.properties
+
+Decisión:
+
+- mantener para este release candidate;
+- tratar actualizaciones de dependencias como tarea futura separada.
