@@ -173,7 +173,7 @@ class ApplicationManagementActivity : AppActivity() {
                                     showAdbLimitedDialog = true
                                 }
                             },
-                            onSelectAll = { selectAll(packages, it) }
+                            onSelectAll = { if (selectAll(packages, it)) showAdbLimitedDialog = true }
                         )
 
                         if (showAdbLimitedDialog) {
@@ -237,14 +237,14 @@ class ApplicationManagementActivity : AppActivity() {
                                             text = { Text(stringResource(R.string.app_management_select_all)) },
                                             onClick = {
                                                 menuExpanded = false
-                                                selectAll(packages, true)
+                                                if (selectAll(packages, true)) showAdbLimitedDialog = true
                                             }
                                         )
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.app_management_deselect_all)) },
                                             onClick = {
                                                 menuExpanded = false
-                                                selectAll(packages, false)
+                                                if (selectAll(packages, false)) showAdbLimitedDialog = true
                                             }
                                         )
                                     }
@@ -379,7 +379,8 @@ class ApplicationManagementActivity : AppActivity() {
         }
     }
 
-    private fun selectAll(packages: List<PackageInfo>, granted: Boolean) {
+    private fun selectAll(packages: List<PackageInfo>, granted: Boolean): Boolean {
+        var hadSecurityException = false
         packages.forEach { packageInfo ->
             val applicationInfo = packageInfo.applicationInfo ?: return@forEach
             val uid = applicationInfo.uid
@@ -391,10 +392,12 @@ class ApplicationManagementActivity : AppActivity() {
                     AuthorizationManager.revoke(packageName, uid)
                 }
             } catch (_: SecurityException) {
+                hadSecurityException = true
             }
         }
         permissionTick.intValue++
         viewModel.load(onlyCount = true)
+        return hadSecurityException
     }
 
     override fun onDestroy() {
