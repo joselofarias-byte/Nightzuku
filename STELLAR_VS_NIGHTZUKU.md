@@ -1,7 +1,7 @@
 # STELLAR_VS_NIGHTZUKU.md
 
-> Comparison date: 2026-06-15  
-> Basis: full source traversal of Nightzuku + Stellar architecture knowledge from AGENTS.md  
+> Comparison date: 2026-06-15
+> Basis: full source traversal of Nightzuku + Stellar architecture knowledge from AGENTS.md
 > Audit is read-only. No code was modified.
 
 ---

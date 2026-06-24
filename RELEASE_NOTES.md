@@ -71,4 +71,3 @@ Este no es el proyecto original Nightzuku/Shizuku. Es una adaptación personal e
 El fork evita cambios amplios en server, shell, rish, permisos, autorización, startup, Manifest y Gradle salvo que sean revisados explícitamente.
 
 ADB pairing y Wireless Debugging fueron validados en el dispositivo propio del mantenedor. Aun así, se recomienda probar en otros dispositivos, versiones de Android y entornos Wear/TV antes de tratarlo como un release ampliamente validado para todo público.
-
