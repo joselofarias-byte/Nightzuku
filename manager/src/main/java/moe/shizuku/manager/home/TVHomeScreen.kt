@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -410,7 +411,10 @@ private fun TvStatusCard(
         iconContainerColor = iconContainerColor,
         iconContentColor = iconContentColor
     ) {
-        if (serviceResource != null) {
+        if (isLoading) {
+            Spacer(Modifier.height(8.dp))
+            CircularProgressIndicator(Modifier.size(32.dp))
+        } else {
             if (running) {
                 TvButton(onClick = onStop) {
                     TvText(stringResource(R.string.action_stop))
