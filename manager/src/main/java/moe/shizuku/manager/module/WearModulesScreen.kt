@@ -49,6 +49,7 @@ import androidx.wear.compose.material3.CardDefaults as WearCardDefaults
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ui.compose.WearScreenScaffold
 import moe.shizuku.manager.ui.compose.WearScreenTitle
+import androidx.wear.compose.material3.lazy.scrollTransform
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -71,13 +72,19 @@ fun WearModulesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                WearScreenTitle(icon = Icons.Rounded.Extension, title = stringResource(R.string.modules_title))
+                WearScreenTitle(
+                    icon = Icons.Rounded.Extension,
+                    title = stringResource(R.string.modules_title),
+                    modifier = Modifier.scrollTransform(this)
+                )
             }
 
             item {
                 WearButton(
                     onClick = onInstallZip,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this),
                     colors = WearButtonDefaults.filledTonalButtonColors()
                 ) {
                     Row(
@@ -96,7 +103,10 @@ fun WearModulesScreen(
                 item {
                     WearText(
                         text = stringResource(R.string.modules_empty_title),
-                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
+                            .scrollTransform(this),
                         textAlign = TextAlign.Center,
                         style = WearMaterialTheme.typography.bodyMedium
                     )
@@ -145,7 +155,8 @@ fun WearModulesScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateContentSize(),
+                        .animateContentSize()
+                        .scrollTransform(this),
                     colors = WearCardDefaults.cardColors(
                         containerColor = containerColor,
                         contentColor = contentColor

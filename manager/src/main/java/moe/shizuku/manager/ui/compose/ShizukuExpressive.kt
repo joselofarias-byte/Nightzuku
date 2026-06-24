@@ -299,14 +299,40 @@ fun WearScreenScaffold(
 @Composable
 fun WearScreenTitle(
     icon: ImageVector,
-    title: String
+    title: String,
+    modifier: Modifier = Modifier
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = modifier.padding(bottom = 8.dp)
     ) {
         WearIcon(
             imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = WearMaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.width(8.dp))
+        WearText(
+            text = title,
+            style = WearMaterialTheme.typography.titleMedium,
+            color = WearMaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+fun WearScreenTitle(
+    @DrawableRes icon: Int,
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.padding(bottom = 8.dp)
+    ) {
+        WearIcon(
+            painter = painterResource(id = icon),
             contentDescription = null,
             modifier = Modifier.size(24.dp),
             tint = WearMaterialTheme.colorScheme.primary
@@ -722,7 +748,25 @@ fun ExpressiveSwitch(
             }
         } else {
             null
-        }
+        },
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Color(0xFFC8E6C9),
+            checkedTrackColor = Color(0xFF2E7D32),
+            checkedIconColor = Color(0xFF1B5E20),
+            checkedBorderColor = Color.Transparent,
+            uncheckedThumbColor = MaterialTheme.colorScheme.tertiary,
+            uncheckedTrackColor = MaterialTheme.colorScheme.tertiaryContainer,
+            uncheckedBorderColor = Color.Transparent,
+            uncheckedIconColor = MaterialTheme.colorScheme.onTertiary,
+            disabledCheckedThumbColor = Color(0xFFC8E6C9).copy(alpha = 0.38f),
+            disabledCheckedTrackColor = Color(0xFF2E7D32).copy(alpha = 0.38f),
+            disabledCheckedIconColor = Color(0xFF1B5E20).copy(alpha = 0.38f),
+            disabledCheckedBorderColor = Color.Transparent,
+            disabledUncheckedThumbColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.38f),
+            disabledUncheckedTrackColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.38f),
+            disabledUncheckedBorderColor = Color.Transparent,
+            disabledUncheckedIconColor = MaterialTheme.colorScheme.onTertiary.copy(alpha = 0.38f)
+        )
     )
 }
 

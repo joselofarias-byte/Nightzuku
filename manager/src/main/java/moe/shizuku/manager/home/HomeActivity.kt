@@ -21,6 +21,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,6 +75,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
@@ -115,6 +121,7 @@ abstract class HomeActivity : AppActivity() {
     private val homeModel by viewModels { HomeViewModel() }
     private val appsModel by appsViewModel()
     private val permissionRefreshTick = mutableIntStateOf(0)
+    private var isInitialResume = true
 
     private var pendingLocalNetworkAction: (() -> Unit)? = null
 
@@ -137,8 +144,18 @@ abstract class HomeActivity : AppActivity() {
         setContent {
             val serviceResource by homeModel.serviceStatus.observeAsState()
             val grantedResource by appsModel.grantedCount.observeAsState()
+            val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
             val localNetworkPermissionState = remember(permissionRefreshTick.intValue) {
                 buildLocalNetworkPermissionState()
+            }
+
+            LaunchedEffect(Unit) {
+                this@HomeActivity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    while (isActive) {
+                        homeModel.reload()
+                        delay(5000)
+                    }
+                }
             }
 
             LaunchedEffect(serviceResource?.status, serviceResource?.data?.uid) {
@@ -170,6 +187,7 @@ abstract class HomeActivity : AppActivity() {
                     HomeScreen(
                         serviceResource = serviceResource,
                         grantedResource = grantedResource,
+                        unauthorizedResource = unauthorizedResource,
                         localNetworkPermissionState = localNetworkPermissionState,
                         isPrimaryUser = UserHandleCompat.myUserId() == 0,
                         isRooted = EnvironmentUtils.isRooted(),
@@ -203,6 +221,7 @@ abstract class HomeActivity : AppActivity() {
                         onOpenAdbPermissionHelp = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.ADB_PERMISSION.get()) },
                         onLearnMore = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.HOME.get()) },
                         onCopyDiagnostics = { copyDiagnostics(it) },
+                        onShareDiagnostics = { shareDiagnostics(it) },
                         onRequestLocalNetworkPermission = {
                             requestLocalNetworkPermission { permissionRefreshTick.intValue++ }
                         }
@@ -297,6 +316,11 @@ abstract class HomeActivity : AppActivity() {
     override fun onResume() {
         super.onResume()
         checkServerStatus()
+        if (isInitialResume) {
+            isInitialResume = false
+        } else {
+            appsModel.load(onlyCount = true)
+        }
         permissionRefreshTick.intValue++
     }
 
@@ -406,6 +430,14 @@ abstract class HomeActivity : AppActivity() {
         Toast.makeText(this, R.string.home_diagnostics_copied, Toast.LENGTH_SHORT).show()
     }
 
+    private fun shareDiagnostics(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.home_diagnostics_share)))
+    }
+
     companion object {
         private const val SDK_ANDROID_16 = 36
         private const val SDK_ANDROID_17 = 37
@@ -435,6 +467,7 @@ private data class HomeButtonSpec(
 private fun HomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
@@ -454,6 +487,7 @@ private fun HomeScreen(
     onOpenAdbPermissionHelp: () -> Unit,
     onLearnMore: () -> Unit,
     onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit,
     onRequestLocalNetworkPermission: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -491,6 +525,7 @@ private fun HomeScreen(
             TVHomeScreen(
                 serviceResource = serviceResource,
                 grantedResource = grantedResource,
+                unauthorizedResource = unauthorizedResource,
                 localNetworkPermissionState = localNetworkPermissionState,
                 isPrimaryUser = isPrimaryUser,
                 isRooted = isRooted,
@@ -517,6 +552,7 @@ private fun HomeScreen(
         PhoneHomeScreen(
             serviceResource = serviceResource,
             grantedResource = grantedResource,
+            unauthorizedResource = unauthorizedResource,
             localNetworkPermissionState = localNetworkPermissionState,
             isPrimaryUser = isPrimaryUser,
             isRooted = isRooted,
@@ -536,6 +572,7 @@ private fun HomeScreen(
             onOpenAdbPermissionHelp = onOpenAdbPermissionHelp,
             onLearnMore = onLearnMore,
             onCopyDiagnostics = onCopyDiagnostics,
+            onShareDiagnostics = onShareDiagnostics,
             onRequestLocalNetworkPermission = onRequestLocalNetworkPermission
         )
     }
@@ -544,6 +581,7 @@ private fun HomeScreen(
 @Composable private fun PhoneHomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
@@ -563,6 +601,7 @@ private fun HomeScreen(
     onOpenAdbPermissionHelp: () -> Unit,
     onLearnMore: () -> Unit,
     onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit,
     onRequestLocalNetworkPermission: () -> Unit
 ) {
     val context = LocalContext.current
@@ -604,23 +643,49 @@ private fun HomeScreen(
                         IconButton(onClick = { moreOpen = true }) {
                             ShizukuIcon(
                                 icon = R.drawable.ic_more_vert_24,
-                                contentDescription = null
+                                contentDescription = stringResource(R.string.more_options)
                             )
                         }
                         DropdownMenu(
                             expanded = moreOpen,
                             onDismissRequest = { moreOpen = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_stop)) },
-                                leadingIcon = {
-                                    ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)
-                                },
-                                onClick = {
-                                    moreOpen = false
-                                    onStop()
+                            if (running) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_stop)) },
+                                    leadingIcon = {
+                                        ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        moreOpen = false
+                                        onStop()
+                                    }
+                                )
+                            } else {
+                                if (isRooted) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_root_button_start)) },
+                                        leadingIcon = {
+                                            ShizukuIcon(R.drawable.ic_server_start_24dp, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            moreOpen = false
+                                            onStartRoot()
+                                        }
+                                    )
+                                } else if (canUseWirelessAdb) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.home_root_button_start)) },
+                                        leadingIcon = {
+                                            ShizukuIcon(R.drawable.ic_server_start_24dp, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            moreOpen = false
+                                            onStartWirelessAdb()
+                                        }
+                                    )
                                 }
-                            )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_about)) },
                                 leadingIcon = {
@@ -652,7 +717,12 @@ private fun HomeScreen(
             item {
                 StatusCard(
                     serviceResource = serviceResource,
-                    status = status
+                    status = status,
+                    onStop = onStop,
+                    onStartRoot = onStartRoot,
+                    onStartWirelessAdb = onStartWirelessAdb,
+                    isRooted = isRooted,
+                    canUseWirelessAdb = canUseWirelessAdb
                 )
             }
 
@@ -660,7 +730,8 @@ private fun HomeScreen(
                 item {
                     ManageAppsCard(
                         status = status,
-                        grantedCount = grantedCount,
+                        grantedResource = grantedResource,
+                        unauthorizedResource = unauthorizedResource,
                         onClick = onManageApps
                     )
                 }
@@ -755,7 +826,8 @@ private fun HomeScreen(
             item {
                 DiagnosticsCard(
                     diagnostics = diagnostics,
-                    onCopyDiagnostics = onCopyDiagnostics
+                    onCopyDiagnostics = onCopyDiagnostics,
+                    onShareDiagnostics = onShareDiagnostics
                 )
             }
 
@@ -774,27 +846,100 @@ private fun HomeScreen(
 @Composable
 private fun StatusCard(
     serviceResource: Resource<ServiceStatus>?,
-    status: ServiceStatus
+    status: ServiceStatus,
+    onStop: () -> Unit,
+    onStartRoot: () -> Unit,
+    onStartWirelessAdb: () -> Unit,
+    isRooted: Boolean,
+    canUseWirelessAdb: Boolean
 ) {
     val context = LocalContext.current
     val running = status.isRunning
-    val title = if (running) {
-        stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
-    } else {
-        stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+    val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
+    val title = when {
+        isLoading -> stringResource(R.string.home_status_checking)
+        running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
+        else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
     }
     val summary = remember(status, running) {
         buildServiceSummary(context, status)
     }
 
+    val dark = isSystemInDarkTheme()
+    val (iconContainerColor, iconContentColor) = when {
+        serviceResource == null || serviceResource.status == Status.LOADING -> {
+            // Starting / waiting / pending -> Amber
+            if (dark) {
+                Color(0xFF4D3800) to Color(0xFFFFD54F)
+            } else {
+                Color(0xFFFFF0C2) to Color(0xFF6B4B00)
+            }
+        }
+        serviceResource.status == Status.ERROR -> {
+            // Error / failed / denied -> Red (M3 Error colors)
+            MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        }
+        running -> {
+            // Connected / running / authorized / success -> Green
+            if (dark) {
+                Color(0xFF0F3816) to Color(0xFF8CE090)
+            } else {
+                Color(0xFFC7F3C9) to Color(0xFF0F521A)
+            }
+        }
+        else -> {
+            // Disconnected / stopped / unavailable -> Neutral Gray
+            if (dark) {
+                Color(0xFF333333) to Color(0xFFB0B0B0)
+            } else {
+                Color(0xFFE0E0E0) to Color(0xFF555555)
+            }
+        }
+    }
+
     HomeCard(
-        icon = if (running) R.drawable.ic_server_ok_24dp else R.drawable.ic_server_error_24dp,
+        icon = when {
+            isLoading -> R.drawable.ic_server_restart
+            running -> R.drawable.ic_server_ok_24dp
+            else -> R.drawable.ic_server_error_24dp
+        },
         title = title,
-        body = summary
+        body = summary,
+        iconContainerColor = iconContainerColor,
+        iconContentColor = iconContentColor
     ) {
-        if (serviceResource == null) {
+        if (serviceResource == null || serviceResource.status == Status.LOADING) {
             Spacer(Modifier.height(12.dp))
             LoadingIndicator(Modifier.size(32.dp))
+        } else {
+            val buttons = mutableListOf<HomeButtonSpec>()
+            if (running) {
+                buttons += HomeButtonSpec(
+                    label = R.string.action_stop,
+                    icon = R.drawable.ic_close_24,
+                    primary = true,
+                    onClick = onStop
+                )
+            } else {
+                if (isRooted) {
+                    buttons += HomeButtonSpec(
+                        label = R.string.home_root_button_start,
+                        icon = R.drawable.ic_server_start_24dp,
+                        primary = true,
+                        onClick = onStartRoot
+                    )
+                } else if (canUseWirelessAdb) {
+                    buttons += HomeButtonSpec(
+                        label = R.string.home_root_button_start,
+                        icon = R.drawable.ic_server_start_24dp,
+                        primary = true,
+                        onClick = onStartWirelessAdb
+                    )
+                }
+            }
+            if (buttons.isNotEmpty()) {
+                HomeButtons(buttons)
+            }
         }
     }
 }
@@ -802,21 +947,42 @@ private fun StatusCard(
 @Composable
 private fun ManageAppsCard(
     status: ServiceStatus,
-    grantedCount: Int,
+    grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
     val running = status.isRunning
-    val title = if (running) {
-        context.resources.getQuantityString(
-            R.plurals.home_app_management_authorized_apps_count,
-            grantedCount,
-            grantedCount
-        )
+    val showCount = running &&
+            grantedResource?.status == Status.SUCCESS && grantedResource?.data != null &&
+            unauthorizedResource?.status == Status.SUCCESS && unauthorizedResource?.data != null
+
+    val title = if (showCount) {
+        val count = grantedResource.data!!
+        if (count == 0) {
+            stringResource(R.string.home_app_management_no_authorized_apps)
+        } else {
+            context.resources.getQuantityString(
+                R.plurals.home_app_management_authorized_apps_count,
+                count,
+                count
+            )
+        }
     } else {
         stringResource(R.string.home_app_management_title)
     }
-    val body = if (running) {
+    val body = if (showCount) {
+        val count = unauthorizedResource.data!!
+        if (count == 0) {
+            stringResource(R.string.home_app_management_no_unauthorized_apps)
+        } else {
+            context.resources.getQuantityString(
+                R.plurals.home_app_management_unauthorized_apps_count,
+                count,
+                count
+            )
+        }
+    } else if (running) {
         stringResource(R.string.home_app_management_view_authorized_apps)
     } else {
         stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
@@ -873,13 +1039,18 @@ private fun WirelessAdbCard(
         htmlStringResource(R.string.home_wireless_adb_description_pre_11)
     }
     val permissionLine = if (localNetworkPermissionState.required) {
+        val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+            stringResource(R.string.permission_nearby_wifi_devices)
+        } else {
+            localNetworkPermissionState.label
+        }
         stringResource(
             if (localNetworkPermissionState.granted) {
                 R.string.home_local_network_granted
             } else {
                 R.string.home_local_network_missing
             },
-            localNetworkPermissionState.label
+            permissionLabel
         )
     } else {
         null
@@ -947,12 +1118,17 @@ private fun LocalNetworkPermissionCard(
     localNetworkPermissionState: LocalNetworkPermissionState,
     onRequestLocalNetworkPermission: () -> Unit
 ) {
+    val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+        stringResource(R.string.permission_nearby_wifi_devices)
+    } else {
+        localNetworkPermissionState.label
+    }
     HomeCard(
         icon = R.drawable.ic_warning_24,
         title = stringResource(R.string.home_local_network_title),
         body = stringResource(
             R.string.home_local_network_description,
-            localNetworkPermissionState.label
+            permissionLabel
         )
     ) {
         HomeButtons(
@@ -971,7 +1147,8 @@ private fun LocalNetworkPermissionCard(
 @Composable
 private fun DiagnosticsCard(
     diagnostics: String,
-    onCopyDiagnostics: (String) -> Unit
+    onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit
 ) {
     HomeCard(
         icon = R.drawable.ic_outline_info_24,
@@ -985,6 +1162,12 @@ private fun DiagnosticsCard(
                     icon = R.drawable.ic_content_copy_24,
                     primary = true,
                     onClick = { onCopyDiagnostics(diagnostics) }
+                ),
+                HomeButtonSpec(
+                    label = R.string.home_diagnostics_share,
+                    icon = R.drawable.ic_share_24dp,
+                    primary = false,
+                    onClick = { onShareDiagnostics(diagnostics) }
                 )
             )
         )
@@ -1015,6 +1198,8 @@ private fun HomeCard(
     body: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit = {}
 ) {
@@ -1039,13 +1224,13 @@ private fun HomeCard(
             Surface(
                 modifier = Modifier.size(44.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
+                color = iconContainerColor
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     ShizukuIcon(
                         icon = icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = iconContentColor,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -1160,21 +1345,41 @@ private fun buildDiagnostics(
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
-        "${localNetworkPermissionState.label}: " +
-                if (localNetworkPermissionState.granted) "granted" else "missing"
+        val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+            context.getString(R.string.permission_nearby_wifi_devices)
+        } else {
+            localNetworkPermissionState.label
+        }
+        val statusLabel = if (localNetworkPermissionState.granted) {
+            context.getString(R.string.diagnostic_permission_granted)
+        } else {
+            context.getString(R.string.diagnostic_permission_missing)
+        }
+        "$permissionLabel: $statusLabel"
     } else {
-        "not required"
+        context.getString(R.string.diagnostic_permission_not_required)
+    }
+
+    val serviceStatusLabel = if (status.isRunning) {
+        context.getString(R.string.diagnostic_running)
+    } else {
+        context.getString(R.string.diagnostic_stopped)
+    }
+    val adbPermissionLabel = if (status.permission) {
+        context.getString(R.string.diagnostic_full)
+    } else {
+        context.getString(R.string.diagnostic_limited)
     }
 
     return buildString {
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
         appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
-        appendLine("Service: ${if (status.isRunning) "running" else "stopped"}")
-        appendLine("Server uid: ${status.uid}")
-        appendLine("Server API: ${status.apiVersion}.${status.patchVersion}")
+        appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
+        appendLine("${context.getString(R.string.diagnostic_server_uid)}: ${status.uid}")
+        appendLine("${context.getString(R.string.diagnostic_server_api)}: ${status.apiVersion}.${status.patchVersion}")
         appendLine("SELinux: ${status.seContext ?: "unknown"}")
-        appendLine("ADB permission: ${if (status.permission) "full" else "limited"}")
-        appendLine("Authorized apps: $grantedCount")
-        appendLine("Local network: $localNetwork")
+        appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
+        appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
+        appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
     }.trim()
 }

@@ -36,7 +36,12 @@ import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.ui.compose.WearScreenScaffold
 import moe.shizuku.manager.ui.compose.WearScreenTitle
 import moe.shizuku.manager.utils.EnvironmentUtils
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Color
+import androidx.wear.compose.material3.CardDefaults as WearCardDefaults
 import rikka.lifecycle.Resource
+import rikka.lifecycle.Status
+import androidx.wear.compose.material3.lazy.scrollTransform
 
 @Composable
 internal fun WearHomeScreen(
@@ -65,6 +70,7 @@ internal fun WearHomeScreen(
 ) {
     val status = serviceResource?.data ?: ServiceStatus()
     val running = status.isRunning
+    val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
 
     WearScreenScaffold { state ->
@@ -75,18 +81,63 @@ internal fun WearHomeScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                WearScreenTitle(icon = Icons.Rounded.PlayArrow, title = stringResource(R.string.app_name))
+                WearScreenTitle(
+                    icon = R.drawable.ic_system_icon,
+                    title = stringResource(R.string.app_name),
+                    modifier = Modifier.scrollTransform(this)
+                )
             }
 
             item {
+                val dark = isSystemInDarkTheme()
+                val (containerColor, contentColor) = when {
+                    serviceResource == null || serviceResource.status == Status.LOADING -> {
+                        if (dark) {
+                            Color(0xFF4D3800) to Color(0xFFFFD54F)
+                        } else {
+                            Color(0xFFFFF0C2) to Color(0xFF6B4B00)
+                        }
+                    }
+                    serviceResource.status == Status.ERROR -> {
+                        if (dark) {
+                            Color(0xFF5A1D1D) to Color(0xFFFFB4AB)
+                        } else {
+                            Color(0xFFFFDAD6) to Color(0xFF410002)
+                        }
+                    }
+                    running -> {
+                        if (dark) {
+                            Color(0xFF0F3816) to Color(0xFF8CE090)
+                        } else {
+                            Color(0xFFC7F3C9) to Color(0xFF0F521A)
+                        }
+                    }
+                    else -> {
+                        if (dark) {
+                            Color(0xFF333333) to Color(0xFFB0B0B0)
+                        } else {
+                            Color(0xFFE0E0E0) to Color(0xFF555555)
+                        }
+                    }
+                }
+
                 WearCard(
                     onClick = {},
-                    modifier = Modifier.fillMaxWidth()
+                    colors = WearCardDefaults.cardColors(
+                        containerColor = containerColor,
+                        contentColor = contentColor
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Column {
                         WearText(
-                            text = if (running) stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
-                                   else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
+                            text = when {
+                                isLoading -> stringResource(R.string.home_status_checking)
+                                running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
+                                else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+                            },
                             style = WearMaterialTheme.typography.titleMedium
                         )
                     }
@@ -97,7 +148,9 @@ internal fun WearHomeScreen(
                 item {
                     WearButton(
                         onClick = onManageApps,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             WearIcon(Icons.Rounded.Apps, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -109,7 +162,9 @@ internal fun WearHomeScreen(
                 item {
                     WearButton(
                         onClick = onModules,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             WearIcon(Icons.Rounded.Extension, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -118,12 +173,14 @@ internal fun WearHomeScreen(
                         }
                     }
                 }
-            } else {
+            } else if (!isLoading) {
                 if (isRooted) {
                     item {
                         WearButton(
                             onClick = onStartRoot,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .scrollTransform(this)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 WearIcon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -137,7 +194,9 @@ internal fun WearHomeScreen(
                     item {
                         WearButton(
                             onClick = onStartWirelessAdb,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .scrollTransform(this)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 WearIcon(Icons.Rounded.Usb, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -152,7 +211,9 @@ internal fun WearHomeScreen(
             item {
                 WearButton(
                     onClick = onSettings,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         WearIcon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -165,7 +226,9 @@ internal fun WearHomeScreen(
             item {
                 WearButton(
                     onClick = onRefresh,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         WearIcon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -178,7 +241,9 @@ internal fun WearHomeScreen(
             item {
                 WearButton(
                     onClick = onAbout,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scrollTransform(this)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         WearIcon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -192,7 +257,9 @@ internal fun WearHomeScreen(
                 item {
                     WearButton(
                         onClick = onStop,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scrollTransform(this)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             WearIcon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(24.dp))

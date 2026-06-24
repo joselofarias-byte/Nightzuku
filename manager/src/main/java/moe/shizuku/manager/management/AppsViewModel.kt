@@ -31,22 +31,35 @@ class AppsViewModel(context: Context) : ViewModel() {
     private val _grantedCount = MutableLiveData<Resource<Int>>()
     val grantedCount = _grantedCount as LiveData<Resource<Int>>
 
+    private val _unauthorizedCount = MutableLiveData<Resource<Int>>()
+    val unauthorizedCount = _unauthorizedCount as LiveData<Resource<Int>>
+
     fun load(onlyCount: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val list: MutableList<PackageInfo> = ArrayList()
                 var count = 0
+                var unauthorized = 0
                 for (pi in AuthorizationManager.getPackages()) {
+                    val ai = pi.applicationInfo ?: continue
                     list.add(pi)
-                    if (AuthorizationManager.granted(pi.packageName, pi.applicationInfo!!.uid)) count++
+                    if (AuthorizationManager.granted(pi.packageName, ai.uid)) {
+                        count++
+                    } else {
+                        unauthorized++
+                    }
                 }
                 if (!onlyCount) _packages.postValue(Resource.success(list))
                 _grantedCount.postValue(Resource.success(count))
+                _unauthorizedCount.postValue(Resource.success(unauthorized))
             } catch (e: CancellationException) {
 
             } catch (e: Throwable) {
-                _packages.postValue(Resource.error(e, null))
-                _grantedCount.postValue(Resource.error(e, 0))
+                val lastGranted = _grantedCount.value?.data ?: 0
+                val lastUnauthorized = _unauthorizedCount.value?.data ?: 0
+                _packages.postValue(Resource.error(e, _packages.value?.data))
+                _grantedCount.postValue(Resource.error(e, lastGranted))
+                _unauthorizedCount.postValue(Resource.error(e, lastUnauthorized))
             }
         }
     }

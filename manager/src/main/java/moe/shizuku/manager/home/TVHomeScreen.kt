@@ -45,6 +45,7 @@ import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.lifecycle.Resource
+import rikka.lifecycle.Status
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
 
@@ -52,6 +53,7 @@ import rikka.shizuku.ShizukuApiConstants
 internal fun TVHomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
+    unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
@@ -76,6 +78,7 @@ internal fun TVHomeScreen(
     val context = LocalContext.current
     val status = serviceResource?.data ?: ServiceStatus()
     val grantedCount = grantedResource?.data ?: 0
+    val unauthorizedCount = unauthorizedResource?.data ?: 0
     val running = status.isRunning
     val adbPermission = status.permission
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
@@ -121,6 +124,20 @@ internal fun TVHomeScreen(
                     label = R.string.action_stop,
                     onClick = onStop
                 )
+            } else {
+                if (isRooted) {
+                    TvNavigationButton(
+                        icon = R.drawable.ic_server_start_24dp,
+                        label = R.string.home_root_button_start,
+                        onClick = onStartRoot
+                    )
+                } else if (canUseWirelessAdb) {
+                    TvNavigationButton(
+                        icon = R.drawable.ic_server_start_24dp,
+                        label = R.string.home_root_button_start,
+                        onClick = onStartWirelessAdb
+                    )
+                }
             }
         }
 
@@ -133,23 +150,50 @@ internal fun TVHomeScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
-                TvStatusCard(status = status)
+                TvStatusCard(
+                    serviceResource = serviceResource,
+                    status = status,
+                    onStop = onStop,
+                    onStartRoot = onStartRoot,
+                    onStartWirelessAdb = onStartWirelessAdb,
+                    isRooted = isRooted,
+                    canUseWirelessAdb = canUseWirelessAdb
+                )
             }
 
             if (adbPermission) {
                 item {
+                    val showCount = running &&
+                            grantedResource?.status == Status.SUCCESS && grantedResource?.data != null &&
+                            unauthorizedResource?.status == Status.SUCCESS && unauthorizedResource?.data != null
                     TvSimpleActionCard(
                         icon = R.drawable.ic_system_icon,
-                        title = if (running) {
-                            context.resources.getQuantityString(
-                                R.plurals.home_app_management_authorized_apps_count,
-                                grantedCount,
-                                grantedCount
-                            )
+                        title = if (showCount) {
+                            val count = grantedResource.data!!
+                            if (count == 0) {
+                                stringResource(R.string.home_app_management_no_authorized_apps)
+                            } else {
+                                context.resources.getQuantityString(
+                                    R.plurals.home_app_management_authorized_apps_count,
+                                    count,
+                                    count
+                                )
+                            }
                         } else {
                             stringResource(R.string.home_app_management_title)
                         },
-                        body = if (running) {
+                        body = if (showCount) {
+                            val count = unauthorizedResource.data!!
+                            if (count == 0) {
+                                stringResource(R.string.home_app_management_no_unauthorized_apps)
+                            } else {
+                                context.resources.getQuantityString(
+                                    R.plurals.home_app_management_unauthorized_apps_count,
+                                    count,
+                                    count
+                                )
+                            }
+                        } else if (running) {
                             stringResource(R.string.home_app_management_view_authorized_apps)
                         } else {
                             stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
@@ -232,12 +276,17 @@ internal fun TVHomeScreen(
 
             if (localNetworkPermissionState.required && !localNetworkPermissionState.granted) {
                 item {
+                    val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+                        stringResource(R.string.permission_nearby_wifi_devices)
+                    } else {
+                        localNetworkPermissionState.label
+                    }
                     TvHomeCard(
                         icon = R.drawable.ic_warning_24,
                         title = stringResource(R.string.home_local_network_title),
                         body = stringResource(
                             R.string.home_local_network_description,
-                            localNetworkPermissionState.label
+                            permissionLabel
                         )
                     ) {
                         TvButton(onClick = onRequestLocalNetworkPermission) {
@@ -299,21 +348,86 @@ private fun TvNavigationButton(
 }
 
 @Composable
-private fun TvStatusCard(status: ServiceStatus) {
+private fun TvStatusCard(
+    serviceResource: Resource<ServiceStatus>?,
+    status: ServiceStatus,
+    onStop: () -> Unit,
+    onStartRoot: () -> Unit,
+    onStartWirelessAdb: () -> Unit,
+    isRooted: Boolean,
+    canUseWirelessAdb: Boolean
+) {
     val context = LocalContext.current
     val running = status.isRunning
-    val title = if (running) {
-        stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
-    } else {
-        stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+    val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
+    val title = when {
+        isLoading -> stringResource(R.string.home_status_checking)
+        running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
+        else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
     }
     val summary = remember(status, running) { buildServiceSummary(context, status) }
 
+    val dark = isSystemInDarkTheme()
+    val (iconContainerColor, iconContentColor) = when {
+        serviceResource == null || serviceResource.status == Status.LOADING -> {
+            // Starting / waiting / pending -> Amber
+            if (dark) {
+                Color(0xFF4D3800) to Color(0xFFFFD54F)
+            } else {
+                Color(0xFFFFF0C2) to Color(0xFF6B4B00)
+            }
+        }
+        serviceResource.status == Status.ERROR -> {
+            // Error -> Red
+            TvMaterialTheme.colorScheme.errorContainer to TvMaterialTheme.colorScheme.onErrorContainer
+        }
+        running -> {
+            // Connected / running / success -> Green
+            if (dark) {
+                Color(0xFF0F3816) to Color(0xFF8CE090)
+            } else {
+                Color(0xFFC7F3C9) to Color(0xFF0F521A)
+            }
+        }
+        else -> {
+            // Disconnected / stopped -> Gray
+            if (dark) {
+                Color(0xFF333333) to Color(0xFFB0B0B0)
+            } else {
+                Color(0xFFE0E0E0) to Color(0xFF555555)
+            }
+        }
+    }
+
     TvHomeCard(
-        icon = if (running) R.drawable.ic_server_ok_24dp else R.drawable.ic_server_error_24dp,
+        icon = when {
+            isLoading -> R.drawable.ic_server_restart
+            running -> R.drawable.ic_server_ok_24dp
+            else -> R.drawable.ic_server_error_24dp
+        },
         title = title,
-        body = summary
-    )
+        body = summary,
+        iconContainerColor = iconContainerColor,
+        iconContentColor = iconContentColor
+    ) {
+        if (serviceResource != null) {
+            if (running) {
+                TvButton(onClick = onStop) {
+                    TvText(stringResource(R.string.action_stop))
+                }
+            } else {
+                if (isRooted) {
+                    TvButton(onClick = onStartRoot) {
+                        TvText(stringResource(R.string.home_root_button_start))
+                    }
+                } else if (canUseWirelessAdb) {
+                    TvButton(onClick = onStartWirelessAdb) {
+                        TvText(stringResource(R.string.home_root_button_start))
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -404,6 +518,8 @@ private fun TvHomeCard(
     title: String,
     body: String,
     enabled: Boolean = true,
+    iconContainerColor: Color = TvMaterialTheme.colorScheme.primaryContainer,
+    iconContentColor: Color = TvMaterialTheme.colorScheme.onPrimaryContainer,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit = {}
 ) {
@@ -426,12 +542,12 @@ private fun TvHomeCard(
             TvSurface(
                 modifier = Modifier.size(56.dp),
                 shape = CircleShape,
-                colors = TvSurfaceDefaults.colors(containerColor = TvMaterialTheme.colorScheme.primaryContainer)
+                colors = TvSurfaceDefaults.colors(containerColor = iconContainerColor)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     ShizukuIcon(
                         icon = icon,
-                        tint = TvMaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = iconContentColor,
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -489,19 +605,41 @@ private fun buildDiagnostics(
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
-        "${localNetworkPermissionState.label}: " + if (localNetworkPermissionState.granted) "granted" else "missing"
+        val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") {
+            context.getString(R.string.permission_nearby_wifi_devices)
+        } else {
+            localNetworkPermissionState.label
+        }
+        val statusLabel = if (localNetworkPermissionState.granted) {
+            context.getString(R.string.diagnostic_permission_granted)
+        } else {
+            context.getString(R.string.diagnostic_permission_missing)
+        }
+        "$permissionLabel: $statusLabel"
     } else {
-        "not required"
+        context.getString(R.string.diagnostic_permission_not_required)
     }
+
+    val serviceStatusLabel = if (status.isRunning) {
+        context.getString(R.string.diagnostic_running)
+    } else {
+        context.getString(R.string.diagnostic_stopped)
+    }
+    val adbPermissionLabel = if (status.permission) {
+        context.getString(R.string.diagnostic_full)
+    } else {
+        context.getString(R.string.diagnostic_limited)
+    }
+
     return buildString {
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
         appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
-        appendLine("Service: ${if (status.isRunning) "running" else "stopped"}")
-        appendLine("Server uid: ${status.uid}")
-        appendLine("Server API: ${status.apiVersion}.${status.patchVersion}")
+        appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
+        appendLine("${context.getString(R.string.diagnostic_server_uid)}: ${status.uid}")
+        appendLine("${context.getString(R.string.diagnostic_server_api)}: ${status.apiVersion}.${status.patchVersion}")
         appendLine("SELinux: ${status.seContext ?: "unknown"}")
-        appendLine("ADB permission: ${if (status.permission) "full" else "limited"}")
-        appendLine("Authorized apps: $grantedCount")
-        appendLine("Local network: $localNetwork")
+        appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
+        appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
+        appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
     }.trim()
 }

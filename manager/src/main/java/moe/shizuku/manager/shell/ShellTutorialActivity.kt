@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Text
 import androidx.wear.compose.material3.Card as WearCard
 import androidx.wear.compose.material3.MaterialTheme as WearMaterialTheme
 import androidx.wear.compose.material3.Text as WearText
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -25,6 +30,7 @@ import moe.shizuku.manager.R
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
+import moe.shizuku.manager.ui.compose.MonospaceLog
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
 import moe.shizuku.manager.ui.compose.StepRow
@@ -131,10 +137,16 @@ class ShellTutorialActivity : AppActivity() {
                                     onClick = {},
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    WearText(
-                                        text = "2. " + HtmlText(R.string.terminal_tutorial_2, shName),
-                                        style = WearMaterialTheme.typography.labelMedium
-                                    )
+                                    androidx.compose.foundation.layout.Column {
+                                        WearText(
+                                            text = "2. " + stringResource(R.string.terminal_tutorial_2),
+                                            style = WearMaterialTheme.typography.labelMedium
+                                        )
+                                        WearText(
+                                            text = stringResource(R.string.terminal_tutorial_2_command),
+                                            style = WearMaterialTheme.typography.bodySmall
+                                        )
+                                    }
                                 }
                             }
                             item {
@@ -142,10 +154,16 @@ class ShellTutorialActivity : AppActivity() {
                                     onClick = {},
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    WearText(
-                                        text = "3. " + HtmlText(R.string.terminal_tutorial_3, "sh $shName"),
-                                        style = WearMaterialTheme.typography.labelMedium
-                                    )
+                                    androidx.compose.foundation.layout.Column {
+                                        WearText(
+                                            text = "3. " + stringResource(R.string.terminal_tutorial_3),
+                                            style = WearMaterialTheme.typography.labelMedium
+                                        )
+                                        WearText(
+                                            text = stringResource(R.string.terminal_tutorial_3_command),
+                                            style = WearMaterialTheme.typography.bodySmall
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -196,22 +214,82 @@ class ShellTutorialActivity : AppActivity() {
                         item {
                             StepRow(
                                 number = 2,
-                                title = HtmlText(R.string.terminal_tutorial_2, shName),
-                                body = HtmlText(
-                                    R.string.terminal_tutorial_2_description,
-                                    "Termux",
-                                    "PKG",
-                                    "com.termux",
-                                    "com.termux"
-                                )
+                                title = stringResource(R.string.terminal_tutorial_2),
+                                action = {
+                                    androidx.compose.foundation.layout.Column(
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SelectionContainer {
+                                            MonospaceLog(text = stringResource(R.string.terminal_tutorial_2_command))
+                                        }
+                                        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                        val context = androidx.compose.ui.platform.LocalContext.current
+                                        val commandText = stringResource(R.string.terminal_tutorial_2_command)
+                                        androidx.compose.material3.TextButton(
+                                            onClick = {
+                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(commandText))
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_copied_to_clipboard, context.getString(R.string.copy_commands)),
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        ) {
+                                            Text(stringResource(R.string.copy_commands))
+                                        }
+                                    }
+                                }
                             )
                         }
                         item {
+                            var showAdvancedDialog by remember { mutableStateOf(false) }
                             StepRow(
                                 number = 3,
-                                title = HtmlText(R.string.terminal_tutorial_3, "sh $shName"),
-                                body = HtmlText(R.string.terminal_tutorial_3_description, shName, "PATH")
+                                title = stringResource(R.string.terminal_tutorial_3),
+                                action = {
+                                    androidx.compose.foundation.layout.Column(
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SelectionContainer {
+                                            MonospaceLog(text = stringResource(R.string.terminal_tutorial_3_command))
+                                        }
+                                        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                        val context = androidx.compose.ui.platform.LocalContext.current
+                                        val commandText = stringResource(R.string.terminal_tutorial_3_command)
+                                        androidx.compose.material3.TextButton(
+                                            onClick = {
+                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(commandText))
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_copied_to_clipboard, context.getString(R.string.copy_commands)),
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        ) {
+                                            Text(stringResource(R.string.copy_commands))
+                                        }
+                                        androidx.compose.material3.TextButton(
+                                            onClick = { showAdvancedDialog = true }
+                                        ) {
+                                            Text(stringResource(R.string.terminal_tutorial_advanced_title))
+                                        }
+                                    }
+                                }
                             )
+                            if (showAdvancedDialog) {
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showAdvancedDialog = false },
+                                    title = { Text(stringResource(R.string.terminal_tutorial_advanced_dialog_title)) },
+                                    text = { Text(stringResource(R.string.terminal_tutorial_advanced_dialog_message)) },
+                                    confirmButton = {
+                                        androidx.compose.material3.TextButton(
+                                            onClick = { showAdvancedDialog = false }
+                                        ) {
+                                            Text(stringResource(android.R.string.ok))
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }

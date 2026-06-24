@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="translation_contributors" />
+    <string name="app_name" translatable="false">Nightzuku</string>
+
+    <!-- Home - Status -->
+    <string name="home_status_service_is_running">%1$s está en ejecución</string>
+    <string name="home_status_service_not_running">%1$s no está en ejecución</string>
+    <string name="home_status_service_version">Versión %2$s, %1$s</string>
+    <string name="home_status_service_version_update"><![CDATA[Versión %2$s, %1$s<br>Iniciar de nuevo para actualizar a la versión %3$s]]></string>
+    <string name="home_status_checking">Comprobando el estado del servicio\u2026</string>
+
+    <!-- Home - Adb -->
+    <string name="home_adb_title"><![CDATA[Iniciar conectando a una computadora]]></string>
+    <string name="home_adb_description"><![CDATA[Para dispositivos sin root, debes usar adb para iniciar Nightzuku (requiere conexión a una computadora). Este proceso debe repetirse cada vez que se reinicie el dispositivo. Por favor, <b><a href=\"%1$s\">lee la ayuda</a></b>.
+
+Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desinstala la aplicación oficial de Shizuku en caso de estar instalada.]]></string>
+    <string name="home_adb_button_view_help">Leer ayuda</string>
+    <string name="home_adb_button_view_command">Ver comando</string>
+    <string name="home_adb_dialog_view_command_message"><![CDATA[<font face="monospace">%1$s</font><br><br>* Existen otras consideraciones, por favor confirma que has leído la ayuda primero.]]></string>
+    <string name="home_adb_dialog_view_command_copy_button">Copiar</string>
+    <string name="home_adb_dialog_view_command_button_send">Enviar</string>
+
+    <!-- Home - Wireless Adb -->
+    <string name="home_wireless_adb_title"><![CDATA[Iniciar mediante Depuración inalámbrica]]></string>
+    <string name="home_wireless_adb_description"><![CDATA[En Android 11 o superior, puedes habilitar la Depuración inalámbrica e iniciar Nightzuku directamente desde tu dispositivo, sin conectar a una computadora.<p>Por favor, consulta la guía paso a paso primero.
+
+Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desinstala la aplicación oficial de Shizuku en caso de estar instalada.]]></string>
+    <string name="home_wireless_adb_description_pre_11"><![CDATA[Antes de Android 11, se requiere la conexión a una computadora para habilitar la Depuración inalámbrica.]]></string>
+    <string name="home_wireless_adb_view_guide_button">Guía paso a paso</string>
+    <string name="home_local_network_title">Acceso a la red local</string>
+    <string name="home_local_network_description">La Depuración inalámbrica necesita el permiso de %1$s en esta versión de Android.</string>
+    <string name="home_local_network_granted">El permiso de %1$s está concedido.</string>
+    <string name="home_local_network_missing">El permiso de %1$s no está concedido.</string>
+    <string name="home_local_network_grant">Conceder permiso</string>
+    <string name="permission_nearby_wifi_devices">dispositivos Wi-Fi cercanos</string>
+    <string name="diagnostic_local_network">Red local</string>
+    <string name="diagnostic_permission_granted">concedido</string>
+    <string name="diagnostic_permission_missing">falta</string>
+    <string name="diagnostic_permission_denied">denegado</string>
+    <string name="diagnostic_permission_not_required">no requerido</string>
+    <string name="diagnostic_service">Servicio</string>
+    <string name="diagnostic_running">en ejecución</string>
+    <string name="diagnostic_stopped">detenido</string>
+    <string name="diagnostic_server_uid">UID del servidor</string>
+    <string name="diagnostic_server_api">API del servidor</string>
+    <string name="diagnostic_adb_permission">Permiso ADB</string>
+    <string name="diagnostic_full">completo</string>
+    <string name="diagnostic_limited">limitado</string>
+    <string name="diagnostic_authorized_apps">Aplicaciones autorizadas</string>
+    <string name="home_local_network_permission_denied">El acceso a la red local es requerido para la Depuración inalámbrica.</string>
+
+    <!-- Adb -->
+    <string name="adb_pairing_foreground_denied">OP_START_FOREGROUND fue denegado. No se puede iniciar el servicio de vinculación.</string>
+    <string name="home_discovered_port">Puerto detectado: %s</string>
+    <string name="home_start_with_port">Iniciar (%s)</string>
+    <string name="dialog_adb_discovery">Buscando el servicio de depuración inalámbrica</string>
+    <string name="dialog_adb_discovery_message">Por favor, habilita \"Depuración inalámbrica\" en \"Opciones de desarrollador\". La \"Depuración inalámbrica\" se deshabilita automáticamente cuando cambia la red.\n\nNota: no deshabilites las \"Opciones de desarrollador\" ni la \"Depuración USB\", de lo contrario, Nightzuku se detendrá.</string>
+    <string name="dialog_adb_discovery_message_toggle_wireless_debugging">Si Nightzuku no encuentra el servicio, desactiva y vuelve a activar la Depuración inalámbrica.</string>
+    <string name="dialog_adb_port">Puerto</string>
+    <string name="dialog_adb_invalid_port">El puerto debe ser un entero entre 1 y 65535.</string>
+    <string name="adb_pairing">Emparejamiento</string>
+    <string name="dialog_adb_pairing_title">Emparejar con dispositivo</string>
+    <string name="dialog_adb_pairing_discovery">Buscando servicio de emparejamiento</string>
+    <string name="dialog_adb_pairing_paring_code">Código de emparejamiento</string>
+    <string name="paring_code_is_wrong">El código de emparejamiento es incorrecto.</string>
+    <string name="cannot_connect_port">No se puede conectar al servicio de depuración inalámbrica.</string>
+    <string name="dialog_wireless_adb_not_enabled">La Depuración inalámbrica no está habilitada.\nNota: antes de Android 11, para habilitar la depuración inalámbrica es obligatoria la conexión a una computadora.</string>
+    <string name="dialog_adb_pairing_message">Por favor, inicia el emparejamiento con los siguientes pasos: \"Opciones de desarrollador\" - \"Depuración inalámbrica\" - \"Emparejar dispositivo con código de emparejamiento\".\n\nUna vez que comience el proceso de emparejamiento, podrás ingresar el código de emparejamiento.</string>
+    <string name="adb_pairing_requires_multi_window">Por favor, entra primero en modo de pantalla dividida (multiventana).</string>
+    <string name="adb_pairing_requires_multi_window_reason">El sistema requiere que el diálogo de emparejamiento esté siempre visible. Usar el modo de pantalla dividida es la única forma de permitir que esta aplicación y el diálogo del sistema estén visibles al mismo tiempo.</string>
+    <string name="adb_error_key_store">No se pudo generar la clave para la depuración inalámbrica.\nEsto puede deberse a que el mecanismo KeyStore de este dispositivo está dañado.</string>
+    <string name="adb_pair_required">Por favor, realiza el paso de emparejamiento primero.</string>
+    <string name="development_settings">Opciones de desarrollador</string>
+    <string name="notification_settings">Opciones de notificación</string>
+    <string name="adb_pairing_tutorial_title">Emparejar Nightzuku con tu dispositivo</string>
+    <string name="adb_pairing_tutorial_content_notification">Una notificación de Nightzuku te ayudará a completar el emparejamiento.</string>
+    <string name="adb_pairing_tutorial_content_steps">Ingresa a \"Opciones de desarrollador\" - \"Depuración inalámbrica\". Toca \"Emparejar dispositivo con código de emparejamiento\", verás un código de seis dígitos.</string>
+    <string name="adb_pairing_tutorial_content_enter_pairing_code">Ingresa el código en la notificación para completar el emparejamiento.</string>
+    <string name="adb_pairing_tutorial_content_notification_blocked">El proceso de emparejamiento requiere que interactúes con una notificación de Nightzuku. Por favor, permite que Nightzuku envíe notificaciones.</string>
+    <string name="adb_pairing_tutorial_content_miui">Los usuarios de MIUI pueden necesitar cambiar el estilo de notificación a \"Android\" desde \"Notificaciones\" - \"Barra de notificaciones\" en los ajustes del sistema.</string>
+    <string name="adb_pairing_tutorial_content_miui_2">De lo contrario, es posible que no puedas ingresar el código de emparejamiento desde la notificación.</string>
+    <string name="adb_pairing_tutorial_content_left_is_clickable">Ten en cuenta que la parte izquierda de la opción \"Depuración inalámbrica\" es cliqueable; tocarla abrirá una nueva página. Solo encender el interruptor de la derecha es incorrecto.</string>
+    <string name="adb_pairing_tutorial_content_finish">Regresa a Nightzuku e inicia Nightzuku.</string>
+    <string name="adb_pairing_tutorial_content_network">Nightzuku necesita acceder a la red local. Esto está controlado por el permiso de red.</string>
+    <string name="adb_pairing_tutorial_content_network_limation_not_foreground">Algunos sistemas (como MIUI) no permiten que las aplicaciones accedan a la red cuando no están visibles, incluso si la aplicación utiliza un servicio en primer plano estándar. Por favor, deshabilita las funciones de optimización de batería para Nightzuku en dichos sistemas.</string>
+
+    <!-- Home - Root -->
+    <string name="home_root_title"><![CDATA[Iniciar (para dispositivos con root)]]></string>
+    <string name="home_root_description"><![CDATA[Además, Nightzuku se puede iniciar automáticamente al arrancar. Si no es así, comprueba si tu sistema o herramientas de terceros han restringido a Nightzuku.<br>Puedes consultar %s.
+
+Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desinstala la aplicación oficial de Shizuku en caso de estar instalada.]]></string>
+    <string name="home_root_description_sui"><![CDATA[Si estás usando Magisk, puedes probar %1$s. Para usuarios con root, eventualmente reemplazará a Nightzuku. Nota: las aplicaciones existentes deben cambiar un poco para usar %2$s.]]></string>
+    <string name="home_root_button_start">Iniciar</string>
+    <string name="home_root_button_restart">Reiniciar</string>
+
+    <!-- Home - Application management -->
+    <string name="home_app_management_title">Gestión de aplicaciones</string>
+    <plurals name="home_app_management_authorized_apps_count">
+        <item quantity="one"><![CDATA[%d aplicación autorizada]]></item>
+        <item quantity="other"><![CDATA[%d aplicaciones autorizadas]]></item>
+    </plurals>
+    <plurals name="home_app_management_unauthorized_apps_count">
+        <item quantity="one"><![CDATA[%d aplicación no autorizada]]></item>
+        <item quantity="other"><![CDATA[%d aplicaciones no autorizadas]]></item>
+    </plurals>
+    <string name="home_app_management_no_authorized_apps">Ninguna aplicación autorizada</string>
+    <string name="home_app_management_no_unauthorized_apps">Ninguna pendiente de autorización</string>
+    <string name="home_app_management_view_authorized_apps"><![CDATA[Toca para gestionar las aplicaciones autorizadas]]></string>
+    <string name="home_app_management_empty">Las aplicaciones que hayan solicitado o declarado Nightzuku aparecerán aquí.</string>
+
+    <!-- Home - Learn more -->
+    <string name="home_learn_more_title">Aprender sobre Nightzuku</string>
+    <string name="home_learn_more_description">Aprende a desarrollar con Nightzuku</string>
+
+    <!-- Home - Diagnostics -->
+    <string name="home_refresh">Actualizar</string>
+    <string name="home_diagnostics_title">Diagnóstico</string>
+    <string name="home_diagnostics_copy">Copiar diagnóstico</string>
+    <string name="home_diagnostics_copied">Diagnóstico copiado.</string>
+    <string name="home_diagnostics_share">Compartir diagnóstico</string>
+    <string name="diagnostic_status_label">Estado</string>
+    <string name="home_modules_description">Instala y gestiona módulos basados en ADB</string>
+
+    <!-- Home - Adb permissions limited -->
+    <string name="home_adb_is_limited_title">Debes realizar un paso adicional</string>
+    <string name="home_adb_is_limited_description">El fabricante de tu dispositivo ha restringido los permisos de adb y las aplicaciones que usan Nightzuku no funcionarán correctamente.\n\nPor lo general, esta limitación se puede eliminar ajustando algunas opciones en las \"Opciones de desarrollador\". Por favor, lee la ayuda para obtener detalles sobre cómo hacerlo.\n\nEs posible que debas reiniciar Nightzuku para que la operación surta efecto.</string>
+
+    <!-- Application management -->
+    <string name="app_management_select_all">Autorizar todas</string>
+    <string name="app_management_deselect_all">Desautorizar todas</string>
+    <string name="app_management_dialog_adb_is_limited_title">El permiso de adb está limitado</string>
+    <string name="app_management_dialog_adb_is_limited_message"><![CDATA[Es muy probable que el fabricante de tu dispositivo limite el permiso de adb.<p>Puede haber una solución para tu sistema en <b><a href=\"%1$s\">este documento</a></b>.]]></string>
+    <string name="app_management_item_summary_requires_root">* requiere que Nightzuku se ejecute con root</string>
+    <string name="app_management_search_placeholder">Buscar aplicaciones</string>
+    <string name="app_management_search_empty">No se encontraron aplicaciones</string>
+    <string name="app_management_search_clear">Borrar búsqueda</string>
+    <string name="app_management_item_authorized">Autorizado</string>
+    <string name="more_options">Más opciones</string>
+
+    <!-- Terminal -->
+    <string name="home_terminal_title">Usar Nightzuku en Termux</string>
+    <string name="home_terminal_description">Ejecuta comandos mediante Nightzuku desde Termux.</string>
+    <string name="terminal_tutorial_1">Exporta %1$s y %2$s a Descargas.</string>
+    <string name="terminal_tutorial_1_description">Si ya existen archivos con el mismo nombre, se sobrescribirán sin confirmación.\n\nLa función de exportación utiliza SAF (Storage Access Framework). Algunas versiones de MIUI pueden causar problemas con SAF. Si estás utilizando MIUI, es posible que tengas que extraer el archivo de la apk de Nightzuku o descargarlo desde GitHub.</string>
+    <string name="terminal_export_files">Exportar archivos</string>
+    <string name="terminal_tutorial_2">Para Termux, copia y ejecuta estos comandos:</string>
+    <string name="terminal_tutorial_2_description">Para Termux, no es necesario reemplazar el paquete manualmente.</string>
+    <string name="terminal_tutorial_2_command">termux-setup-storage\nmkdir -p ~/.nightzuku\ncp ~/storage/downloads/rish ~/.nightzuku/rish\ncp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex\nchmod +x ~/.nightzuku/rish\nchmod 444 ~/.nightzuku/rish_shizuku.dex\nls -l ~/.nightzuku/rish ~/.nightzuku/rish_shizuku.dex</string>
+    <string name="terminal_tutorial_3">Ejecuta en Termux:</string>
+    <string name="terminal_tutorial_advanced_title">¿Usas otra terminal?</string>
+    <string name="terminal_tutorial_advanced_dialog_title">Otras aplicaciones de terminal</string>
+    <string name="terminal_tutorial_advanced_dialog_message">Para otra aplicación de terminal, establece RISH_APPLICATION_ID con el nombre de paquete de esa app antes de ejecutar rish.</string>
+    <string name="terminal_tutorial_3_description">Para otra aplicación de terminal, establece RISH_APPLICATION_ID manualmente antes de ejecutar rish.</string>
+    <string name="terminal_tutorial_3_command">cd ~/.nightzuku\n./rish</string>
+    <string name="copy_commands">Copiar comandos</string>
+    <string name="rish_description"><![CDATA[Con %1$s, en cualquier aplicación de terminal, puedes conectarte e interactuar con la shell que ejecuta Nightzuku.<p>Para ver los detalles de uso de %1$s, toca para ver el documento.]]></string>
+
+    <!-- Settings -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_language">Idioma</string>
+    <string name="settings_user_interface">Apariencia</string>
+    <string name="settings_black_night_theme">Tema negro noche</string>
+    <string name="settings_black_night_theme_summary">Usa el tema negro puro si el modo noche está habilitado</string>
+    <string name="dark_theme">Tema oscuro</string>
+    <string name="dark_theme_off">Siempre desactivado</string>
+    <string name="dark_theme_on">Siempre activado</string>
+    <string name="follow_system">Sigue el sistema</string>
+    <string name="settings_startup">Inicio</string>
+    <string name="settings_translation_contributors">Colaboradores de la traducción</string>
+    <string name="settings_translation">Ayudar a traducir Nightzuku</string>
+    <string name="settings_translation_summary">Ayúdanos a traducir %s a tu idioma</string>
+    <string name="settings_start_on_boot">Iniciar al arrancar (root)</string>
+    <string name="settings_start_on_boot_summary">Para dispositivos con root, Nightzuku puede iniciarse automáticamente al arrancar</string>
+    <string name="settings_use_system_color">Usar color de tema del sistema</string>
+
+    <!-- ADB modules -->
+    <string name="modules_title">Módulos ADB</string>
+    <string name="modules_settings_title">Módulos</string>
+    <string name="modules_settings_summary">Instala módulos ZIP y ejecuta sus acciones a través del servidor activo de ADB/root de Nightzuku</string>
+    <string name="modules_header_summary">%1$d instalados, %2$d habilitados</string>
+    <string name="modules_version_label">Versión: %s</string>
+    <string name="modules_author_label">Autor: %s</string>
+    <string name="modules_access_mode">Modo de acceso del módulo</string>
+    <string name="modules_access_mode_safe">Seguro</string>
+    <string name="modules_access_mode_safe_summary">Sin puente de shell, sin descargas de WebUI, sin acciones, sin servicios.</string>
+    <string name="modules_access_mode_custom">Personalizado</string>
+    <string name="modules_access_mode_custom_summary">Elige manualmente los permisos de acción, servicio, puente de WebUI, red y descarga.</string>
+    <string name="modules_access_mode_full">Acceso completo</string>
+    <string name="modules_access_mode_full_summary">Permite puente de shell, acciones, servicios y descargas de WebUI. El acceso a Internet de WebView permanece bloqueado.</string>
+    <string name="modules_custom_permissions">Permisos personalizados</string>
+    <string name="modules_custom_permissions_summary">Configura el permiso de cada módulo por separado</string>
+    <string name="modules_permission_action">Ejecutar acción</string>
+    <string name="modules_permission_action_summary">Permitir la ejecución manual de action.sh.</string>
+    <string name="modules_permission_service">Ejecutar servicio</string>
+    <string name="modules_permission_service_summary">Permitir service.sh cuando las acciones en segundo plano también estén habilitadas.</string>
+    <string name="modules_permission_web_bridge">Puente de shell de WebUI</string>
+    <string name="modules_permission_web_bridge_summary">Exponer window.Nightzuku solo para WebUI local y solo cuando el acceso a Internet de WebView esté desactivado.</string>
+    <string name="modules_permission_web_network">Internet de WebView</string>
+    <string name="modules_permission_web_network_summary">Permitir navegación/recursos HTTPS. Esto deshabilita la exposición del puente de shell para ese WebView.</string>
+    <string name="modules_permission_web_download">download() de WebUI</string>
+    <string name="modules_permission_web_download_summary">Permitir descargas de archivos HTTPS en la carpeta de WebUI, excepto index.html.</string>
+    <string name="modules_background_actions">Permitir acciones en segundo plano</string>
+    <string name="modules_background_actions_summary">Permitir que los módulos instalados soliciten trabajo de ADB en segundo plano en modo de acceso completo</string>
+    <string name="modules_background_allowed">Segundo plano permitido</string>
+    <string name="modules_background_blocked">Segundo plano bloqueado</string>
+    <string name="modules_install_zip">Instalar ZIP</string>
+    <string name="modules_empty_title">No hay módulos instalados</string>
+    <string name="modules_empty_summary">Los módulos ADB utilizan un ZIP estilo KernelSU/Magisk con module.prop, banner opcional, WebUI, action.sh y service.sh.</string>
+    <string name="modules_install_success">Instalado %s</string>
+    <string name="modules_install_failed">Error de instalación: %s</string>
+    <string name="modules_enabled">Habilitado</string>
+    <string name="modules_disabled">Deshabilitado</string>
+    <string name="modules_enable">Habilitar</string>
+    <string name="modules_disable">Deshabilitar</string>
+    <string name="modules_full_trust">Confianza completa</string>
+    <string name="modules_trust">Confiar</string>
+    <string name="modules_untrust">No confiar</string>
+    <string name="modules_run_action">Acción</string>
+    <string name="modules_run_service">Servicio</string>
+    <string name="modules_running">Ejecutando script del módulo…</string>
+    <string name="modules_open_webui">WebUI</string>
+    <string name="modules_webui">WebUI del módulo</string>
+    <string name="modules_delete">Eliminar</string>
+    <string name="modules_delete_title">¿Eliminar módulo?</string>
+    <string name="modules_delete_message">%s se eliminará del almacenamiento de módulos de Nightzuku.</string>
+    <string name="modules_action_result">Acción finalizada: salida %d</string>
+    <string name="modules_action_failed">Acción fallida</string>
+    <string name="modules_service_result">Servicio finalizado: salida %d</string>
+    <string name="modules_service_failed">Servicio fallido</string>
+    <string name="modules_recommand_title">ReCommand</string>
+    <string name="modules_recommand_source">%1$s / %2$s</string>
+    <string name="modules_recommand_expand">Expandir</string>
+    <string name="modules_recommand_collapse">Colapsar</string>
+    <string name="modules_recommand_copy">Copiar</string>
+    <string name="modules_recommand_execute">Ejecutar</string>
+    <string name="modules_recommand_close">Cerrar</string>
+    <string name="modules_recommand_command_clip_label">Comando del módulo</string>
+    <string name="modules_recommand_webui">Confirmación ReCommand para WebUI</string>
+    <string name="modules_recommand_webui_summary">Mostrar un diálogo de confirmación antes de la ejecución de shell de WebUI.</string>
+    <string name="modules_recommand_action">Confirmación ReCommand para acciones del módulo</string>
+    <string name="modules_recommand_action_summary">Mostrar un diálogo de confirmación antes de ejecutar action.sh.</string>
+
+    <!-- About -->
+    <string name="action_about">Acerca de</string>
+    <string name="about_source_code_button">Código fuente</string>
+    <string name="about_view_source_code"><![CDATA[Ver código fuente en %s]]></string>
+
+    <!-- Stop -->
+    <string name="action_stop">Detener Nightzuku</string>
+    <string name="action_back">Atrás</string>
+    <string name="dialog_stop_message">El servicio de Nightzuku se detendrá.</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_service_status">Estado de inicio del servicio</string>
+    <string name="notification_service_starting">El servicio de Nightzuku se está iniciando…</string>
+    <string name="notification_service_start_failed">Error al iniciar el servicio de Nightzuku.</string>
+    <string name="notification_service_start_no_root">Error al solicitar permiso de root.</string>
+    <string name="notification_working">Trabajando…</string>
+    <string name="notification_channel_adb_pairing">Emparejamiento de depuración inalámbrica</string>
+    <string name="notification_adb_pairing_input_paring_code">Introduce el código de emparejamiento</string>
+    <string name="notification_adb_pairing_searching_for_service_title">Buscando servicio de emparejamiento</string>
+    <string name="notification_adb_pairing_service_found_title">Servicio de emparejamiento encontrado</string>
+    <string name="notification_adb_pairing_stop_searching">Detener búsqueda</string>
+    <string name="notification_adb_pairing_working_title">Emparejamiento en progreso</string>
+    <string name="notification_adb_pairing_succeed_title">Emparejamiento exitoso</string>
+    <string name="notification_adb_pairing_succeed_text">Ya puedes iniciar el servicio de Nightzuku.</string>
+    <string name="notification_adb_pairing_failed_title">Error de emparejamiento</string>
+    <string name="notification_adb_pairing_retry">Reintentar</string>
+
+    <!-- Permission related, appears in system permission UI -->
+    <string name="permission_group_label">Nightzuku</string>
+    <string name="permission_group_description">@string/permission_label</string>
+    <string name="permission_label">acceder a Nightzuku</string>
+    <string name="permission_description">Permitir que la aplicación use Nightzuku.</string>
+    <string name="permission_warning_template"><![CDATA[¿Permitir a <b>%1$s</b> %2$s?]]></string>
+    <string name="grant_dialog_button_allow_always">Permitir siempre</string>
+    <string name="grant_dialog_button_deny">"Denegar"</string>
+
+    <!-- Starter -->
+    <string name="starter">Iniciador</string>
+    <string name="starting_root_shell">Iniciando shell de root…</string>
+    <string name="start_with_root_failed">No se puede iniciar el servicio porque no se ha concedido el permiso de root o este dispositivo no tiene root.</string>
+    <string name="starter_starting_wireless_adb">Iniciando con ADB inalámbrico en el puerto %s...</string>
+    <string name="starter_waiting_for_service">Esperando el servicio...</string>
+    <string name="starter_service_started">Servicio iniciado. Esta ventana se cerrará automáticamente en 3 segundos.</string>
+
+    <!-- Misc -->
+    <string name="dialog_cannot_open_browser_title">No se puede abrir el navegador</string>
+    <string name="toast_copied_to_clipboard">%s\nse ha copiado al portapapeles.</string>
+    <string name="toast_copied_to_clipboard_with_text"><![CDATA[<b>%s</b> se ha copiado al portapapeles.]]></string>
+
+    <!-- Messages for legacy -->
+    <string name="dialog_legacy_not_support_title">%1$s no es compatible con el Nightzuku moderno</string>
+    <string name="dialog_legacy_not_support_message"><![CDATA[El Nightzuku heredado (legacy) está en desuso desde marzo de 2019. Además, no funciona en sistemas Android más nuevos.<p>Por favor, pídele al desarrollador de <b>%1$s</b> que lo actualice.]]></string>
+    <string name="dialog_requesting_legacy_title">%1$s está solicitando el Nightzuku heredado (legacy)</string>
+    <string name="dialog_requesting_legacy_message"><![CDATA[<b>%1$s</b> tiene soporte para el Nightzuku moderno, pero está solicitando el Nightzuku heredado. Esto podría deberse a que Nightzuku no se está ejecutando, por favor compruébalo en la aplicación de Nightzuku.<p>El Nightzuku heredado está en desuso desde marzo de 2019.]]></string>
+    <string name="dialog_requesting_legacy_button_open_shizuku">Abrir Nightzuku</string>
+
+    <!-- Lab Features -->
+    <string name="lab_features_title">Funciones experimentales</string>
+    <string name="lab_features_summary">Características avanzadas en fase experimental.</string>
+    <string name="shizuku_connectors_title">Conectores de Nightzuku</string>
+    <string name="shizuku_connectors_summary">Permitir que los complementos activen Nightzuku</string>
+    <string name="unsafe_warning_title">Advertencia</string>
+    <string name="unsafe_warning_message">Habilitar esta función NO ES SEGURO. ¿Estás seguro?</string>
+    <string name="application_management_load_failed">No se pudieron cargar las aplicaciones.</string>
+</resources>

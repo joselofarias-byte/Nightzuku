@@ -21,3 +21,23 @@ signing.properties
 *.jar
 view.xml
 packages.txt
+
+# Local review/build/search logs
+*-build.txt
+*-status.txt
+*-diff.txt
+*-diff-stat.txt
+*-diff-check.txt
+*-search.txt
+nightzuku-plus-build.txt
+nightzuku-c*-build.txt
+
+.claude/
+
+# Local review/build artifacts
+*.txt
+*PATCH.md
+*AUDIT.md
+*POLISH.md
+*WALKTHROUGH.md
+*LOCALIZATION.md

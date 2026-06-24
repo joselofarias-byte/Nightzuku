@@ -11,6 +11,17 @@
         <item quantity="many">Авторизовано %d приложений</item>
         <item quantity="other">Авторизовано %d приложения</item>
     </plurals>
+    <plurals name="home_app_management_unauthorized_apps_count">
+        <item quantity="one">%d неавторизованное приложение</item>
+        <item quantity="few">%d неавторизованных приложения</item>
+        <item quantity="many">%d неавторизованных приложений</item>
+        <item quantity="other">%d неавторизованных приложения</item>
+    </plurals>
+    <string name="home_app_management_no_authorized_apps">Нет авторизованных приложений</string>
+    <string name="home_app_management_no_unauthorized_apps">Нет неавторизованных приложений</string>
+    <string name="app_management_search_placeholder">Поиск приложений</string>
+    <string name="app_management_search_empty">Приложения не найдены</string>
+    <string name="app_management_search_clear">Очистить запрос</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">Использовать Nightzuku в терминале</string>

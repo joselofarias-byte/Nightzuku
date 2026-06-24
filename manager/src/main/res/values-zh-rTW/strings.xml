@@ -8,6 +8,14 @@
     <plurals name="home_app_management_authorized_apps_count">
         <item quantity="other">已授權 %d 個應用程式</item>
     </plurals>
+    <plurals name="home_app_management_unauthorized_apps_count">
+        <item quantity="other">未授權 %d 個應用程式</item>
+    </plurals>
+    <string name="home_app_management_no_authorized_apps">無已授權應用程式</string>
+    <string name="home_app_management_no_unauthorized_apps">無未授權應用程式</string>
+    <string name="app_management_search_placeholder">搜尋應用程式</string>
+    <string name="app_management_search_empty">未找到應用程式</string>
+    <string name="app_management_search_clear">清除輸入</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">在終端機中使用 Nightzuku</string>

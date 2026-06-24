@@ -38,6 +38,7 @@ import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface as TvSurface
 import androidx.tv.material3.SurfaceDefaults as TvSurfaceDefaults
 import androidx.tv.material3.Text as TvText
+import androidx.compose.material3.LoadingIndicator
 import moe.shizuku.manager.R
 import moe.shizuku.manager.authorization.AuthorizationManager
 import moe.shizuku.manager.ui.compose.ShizukuIcon
@@ -48,6 +49,7 @@ import moe.shizuku.manager.utils.UserHandleCompat
 fun TvApplicationManagementScreen(
     packages: List<PackageInfo>,
     tick: Int,
+    isLoading: Boolean,
     onNavigateUp: () -> Unit,
     onToggle: (PackageInfo) -> Unit,
     onSelectAll: (Boolean) -> Unit
@@ -69,7 +71,7 @@ fun TvApplicationManagementScreen(
 
             TvMenuButton(
                 icon = R.drawable.ic_arrow_back_24,
-                label = android.R.string.cancel,
+                label = R.string.action_back,
                 onClick = onNavigateUp
             )
 
@@ -88,7 +90,14 @@ fun TvApplicationManagementScreen(
         }
 
 
-        if (packages.isEmpty()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                LoadingIndicator(modifier = Modifier.size(48.dp))
+            }
+        } else if (packages.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -224,7 +233,7 @@ private fun TvAppCard(
                 )
                 if (granted) {
                     TvText(
-                        text = stringResource(android.R.string.ok),
+                        text = stringResource(R.string.app_management_item_authorized),
                         style = TvMaterialTheme.typography.labelSmall,
                         color = TvMaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold

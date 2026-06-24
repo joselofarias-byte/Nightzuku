@@ -346,7 +346,7 @@ fun HomeAdbDiscoveryDialog(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         WearText(stringResource(R.string.dialog_adb_discovery_message))
                         if (currentPort in 1..65535) {
-                            WearText("Discovered port: $currentPort", color = WearMaterialTheme.colorScheme.primary)
+                            WearText(stringResource(R.string.home_discovered_port, currentPort), color = WearMaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -354,13 +354,13 @@ fun HomeAdbDiscoveryDialog(
                 if (currentPort in 1..65535) {
                     item {
                         WearButton(onClick = { onStart(currentPort) }, modifier = Modifier.fillMaxWidth()) {
-                            WearText("Start ($currentPort)")
+                            WearText(stringResource(R.string.home_start_with_port, currentPort))
                         }
                     }
                 } else if (manualPort != -1) {
                     item {
                         WearButton(onClick = { onStart(manualPort) }, modifier = Modifier.fillMaxWidth()) {
-                            WearText("Start ($manualPort)")
+                            WearText(stringResource(R.string.home_start_with_port, manualPort))
                         }
                     }
                 }
@@ -389,7 +389,7 @@ fun HomeAdbDiscoveryDialog(
                             color = TvMaterialTheme.colorScheme.primary
                         )
                         if (currentPort in 1..65535) {
-                            TvText("Discovered port: $currentPort", color = TvMaterialTheme.colorScheme.primary)
+                            TvText(stringResource(R.string.home_discovered_port, currentPort), color = TvMaterialTheme.colorScheme.primary)
                         }
                     }
                 },
@@ -397,11 +397,11 @@ fun HomeAdbDiscoveryDialog(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (currentPort in 1..65535) {
                             TvButton(onClick = { onStart(currentPort) }) {
-                                TvText("Start ($currentPort)")
+                                TvText(stringResource(R.string.home_start_with_port, currentPort))
                             }
                         } else if (manualPort != -1) {
                             TvButton(onClick = { onStart(manualPort) }) {
-                                TvText("Start ($manualPort)")
+                                TvText(stringResource(R.string.home_start_with_port, manualPort))
                             }
                         }
                         TvButton(onClick = openDevSettings) {

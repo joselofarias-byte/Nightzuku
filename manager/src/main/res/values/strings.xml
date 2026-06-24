@@ -9,6 +9,7 @@
     <string name="home_status_service_not_running">%1$s is not running</string>
     <string name="home_status_service_version">Version %2$s, %1$s</string>
     <string name="home_status_service_version_update"><![CDATA[Version %2$s, %1$s<br>Start again to update to version %3$s]]></string>
+    <string name="home_status_checking">Checking service status\u2026</string>
 
     <!-- Home - Adb -->
     <string name="home_adb_title"><![CDATA[Start by connecting to a computer]]></string>
@@ -34,6 +35,21 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_local_network_missing">%1$s is not granted.</string>
     <string name="home_local_network_grant">Grant access</string>
     <string name="home_local_network_permission_denied">Local network access is required for Wireless debugging.</string>
+    <string name="permission_nearby_wifi_devices">Nearby Wi-Fi devices</string>
+    <string name="diagnostic_local_network">Local network</string>
+    <string name="diagnostic_permission_granted">granted</string>
+    <string name="diagnostic_permission_missing">missing</string>
+    <string name="diagnostic_permission_denied">denied</string>
+    <string name="diagnostic_permission_not_required">not required</string>
+    <string name="diagnostic_service">Service</string>
+    <string name="diagnostic_running">running</string>
+    <string name="diagnostic_stopped">stopped</string>
+    <string name="diagnostic_server_uid">Server uid</string>
+    <string name="diagnostic_server_api">Server API</string>
+    <string name="diagnostic_adb_permission">ADB permission</string>
+    <string name="diagnostic_full">full</string>
+    <string name="diagnostic_limited">limited</string>
+    <string name="diagnostic_authorized_apps">Authorized apps</string>
 
     <!-- Adb -->
     <string name="dialog_adb_discovery">Searching for wireless debugging service</string>
@@ -66,6 +82,9 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="adb_pairing_tutorial_content_finish">Back to Nightzuku and start Nightzuku.</string>
     <string name="adb_pairing_tutorial_content_network">Nightzuku needs to access local network. It is controlled by the network permission.</string>
     <string name="adb_pairing_tutorial_content_network_limation_not_foreground">Some systems (such as MIUI) disallow apps to access the network when they are not visible, even if the app uses foreground service as standard. Please disable battery optimization features for Nightzuku on such systems.</string>
+    <string name="adb_pairing_foreground_denied">OP_START_FOREGROUND is denied. Cannot start pairing service.</string>
+    <string name="home_discovered_port">Discovered port: %s</string>
+    <string name="home_start_with_port">Start (%s)</string>
 
     <!-- Home - Root -->
     <string name="home_root_title"><![CDATA[Start (for rooted devices)]]></string>
@@ -82,8 +101,14 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
         <item quantity="one"><![CDATA[Authorized %d application]]></item>
         <item quantity="other"><![CDATA[Authorized %d applications]]></item>
     </plurals>
+    <plurals name="home_app_management_unauthorized_apps_count">
+        <item quantity="one"><![CDATA[%d unauthorized application]]></item>
+        <item quantity="other"><![CDATA[%d unauthorized applications]]></item>
+    </plurals>
+    <string name="home_app_management_no_authorized_apps">No authorized applications</string>
+    <string name="home_app_management_no_unauthorized_apps">No applications pending authorization</string>
     <string name="home_app_management_view_authorized_apps"><![CDATA[Tap to manage authorized apps]]></string>
-    <string name="home_app_management_empty">Apps that has requested or declared Nightzuku will show here.</string>
+    <string name="home_app_management_empty">Apps that have requested or declared Nightzuku will show here.</string>
 
     <!-- Home - Learn more -->
     <string name="home_learn_more_title">Learn Nightzuku</string>
@@ -94,6 +119,8 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_diagnostics_title">Diagnostics</string>
     <string name="home_diagnostics_copy">Copy diagnostics</string>
     <string name="home_diagnostics_copied">Diagnostics copied.</string>
+    <string name="home_diagnostics_share">Share diagnostic</string>
+    <string name="diagnostic_status_label">Status</string>
     <string name="home_modules_description">Install and manage ADB-backed modules</string>
 
     <!-- Home - Adb permissions limited -->
@@ -101,22 +128,33 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="home_adb_is_limited_description">Your device manufacturer has restricted adb permissions and apps using Nightzuku will not work properly.\n\nUsually, this limitation can be lifted by adjusting some options in \"Developer options\". Please read the help for details on how to do this.\n\nYou may need to restart Nightzuku for the operation to take effect.</string>
 
     <!-- Application management -->
-    <string name="app_management_select_all">Select all</string>
-    <string name="app_management_deselect_all">Deselect all</string>
+    <string name="app_management_select_all">Authorize all</string>
+    <string name="app_management_deselect_all">Unauthorize all</string>
     <string name="app_management_dialog_adb_is_limited_title">The permission of adb is limited</string>
     <string name="app_management_dialog_adb_is_limited_message"><![CDATA[It\'s highly possible that your device manufacturer limits the permission of adb.<p>There may be a solution for your system in <b><a href=\"%1$s\">this document</a></b>.]]></string>
-    <string name="app_management_item_summary_requires_root">* requires Nightzuku runs with root</string>
+    <string name="app_management_item_summary_requires_root">* requires Nightzuku to run as root</string>
+    <string name="app_management_search_placeholder">Search apps</string>
+    <string name="app_management_search_empty">No apps found</string>
+    <string name="app_management_search_clear">Clear query</string>
+    <string name="app_management_item_authorized">Authorized</string>
+    <string name="more_options">More options</string>
 
     <!-- Terminal -->
-    <string name="home_terminal_title">Use Nightzuku in terminal apps</string>
-    <string name="home_terminal_description">Run commands through Nightzuku in terminal apps you like</string>
-    <string name="terminal_tutorial_1">First, Export files to any where you want. You will find two files, %1$s and %2$s.</string>
+    <string name="home_terminal_title">Use Nightzuku in Termux</string>
+    <string name="home_terminal_description">Run commands through Nightzuku from Termux.</string>
+    <string name="terminal_tutorial_1">Export the files. You will receive %1$s and %2$s in Downloads.</string>
     <string name="terminal_tutorial_1_description">If there are files with the same name in the selected folder, they will be deleted.\n\nThe export function uses SAF (Storage Access Framework). It\'s reported that MIUI breaks the functions of SAF. If you are using MIUI, you may have to extract the file from Nightzuku\'s apk or download from GitHub.</string>
     <string name="terminal_export_files">Export files</string>
-    <string name="terminal_tutorial_2">Then, use any text editor to open and edit %1$s.</string>
-    <string name="terminal_tutorial_2_description">For example, if you want to use Nightzuku in %1$s, you should replace %2$s with %3$s (%4$s is the package name of %1$s).</string>
-    <string name="terminal_tutorial_3">Finally, move the files to somewhere where your terminal app can access, you will be able to use %1$s to run commands through Nightzuku.</string>
-    <string name="terminal_tutorial_3_description">Some tips: grant execute permission to %1$s and add it to %2$s, you will able to use %1$s directly.</string>
+    <string name="terminal_tutorial_2">For Termux, copy and run these commands:</string>
+    <string name="terminal_tutorial_2_description">For Termux, no manual package replacement is needed.</string>
+    <string name="terminal_tutorial_2_command">termux-setup-storage\nmkdir -p ~/.nightzuku\ncp ~/storage/downloads/rish ~/.nightzuku/rish\ncp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex\nchmod +x ~/.nightzuku/rish\nchmod 444 ~/.nightzuku/rish_shizuku.dex\nls -l ~/.nightzuku/rish ~/.nightzuku/rish_shizuku.dex</string>
+    <string name="terminal_tutorial_3">Run in Termux:</string>
+    <string name="terminal_tutorial_advanced_title">Using another terminal?</string>
+    <string name="terminal_tutorial_advanced_dialog_title">Other terminal apps</string>
+    <string name="terminal_tutorial_advanced_dialog_message">For another terminal app, set RISH_APPLICATION_ID to that app&#8217;s package name before running rish.</string>
+    <string name="terminal_tutorial_3_description">For another terminal app, set RISH_APPLICATION_ID manually before running rish.</string>
+    <string name="terminal_tutorial_3_command">cd ~/.nightzuku\n./rish</string>
+    <string name="copy_commands">Copy commands</string>
     <string name="rish_description"><![CDATA[
 With %1$s, in any terminal app, you can connect to and interact with the shell runs by Nightzuku.
 <p>About the detailed usage %1$s, tap to view the document.
@@ -210,6 +248,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
 
     <!-- Stop -->
     <string name="action_stop">Stop Nightzuku</string>
+    <string name="action_back">Back</string>
     <string name="dialog_stop_message">Nightzuku service will be stopped.</string>
 
     <!-- Notification -->
@@ -242,6 +281,9 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="starter">Starter</string>
     <string name="starting_root_shell" translatable="false">Starting root shell…</string>
     <string name="start_with_root_failed">Can\'t start service because root permission is not granted or this device is not rooted.</string>
+    <string name="starter_starting_wireless_adb">Starting with wireless adb in port %s...</string>
+    <string name="starter_waiting_for_service">Waiting for service...</string>
+    <string name="starter_service_started">Service started, this window will be automatically closed in 3 seconds</string>
 
     <!-- Misc -->
     <string name="dialog_cannot_open_browser_title">Can\'t start browser</string>
@@ -262,4 +304,5 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="shizuku_connectors_summary">Allow plugins to activate Nightzuku</string>
     <string name="unsafe_warning_title">Warning</string>
     <string name="unsafe_warning_message">Enabling this feature is UNSAFE. Are you sure?</string>
+    <string name="application_management_load_failed">Could not load applications.</string>
 </resources>

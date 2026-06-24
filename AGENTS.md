@@ -179,6 +179,15 @@ When executing shell commands:
 
 ---
 
+## Termux Rules
+
+When writing or updating Termux-related instruction text:
+- Do not tell the user to change `pkg` manually.
+- Always provide the complete copy command directly for the correct Termux path.
+- Keep this as a workflow guidance only; do not change runtime logic.
+
+---
+
 ## EverCall Recorder Rules
 
 Highest priorities:
