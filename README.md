@@ -1,136 +1,57 @@
+﻿# Nightzuku Fork
 
-## Personal adaptation / Adaptación personal
+Personal adaptation of Nightzuku / Shizuku focused on Spanish support, usability improvements, Android TV and Wear OS polish, and selected safe compatibility fixes.
 
-This repository is a personal fork/adaptation of the original Nightzuku/Shizuku project. I am not the original developer of the software. My work focuses on adapting the application to personal needs, adding Spanish support, and improving usability where possible.
+This repository is not the original Nightzuku/Shizuku project. It is a personal fork/adaptation maintained for practical use, accessibility, localization, and quality-of-life improvements.
 
-Este repositorio es un fork/adaptación personal del proyecto original Nightzuku/Shizuku. No soy el programador original del software. Mi trabajo se centra en adaptar la aplicación a mis necesidades, agregar soporte en español y mejorar la experiencia de uso cuando sea posible.
+## Español
 
-More details / Más detalles:
+Este repositorio es una adaptación personal basada en Nightzuku / Shizuku.
 
-- [Personal Adaptation Notice / Aviso de adaptación personal](docs/ADAPTATION_NOTICE.md)
-- [Fork Improvements / Mejoras del fork](docs/FORK_IMPROVEMENTS.md)
-- [Fork Changelog / Registro de cambios del fork](CHANGELOG_FORK.md)
+No soy el programador original del proyecto. Mi trabajo se centra en adaptar la aplicación a mis necesidades, agregar soporte en español para usuarios hispanohablantes, mejorar detalles de uso en Android TV y Wear OS, corregir estados de carga confusos y aplicar algunos fixes seguros revisados manualmente.
 
-# Nightzuku
+El objetivo no es reemplazar el proyecto original, sino ofrecer una versión adaptada, documentada y más accesible para quienes prefieren usar la aplicación en español.
 
-**Nightzuku** is a customized modern fork of **Shizuku**, maintained by kerneldroid. It provides a robust, high-performance interface for applications to use system APIs directly with elevated permissions (root/ADB).
+## Main changes / Cambios principales
 
-This project tracks the latest Android platform developments, including Android 16/17 target stability, introduces a revamped Modern Material 3 Expressive UI using Jetpack Compose, and includes a full ADB-backed ZIP modules runner.
+* Spanish localization added and refined.
+* Home service status loading improved.
+* Android TV labels, icons, navigation, and loading states improved.
+* Wear OS loading behavior and scroll transformations improved.
+* Application Management improved across Phone, TV, and Wear.
+* Accessibility descriptions added for icon-only actions.
+* Selected safe fixes from upstream r49 integrated manually.
+* ADB pairing peer info fixed.
+* Release build optimized with R8 and resource shrinking.
+* Debug, info, and verbose logs stripped from release builds.
+* Signed release APK prepared for GitHub releases.
 
-> [!IMPORTANT]
-> **Migration Action Required:** Due to the package identity upgrade (`moe.shizuku.privileged.api` -> `kerneldroid.nightzuku`), you **MUST UNINSTALL** any older official Shizuku Manager app from your device before installing Nightzuku. Otherwise, they will conflict.
-Upstream project reference: <https://github.com/RikkaApps/Shizuku>
+## Documentation / Documentación
 
-## Fork additions
+* [Personal Adaptation Notice / Aviso de adaptación personal](docs/ADAPTATION_NOTICE.md)
+* [Fork Improvements / Mejoras del fork](docs/FORK_IMPROVEMENTS.md)
+* [Fork Changelog / Registro de cambios del fork](CHANGELOG_FORK.md)
+* [Release Notes / Notas de release](RELEASE_NOTES.md)
+* [Final Release Notes v1.0.0](RELEASE_FINAL_v1.0.0.md)
 
-- Jetpack Compose manager UI with Material 3 Expressive components, motion, switches, and rounded icon treatment.
-- Android 16/17 target work with current preview SDK/build tooling in this fork.
-- ADB Modules screen for installing and managing ZIP modules.
-- Module features: `module.prop`, banner, enable/disable switch, `action.sh`, policy-gated `service.sh`, local WebUI, delete, path checks, size limits, output limits, and last-run logs.
-- Module policy settings: Safe mode, Full access, and background action control.
-- Debug test module under `test-modules/adb-test-module.zip`.
+## Release
 
-## Documentation
+Latest stable fork release:
 
-- [ADB Modules guide](docs/adb-modules-guide.md)
-- [ADB Modules API reference](docs/adb-modules-api.md)
-- [Nightzuku Connectors API](docs/nightzuku-connectors.md)
-- [Android 17 Compatibility](docs/android-17-compatibility.md)
-- [Wear OS Compatibility](docs/wearos-compatibility.md)
-- [Android TV Support](docs/android-tv-support.md)
+* Tag: `v1.0.0-nightzuku-fork`
+* APK type: signed release
+* Build optimization: R8 + resource shrinking
+* APK size: approximately 3.6 MB
+* ADB pairing and Wireless Debugging validated on the maintainer device
 
-## Background
+## Important notice
 
-When developing apps that require root, the standard approach is running commands in a `su` shell. This is slow, unreliable due to text processing, and limited to available commands. Even with ADB, apps often require root for privileged operations.
+This fork intentionally avoids broad changes to sensitive areas such as server behavior, binder / IPC internals, authorization logic, permission granting or revoking, package identity, rish, shell runtime, automatic startup, foreground service behavior, Manifest changes, and Gradle changes unless they are reviewed explicitly.
 
-Nightzuku provides a high-performance alternative by allowing apps to use system APIs directly with elevated permissions.
+Some historical sensitive changes already present in the fork were audited and documented before preparing the stable release.
 
-## How does Nightzuku work?
+## Attribution
 
-Android uses `binder` for interprocess communication (IPC) between apps and the system server. The system server checks the UID/PID of the client to enforce permissions.
+This project is based on the original Nightzuku / Shizuku work. All original rights, licenses, and credits belong to their respective authors.
 
-Nightzuku guides users to start a Nightzuku server process with root or ADB. When an authorized app starts, it receives a binder to the Nightzuku server.
-
-Nightzuku acts as a proxy, receiving requests from the app and forwarding them to the system server. This allows apps to use system APIs with the server's elevated permissions (root or ADB), making it almost identical to using system APIs directly.
-
-## Screenshots
-
-<details>
-  <summary>📸 Click to open Screenshot Gallery</summary>
-  <br/>
-
-  ### Phone UI
-  <table>
-    <tr>
-      <td align="center"><img src="screenshots/phone/main.png" width="300" /><br/><b>Main Screen</b></td>
-      <td align="center"><img src="screenshots/phone/apps.png" width="300" /><br/><b>Authorized Apps</b></td>
-    </tr>
-    <tr>
-      <td align="center"><img src="screenshots/phone/modules.png" width="300" /><br/><b>ADB Modules</b></td>
-      <td align="center"><img src="screenshots/phone/module-webui.png" width="300" /><br/><b>Module WebUI</b></td>
-    </tr>
-    <tr>
-      <td colspan="2" align="center"><img src="screenshots/phone/settings.png" width="300" /><br/><b>Settings</b></td>
-    </tr>
-  </table>
-
-  ### Wear OS UI (Native Material 3)
-  <table>
-    <tr>
-      <td align="center"><img src="screenshots/wearos/wearos_main_scaled.png" width="200" /><br/><b>Main Screen</b></td>
-      <td align="center"><img src="screenshots/wearos/wearos_apps.png" width="200" /><br/><b>Authorized Apps</b></td>
-    </tr>
-    <tr>
-      <td align="center"><img src="screenshots/wearos/wearos_modules_scaled.png" width="200" /><br/><b>ADB Modules</b></td>
-      <td align="center"><img src="screenshots/wearos/wearos_settings_scaled.png" width="200" /><br/><b>Settings</b></td>
-    </tr>
-    <tr>
-      <td colspan="2" align="center"><img src="screenshots/wearos/wearos_dialog.png" width="200" /><br/><b>Theme Dialog</b></td>
-    </tr>
-  </table>
-
-  ### Android TV UI (Native Material 3)
-  <table>
-    <tr>
-      <td colspan="2" align="center"><img src="screenshots/tv/main.png" width="500" /><br/><b>Main Screen</b></td>
-    </tr>
-    <tr>
-      <td align="center"><img src="screenshots/tv/modules.png" width="400" /><br/><b>ADB Modules</b></td>
-      <td align="center"><img src="screenshots/tv/settings.png" width="400" /><br/><b>Settings</b></td>
-    </tr>
-  </table>
-</details>
-
-## Developer guide
-
-### API & sample
-
-Official API and samples are available at: <https://github.com/RikkaApps/Shizuku-API>
-
-### Technical Details
-
-1. **ADB Permissions**: ADB permissions vary by system version. Check available permissions in the [Shell AndroidManifest](https://github.com/aosp-mirror/platform_frameworks_base/blob/master/packages/Shell/AndroidManifest.xml). Use `ShizukuService#getUid` or `ShizukuService#checkPermission` to verify server capabilities.
-
-2. **Hidden API Restrictions**: From Android 9, hidden API usage is restricted. Use tools like [AndroidHiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass) if necessary.
-
-3. **Android 8.0 & ADB**: On API 26, ADB lacks permissions to use `registerUidObserver`. If your app process is not started by an Activity, you may need to start a transparent activity to trigger binder transmission.
-
-4. **Direct `transactRemote` Usage**: Signatures for hidden APIs change between Android versions. While `ShizukuBinderWrapper` handles most cases, direct transaction calls must be carefully verified against the target platform's AIDL definitions.
-
-## Developing Nightzuku
-
-### Build
-
-- Clone with `git clone --recurse-submodules`
-- Build with Gradle: `./gradlew :manager:assembleDebug`
-
-The `:manager:assembleDebug` task generates a debuggable server. Ensure "Always install with package manager" is checked in Android Studio to use the latest server code during debugging.
-
-## License
-
-All code is licensed under Apache 2.0.
-
-- **Icon Usage**: You may not use `manager/src/main/res/mipmap*/ic_launcher*.png` for anything other than displaying Nightzuku.
-- **Identity**: You may not use `Shizuku` as an app name or use `moe.shizuku.privileged.api` as an application ID in derived works. The current package identity is `kerneldroid.nightzuku`.
-
-
+This fork only represents my own adaptation, translation work, documentation, release preparation, and selected improvements.
