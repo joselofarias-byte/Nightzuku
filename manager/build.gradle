@@ -164,8 +164,8 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0-rc02'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0-rc02'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 
     implementation project(':server')
     implementation project(':rish')
@@ -196,7 +196,7 @@ dependencies {
 
     implementation 'androidx.activity:activity-compose:1.13.0'
     implementation 'androidx.browser:browser:1.10.0'
-    implementation 'androidx.core:core-ktx:1.19.0-alpha01'
+    implementation 'androidx.core:core-ktx:1.19.0'
     implementation 'androidx.fragment:fragment-ktx:1.8.9'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.11.0-beta01'
