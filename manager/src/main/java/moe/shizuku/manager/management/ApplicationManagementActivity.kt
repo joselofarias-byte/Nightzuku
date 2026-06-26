@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -118,15 +119,17 @@ class ApplicationManagementActivity : AppActivity() {
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                 val pm = LocalContext.current.packageManager
-                val apps = androidx.compose.runtime.remember(packages, tick) {
-                    packages.mapNotNull { pkg ->
-                        val appInfo = pkg.applicationInfo ?: return@mapNotNull null
-                        WearAppItem(
-                            label = appInfo.loadLabel(pm).toString(),
-                            packageName = pkg.packageName,
-                            uid = appInfo.uid,
-                            granted = moe.shizuku.manager.authorization.AuthorizationManager.granted(pkg.packageName, appInfo.uid)
-                        )
+                val apps by produceState(initialValue = emptyList<WearAppItem>(), packages, tick) {
+                    value = withContext(Dispatchers.IO) {
+                        packages.mapNotNull { pkg ->
+                            val appInfo = pkg.applicationInfo ?: return@mapNotNull null
+                            WearAppItem(
+                                label = appInfo.loadLabel(pm).toString(),
+                                packageName = pkg.packageName,
+                                uid = appInfo.uid,
+                                granted = moe.shizuku.manager.authorization.AuthorizationManager.granted(pkg.packageName, appInfo.uid)
+                            )
+                        }
                     }
                 }
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -212,10 +215,9 @@ class ApplicationManagementActivity : AppActivity() {
                 ShizukuExpressiveTheme {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val pm = LocalContext.current.packageManager
-                    val processedApps = remember(packages, tick, searchQuery) {
-                        val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
-                        packages
-                            .mapNotNull { pkg ->
+                    val allApps by produceState(initialValue = emptyList<AppDisplayInfo>(), packages, tick) {
+                        value = withContext(Dispatchers.IO) {
+                            packages.mapNotNull { pkg ->
                                 val appInfo = pkg.applicationInfo ?: return@mapNotNull null
                                 val label = appInfo.loadLabel(pm).toString()
                                 val uid = appInfo.uid
@@ -229,6 +231,11 @@ class ApplicationManagementActivity : AppActivity() {
                                 val granted = moe.shizuku.manager.authorization.AuthorizationManager.granted(pkg.packageName, uid)
                                 AppDisplayInfo(pkg = pkg, title = title, granted = granted)
                             }
+                        }
+                    }
+                    val processedApps = remember(allApps, searchQuery) {
+                        val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
+                        allApps
                             .filter { app ->
                                 searchQuery.isEmpty() ||
                                 app.title.contains(searchQuery, ignoreCase = true) ||
@@ -370,7 +377,7 @@ class ApplicationManagementActivity : AppActivity() {
                                                     processedApps.forEachIndexed { index, appInfo ->
                                                         AppPermissionRow(
                                                             packageInfo = appInfo.pkg,
-                                                            tick = tick,
+                                                            initialGranted = appInfo.granted,
                                                             onLimitedAdb = { showAdbLimitedDialog = true },
                                                             onPermissionChanged = {
                                                                 permissionTick.intValue++
@@ -454,7 +461,7 @@ class ApplicationManagementActivity : AppActivity() {
 @Composable
 private fun AppPermissionRow(
     packageInfo: PackageInfo,
-    tick: Int,
+    initialGranted: Boolean,
     onLimitedAdb: () -> Unit,
     onPermissionChanged: () -> Unit
 ) {
@@ -464,8 +471,8 @@ private fun AppPermissionRow(
     val applicationInfo = packageInfo.applicationInfo ?: return
     val uid = applicationInfo.uid
     val packageName = packageInfo.packageName
-    var granted by remember(packageName, uid, tick) {
-        mutableStateOf(AuthorizationManager.granted(packageName, uid))
+    var granted by remember(packageName, uid, initialGranted) {
+        mutableStateOf(initialGranted)
     }
     val userId = UserHandleCompat.getUserId(uid)
     val title = remember(packageName, userId) {
