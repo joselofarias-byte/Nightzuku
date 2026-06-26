@@ -15,9 +15,15 @@ object ShellBinderRequestHandler {
         }
 
         val binder = intent.getBundleExtra("data")?.getBinder("binder") ?: return false
-        val shizukuBinder = Shizuku.getBinder()
+        val shizukuBinder = try {
+            Shizuku.getBinder()
+        } catch (e: Throwable) {
+            LOGGER.w(e, "Binder not received or Shizuku service not running")
+            return false
+        }
         if (shizukuBinder == null) {
             LOGGER.w("Binder not received or Shizuku service not running")
+            return false
         }
 
         val data = Parcel.obtain()
