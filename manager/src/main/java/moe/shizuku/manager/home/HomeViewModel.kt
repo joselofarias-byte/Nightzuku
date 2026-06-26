@@ -7,10 +7,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Manifest
 import moe.shizuku.manager.model.ServiceStatus
+import moe.shizuku.manager.shizuku.ShizukuRuntimeStatus
+import moe.shizuku.manager.shizuku.ShizukuStatusRepository
 import moe.shizuku.manager.utils.Logger.LOGGER
 import moe.shizuku.manager.utils.ShizukuSystemApis
 import rikka.lifecycle.Resource
@@ -20,6 +24,15 @@ class HomeViewModel : ViewModel() {
 
     private val _serviceStatus = MutableLiveData<Resource<ServiceStatus>>()
     val serviceStatus = _serviceStatus as LiveData<Resource<ServiceStatus>>
+
+    private val statusRepository = ShizukuStatusRepository()
+    val runtimeStatus: StateFlow<ShizukuRuntimeStatus> = statusRepository.status
+
+    private var reloadJob: Job? = null
+
+    init {
+        statusRepository.start(viewModelScope)
+    }
 
     private fun load(): ServiceStatus {
         if (!Shizuku.pingBinder()) {
@@ -47,7 +60,8 @@ class HomeViewModel : ViewModel() {
     }
 
     fun reload() {
-        viewModelScope.launch(Dispatchers.IO) {
+        reloadJob?.cancel()
+        reloadJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val status = load()
                 _serviceStatus.postValue(Resource.success(status))
@@ -57,5 +71,14 @@ class HomeViewModel : ViewModel() {
                 _serviceStatus.postValue(Resource.error(e, ServiceStatus()))
             }
         }
+    }
+
+    fun refreshRuntimeStatus() {
+        statusRepository.refresh()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        statusRepository.stop()
     }
 }
