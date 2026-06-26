@@ -44,6 +44,7 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.lifecycleScope
 import moe.shizuku.manager.R
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.authorization.AuthorizationManager
@@ -67,6 +69,9 @@ import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.lifecycle.Status
 import rikka.shizuku.Shizuku
 import java.text.Collator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ApplicationManagementActivity : AppActivity() {
 
@@ -129,16 +134,26 @@ class ApplicationManagementActivity : AppActivity() {
                         apps = apps,
                         isLoading = packagesResource == null,
                         onToggle = { app ->
-                            try {
-                                if (app.granted) {
-                                    moe.shizuku.manager.authorization.AuthorizationManager.revoke(app.packageName, app.uid)
-                                } else {
-                                    moe.shizuku.manager.authorization.AuthorizationManager.grant(app.packageName, app.uid)
+                            lifecycleScope.launch {
+                                val limitedByAdb = withContext(Dispatchers.IO) {
+                                    try {
+                                        if (app.granted) {
+                                            moe.shizuku.manager.authorization.AuthorizationManager.revoke(app.packageName, app.uid)
+                                        } else {
+                                            moe.shizuku.manager.authorization.AuthorizationManager.grant(app.packageName, app.uid)
+                                        }
+                                        false
+                                    } catch (_: SecurityException) {
+                                        true
+                                    }
                                 }
-                                permissionTick.intValue++
-                                viewModel.load(onlyCount = true)
-                            } catch (_: SecurityException) {
-                                showAdbLimitedDialog = true
+
+                                if (limitedByAdb) {
+                                    showAdbLimitedDialog = true
+                                } else {
+                                    permissionTick.intValue++
+                                    viewModel.load(onlyCount = true)
+                                }
                             }
                         }
                     )
@@ -161,19 +176,29 @@ class ApplicationManagementActivity : AppActivity() {
                             onNavigateUp = { finish() },
                             onToggle = { pkg ->
                                 val applicationInfo = pkg.applicationInfo ?: return@TvApplicationManagementScreen
-                                try {
-                                    if (AuthorizationManager.granted(pkg.packageName, applicationInfo.uid)) {
-                                        AuthorizationManager.revoke(pkg.packageName, applicationInfo.uid)
-                                    } else {
-                                        AuthorizationManager.grant(pkg.packageName, applicationInfo.uid)
+                                lifecycleScope.launch {
+                                    val limitedByAdb = withContext(Dispatchers.IO) {
+                                        try {
+                                            if (AuthorizationManager.granted(pkg.packageName, applicationInfo.uid)) {
+                                                AuthorizationManager.revoke(pkg.packageName, applicationInfo.uid)
+                                            } else {
+                                                AuthorizationManager.grant(pkg.packageName, applicationInfo.uid)
+                                            }
+                                            false
+                                        } catch (_: SecurityException) {
+                                            true
+                                        }
                                     }
-                                    permissionTick.intValue++
-                                    viewModel.load(onlyCount = true)
-                                } catch (_: SecurityException) {
-                                    showAdbLimitedDialog = true
+
+                                    if (limitedByAdb) {
+                                        showAdbLimitedDialog = true
+                                    } else {
+                                        permissionTick.intValue++
+                                        viewModel.load(onlyCount = true)
+                                    }
                                 }
                             },
-                            onSelectAll = { if (selectAll(packages, it)) showAdbLimitedDialog = true }
+                            onSelectAll = { selectAll(packages, it) { showAdbLimitedDialog = true } }
                         )
 
                         if (showAdbLimitedDialog) {
@@ -237,14 +262,14 @@ class ApplicationManagementActivity : AppActivity() {
                                             text = { Text(stringResource(R.string.app_management_select_all)) },
                                             onClick = {
                                                 menuExpanded = false
-                                                if (selectAll(packages, true)) showAdbLimitedDialog = true
+                                                selectAll(packages, true) { showAdbLimitedDialog = true }
                                             }
                                         )
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.app_management_deselect_all)) },
                                             onClick = {
                                                 menuExpanded = false
-                                                if (selectAll(packages, false)) showAdbLimitedDialog = true
+                                                selectAll(packages, false) { showAdbLimitedDialog = true }
                                             }
                                         )
                                     }
@@ -379,25 +404,38 @@ class ApplicationManagementActivity : AppActivity() {
         }
     }
 
-    private fun selectAll(packages: List<PackageInfo>, granted: Boolean): Boolean {
-        var hadSecurityException = false
-        packages.forEach { packageInfo ->
-            val applicationInfo = packageInfo.applicationInfo ?: return@forEach
-            val uid = applicationInfo.uid
-            val packageName = packageInfo.packageName
-            try {
-                if (granted) {
-                    AuthorizationManager.grant(packageName, uid)
-                } else {
-                    AuthorizationManager.revoke(packageName, uid)
+    private fun selectAll(
+        packages: List<PackageInfo>,
+        granted: Boolean,
+        onLimitedAdb: () -> Unit
+    ) {
+        lifecycleScope.launch {
+            val hadSecurityException = withContext(Dispatchers.IO) {
+                var limitedByAdb = false
+                packages.forEach { packageInfo ->
+                    val applicationInfo = packageInfo.applicationInfo ?: return@forEach
+                    val uid = applicationInfo.uid
+                    val packageName = packageInfo.packageName
+                    try {
+                        if (granted) {
+                            AuthorizationManager.grant(packageName, uid)
+                        } else {
+                            AuthorizationManager.revoke(packageName, uid)
+                        }
+                    } catch (_: SecurityException) {
+                        limitedByAdb = true
+                    }
                 }
-            } catch (_: SecurityException) {
-                hadSecurityException = true
+                limitedByAdb
+            }
+
+            permissionTick.intValue++
+            viewModel.load(onlyCount = true)
+
+            if (hadSecurityException) {
+                onLimitedAdb()
             }
         }
-        permissionTick.intValue++
-        viewModel.load(onlyCount = true)
-        return hadSecurityException
     }
 
     override fun onDestroy() {
@@ -422,6 +460,7 @@ private fun AppPermissionRow(
 ) {
     val context = LocalContext.current
     val pm = context.packageManager
+    val coroutineScope = rememberCoroutineScope()
     val applicationInfo = packageInfo.applicationInfo ?: return
     val uid = applicationInfo.uid
     val packageName = packageInfo.packageName
@@ -444,22 +483,31 @@ private fun AppPermissionRow(
     val requiresRoot = applicationInfo.requiresRoot()
 
     fun toggle() {
-        try {
-            if (granted) {
-                AuthorizationManager.revoke(packageName, uid)
-            } else {
-                AuthorizationManager.grant(packageName, uid)
+        val previousGranted = granted
+        coroutineScope.launch {
+            val limitedByAdb = withContext(Dispatchers.IO) {
+                try {
+                    if (previousGranted) {
+                        AuthorizationManager.revoke(packageName, uid)
+                    } else {
+                        AuthorizationManager.grant(packageName, uid)
+                    }
+                    false
+                } catch (_: SecurityException) {
+                    val serverUid = try {
+                        Shizuku.getUid()
+                    } catch (_: Throwable) {
+                        return@withContext false
+                    }
+                    serverUid != 0
+                }
             }
-            granted = !granted
-            onPermissionChanged()
-        } catch (_: SecurityException) {
-            val serverUid = try {
-                Shizuku.getUid()
-            } catch (_: Throwable) {
-                return
-            }
-            if (serverUid != 0) {
+
+            if (limitedByAdb) {
                 onLimitedAdb()
+            } else {
+                granted = !previousGranted
+                onPermissionChanged()
             }
         }
     }
