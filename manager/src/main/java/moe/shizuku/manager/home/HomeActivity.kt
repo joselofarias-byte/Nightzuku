@@ -75,10 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
@@ -109,13 +106,11 @@ import rikka.html.text.HtmlCompat as RikkaHtmlCompat
 abstract class HomeActivity : AppActivity() {
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        checkServerStatus()
         appsModel.load()
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
         AdbModuleManager.resetServiceRunGuard()
-        checkServerStatus()
     }
 
     private val homeModel by viewModels { HomeViewModel() }
@@ -143,19 +138,15 @@ abstract class HomeActivity : AppActivity() {
 
         setContent {
             val serviceResource by homeModel.serviceStatus.observeAsState()
+            val runtimeStatus by homeModel.runtimeStatus.collectAsStateWithLifecycle()
             val grantedResource by appsModel.grantedCount.observeAsState()
             val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
             val localNetworkPermissionState = remember(permissionRefreshTick.intValue) {
                 buildLocalNetworkPermissionState()
             }
 
-            LaunchedEffect(Unit) {
-                this@HomeActivity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    while (isActive) {
-                        homeModel.reload()
-                        delay(5000)
-                    }
-                }
+            LaunchedEffect(runtimeStatus) {
+                homeModel.reload()
             }
 
             LaunchedEffect(serviceResource?.status, serviceResource?.data?.uid) {
