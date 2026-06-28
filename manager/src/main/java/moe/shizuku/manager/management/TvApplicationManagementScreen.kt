@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +45,13 @@ import moe.shizuku.manager.authorization.AuthorizationManager
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.utils.ShizukuSystemApis
 import moe.shizuku.manager.utils.UserHandleCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private data class TvAppDisplayInfo(
+    val packageInfo: PackageInfo,
+    val granted: Boolean
+)
 
 @Composable
 fun TvApplicationManagementScreen(
@@ -108,6 +116,18 @@ fun TvApplicationManagementScreen(
                 )
             }
         } else {
+            val tvApps by produceState(initialValue = emptyList<TvAppDisplayInfo>(), packages, tick) {
+                value = withContext(Dispatchers.IO) {
+                    packages.mapNotNull { pkg ->
+                        val applicationInfo = pkg.applicationInfo ?: return@mapNotNull null
+                        TvAppDisplayInfo(
+                            packageInfo = pkg,
+                            granted = AuthorizationManager.granted(pkg.packageName, applicationInfo.uid)
+                        )
+                    }
+                }
+            }
+
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(300.dp),
                 modifier = Modifier.fillMaxSize(),
@@ -115,11 +135,11 @@ fun TvApplicationManagementScreen(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(packages) { pkg ->
+                items(tvApps) { app ->
                     TvAppCard(
-                        packageInfo = pkg,
-                        tick = tick,
-                        onClick = { onToggle(pkg) }
+                        packageInfo = app.packageInfo,
+                        granted = app.granted,
+                        onClick = { onToggle(app.packageInfo) }
                     )
                 }
             }
@@ -157,7 +177,7 @@ private fun TvMenuButton(
 @Composable
 private fun TvAppCard(
     packageInfo: PackageInfo,
-    tick: Int,
+    granted: Boolean,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -165,9 +185,7 @@ private fun TvAppCard(
     val applicationInfo = packageInfo.applicationInfo ?: return
     val uid = applicationInfo.uid
     val packageName = packageInfo.packageName
-    val granted = remember(packageName, uid, tick) {
-        AuthorizationManager.granted(packageName, uid)
-    }
+
     val userId = UserHandleCompat.getUserId(uid)
     val title = remember(packageName, userId) {
         val label = applicationInfo.loadLabel(pm).toString()
