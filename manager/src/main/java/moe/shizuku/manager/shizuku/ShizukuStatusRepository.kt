@@ -27,7 +27,7 @@ class ShizukuStatusRepository {
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        _status.value = ShizukuRuntimeStatus.NotRunning
+        _status.value = ShizukuRuntimeStatus.NotRunning()
     }
 
     fun start(coroutineScope: CoroutineScope) {
@@ -38,7 +38,7 @@ class ShizukuStatusRepository {
         pollingJob = coroutineScope.launch(Dispatchers.IO) {
             while (isActive) {
                 _status.value = computeStatus()
-                delay(12_000L)
+                delay(nextDelay(_status.value))
             }
         }
     }
@@ -57,15 +57,27 @@ class ShizukuStatusRepository {
         }
     }
 
+    // ponytail: adaptive polling interval.
+    // faster when server is down so the UI reacts quickly to startup.
+    // slower when running to save battery.
+    // replace with exponential backoff if reconnect storms appear.
+    private fun nextDelay(status: ShizukuRuntimeStatus): Long = when (status) {
+        is ShizukuRuntimeStatus.Running -> 12_000L
+        is ShizukuRuntimeStatus.NotRunning -> 4_000L
+        is ShizukuRuntimeStatus.PermissionRequired -> 8_000L
+        is ShizukuRuntimeStatus.Error -> 4_000L
+        is ShizukuRuntimeStatus.Connecting -> 4_000L
+    }
+
     private fun computeStatus(): ShizukuRuntimeStatus {
         return try {
             if (!Shizuku.pingBinder()) {
-                return ShizukuRuntimeStatus.NotRunning
+                return ShizukuRuntimeStatus.NotRunning()
             }
             if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                return ShizukuRuntimeStatus.PermissionRequired
+                return ShizukuRuntimeStatus.PermissionRequired()
             }
-            ShizukuRuntimeStatus.Running
+            ShizukuRuntimeStatus.Running()
         } catch (e: Throwable) {
             ShizukuRuntimeStatus.Error(e)
         }
