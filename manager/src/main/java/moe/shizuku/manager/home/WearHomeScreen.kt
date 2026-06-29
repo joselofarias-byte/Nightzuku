@@ -48,6 +48,7 @@ internal fun WearHomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
+    lastChecked: Long,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
     onRefresh: () -> Unit,

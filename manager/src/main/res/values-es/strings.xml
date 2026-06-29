@@ -48,6 +48,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="diagnostic_full">completo</string>
     <string name="diagnostic_limited">limitado</string>
     <string name="diagnostic_authorized_apps">Aplicaciones autorizadas</string>
+    <string name="diagnostic_last_checked">Última comprobación</string>
     <string name="home_local_network_permission_denied">El acceso a la red local es requerido para la Depuración inalámbrica.</string>
 
     <!-- Adb -->

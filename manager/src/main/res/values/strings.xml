@@ -50,6 +50,7 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="diagnostic_full">full</string>
     <string name="diagnostic_limited">limited</string>
     <string name="diagnostic_authorized_apps">Authorized apps</string>
+    <string name="diagnostic_last_checked">Last checked</string>
 
     <!-- Adb -->
     <string name="dialog_adb_discovery">Searching for wireless debugging service</string>

@@ -56,6 +56,7 @@ internal fun TVHomeScreen(
     grantedResource: Resource<Int>?,
     unauthorizedResource: Resource<Int>?,
     localNetworkPermissionState: LocalNetworkPermissionState,
+    lastChecked: Long,
     isPrimaryUser: Boolean,
     isRooted: Boolean,
     onRefresh: () -> Unit,
@@ -84,8 +85,8 @@ internal fun TVHomeScreen(
     val adbPermission = status.permission
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
 
-    val diagnostics = remember(status, grantedCount, localNetworkPermissionState) {
-        buildDiagnostics(context, status, grantedCount, localNetworkPermissionState)
+    val diagnostics = remember(status, grantedCount, localNetworkPermissionState, lastChecked) {
+        buildDiagnostics(context, status, grantedCount, localNetworkPermissionState, lastChecked)
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
@@ -605,7 +606,8 @@ private fun buildDiagnostics(
     context: android.content.Context,
     status: ServiceStatus,
     grantedCount: Int,
-    localNetworkPermissionState: LocalNetworkPermissionState
+    localNetworkPermissionState: LocalNetworkPermissionState,
+    lastChecked: Long
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
@@ -634,6 +636,11 @@ private fun buildDiagnostics(
     } else {
         context.getString(R.string.diagnostic_limited)
     }
+    val lastCheckedLabel = if (lastChecked > 0L) {
+        formatRelativeTime(context, lastChecked)
+    } else {
+        null
+    }
 
     return buildString {
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
@@ -645,5 +652,20 @@ private fun buildDiagnostics(
         appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
         appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
         appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
+        if (lastCheckedLabel != null) {
+            appendLine("${context.getString(R.string.diagnostic_last_checked)}: $lastCheckedLabel")
+        }
     }.trim()
+}
+
+// ponytail: minimal relative time formatter for diagnostics.
+// uses DateUtils.getRelativeTimeSpanString so we get locale-aware "x seconds ago".
+// good enough for a diagnostic line; no need for a dedicated formatter dependency.
+private fun formatRelativeTime(context: android.content.Context, timeMillis: Long): String {
+    return android.text.format.DateUtils.getRelativeTimeSpanString(
+        timeMillis,
+        System.currentTimeMillis(),
+        android.text.format.DateUtils.SECOND_IN_MILLIS,
+        android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE
+    ).toString()
 }
