@@ -140,11 +140,13 @@ class AdbMdns(
 
         private val endpoints = ConcurrentHashMap<String, AdbEndpoint>()
 
+        internal fun getDiscoveredEndpoint(serviceType: String): AdbEndpoint? = endpoints[serviceType]
+
         internal fun getResolvedEndpoint(serviceType: String): AdbEndpoint? {
             if (serviceType == TLS_CONNECT) {
                 AdbTransportResolver.persistentTcpEndpoint()?.let { return it }
             }
-            return endpoints[serviceType]
+            return getDiscoveredEndpoint(serviceType)
         }
     }
 }
