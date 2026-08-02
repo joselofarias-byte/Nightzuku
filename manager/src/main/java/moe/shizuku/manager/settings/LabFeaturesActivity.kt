@@ -5,34 +5,37 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
-import androidx.wear.compose.material3.Text as WearText
-import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.AlertDialog as WearAlertDialog
 import androidx.wear.compose.material3.Button as WearButton
 import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButton
+import androidx.wear.compose.material3.Icon as WearIcon
+import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
+import androidx.wear.compose.material3.Text as WearText
 import moe.shizuku.manager.R
+import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.module.ModuleSettings
+import moe.shizuku.manager.ui.compose.GroupDivider
 import moe.shizuku.manager.ui.compose.SettingsGroup
+import moe.shizuku.manager.ui.compose.SettingsRow
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
 import moe.shizuku.manager.ui.compose.SwitchSettingsRow
@@ -43,7 +46,12 @@ class LabFeaturesActivity : AppActivity() {
 
         setContent {
             var connectorEnabled by remember { mutableStateOf(ModuleSettings.isConnectorEnabled()) }
+            var tcpEnabled by remember { mutableStateOf(ShizukuSettings.isAdbTcpEnabled()) }
+            var tcpHost by remember { mutableStateOf(ShizukuSettings.getAdbTcpHost()) }
+            var tcpPort by remember { mutableStateOf(ShizukuSettings.getAdbTcpPort().toString()) }
+            var tcpError by remember { mutableStateOf<String?>(null) }
             var showUnsafeDialog by remember { mutableStateOf(false) }
+            var showTcpDialog by remember { mutableStateOf(false) }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@LabFeaturesActivity)
             if (isWatch) {
@@ -65,20 +73,15 @@ class LabFeaturesActivity : AppActivity() {
                                 WearSwitchButton(
                                     checked = connectorEnabled,
                                     onCheckedChange = { enabled ->
-                                        if (enabled) {
-                                            showUnsafeDialog = true
-                                        } else {
+                                        if (enabled) showUnsafeDialog = true
+                                        else {
                                             connectorEnabled = false
                                             ModuleSettings.setConnectorEnabled(false)
                                         }
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    label = {
-                                        WearText(text = stringResource(R.string.shizuku_connectors_title))
-                                    },
-                                    secondaryLabel = {
-                                        WearText(text = stringResource(R.string.shizuku_connectors_summary))
-                                    },
+                                    label = { WearText(stringResource(R.string.shizuku_connectors_title)) },
+                                    secondaryLabel = { WearText(stringResource(R.string.shizuku_connectors_summary)) },
                                     icon = {
                                         WearIcon(
                                             painter = painterResource(R.drawable.ic_baseline_link_24),
@@ -101,9 +104,7 @@ class LabFeaturesActivity : AppActivity() {
                                     showUnsafeDialog = false
                                     connectorEnabled = true
                                     ModuleSettings.setConnectorEnabled(true)
-                                }) {
-                                    WearText(stringResource(android.R.string.ok))
-                                }
+                                }) { WearText(stringResource(android.R.string.ok)) }
                             },
                             dismissButton = {
                                 WearFilledTonalButton(onClick = { showUnsafeDialog = false }) {
@@ -127,12 +128,41 @@ class LabFeaturesActivity : AppActivity() {
                                     summary = stringResource(R.string.shizuku_connectors_summary),
                                     checked = connectorEnabled,
                                     onCheckedChange = { enabled ->
-                                        if (enabled) {
-                                            showUnsafeDialog = true
-                                        } else {
+                                        if (enabled) showUnsafeDialog = true
+                                        else {
                                             connectorEnabled = false
                                             ModuleSettings.setConnectorEnabled(false)
                                         }
+                                    }
+                                )
+                            }
+                        }
+
+                        item {
+                            SettingsGroup(title = "ADB TCP/IP") {
+                                SwitchSettingsRow(
+                                    icon = R.drawable.ic_adb_24dp,
+                                    title = "Persistent TCP transport",
+                                    summary = if (tcpEnabled) "$tcpHost:$tcpPort" else "Disabled; wireless mDNS remains preferred",
+                                    checked = tcpEnabled,
+                                    onCheckedChange = { enabled ->
+                                        if (enabled) {
+                                            tcpError = null
+                                            showTcpDialog = true
+                                        } else {
+                                            ShizukuSettings.setAdbTcpEnabled(false)
+                                            tcpEnabled = false
+                                        }
+                                    }
+                                )
+                                GroupDivider()
+                                SettingsRow(
+                                    icon = R.drawable.ic_settings_outline_24dp,
+                                    title = "TCP endpoint",
+                                    summary = "$tcpHost:$tcpPort",
+                                    onClick = {
+                                        tcpError = null
+                                        showTcpDialog = true
                                     }
                                 )
                             }
@@ -149,12 +179,64 @@ class LabFeaturesActivity : AppActivity() {
                                     showUnsafeDialog = false
                                     connectorEnabled = true
                                     ModuleSettings.setConnectorEnabled(true)
-                                }) {
-                                    Text(stringResource(android.R.string.ok))
-                                }
+                                }) { Text(stringResource(android.R.string.ok)) }
                             },
                             dismissButton = {
                                 TextButton(onClick = { showUnsafeDialog = false }) {
+                                    Text(stringResource(android.R.string.cancel))
+                                }
+                            }
+                        )
+                    }
+
+                    if (showTcpDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showTcpDialog = false },
+                            title = { Text("Persistent ADB TCP endpoint") },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("Use only an endpoint you explicitly configured and trust. This setting does not open a TCP port by itself.")
+                                    OutlinedTextField(
+                                        value = tcpHost,
+                                        onValueChange = {
+                                            tcpHost = it
+                                            tcpError = null
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Host") },
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = tcpPort,
+                                        onValueChange = {
+                                            tcpPort = it.filter(Char::isDigit).take(5)
+                                            tcpError = null
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Port") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        isError = tcpError != null,
+                                        supportingText = tcpError?.let { message -> {{ Text(message) }} }
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    val port = tcpPort.toIntOrNull()
+                                    val saved = port != null && ShizukuSettings.setAdbTcpEndpoint(true, tcpHost, port)
+                                    if (saved) {
+                                        tcpHost = ShizukuSettings.getAdbTcpHost()
+                                        tcpPort = ShizukuSettings.getAdbTcpPort().toString()
+                                        tcpEnabled = true
+                                        showTcpDialog = false
+                                    } else {
+                                        tcpError = "Enter a host and a port from 1 to 65535"
+                                    }
+                                }) { Text(stringResource(android.R.string.ok)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showTcpDialog = false }) {
                                     Text(stringResource(android.R.string.cancel))
                                 }
                             }
