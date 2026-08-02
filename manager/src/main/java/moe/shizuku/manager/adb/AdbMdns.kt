@@ -11,6 +11,12 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
+import java.util.concurrent.ConcurrentHashMap
+
+internal data class AdbEndpoint(
+    val host: String,
+    val port: Int
+)
 
 @RequiresApi(Build.VERSION_CODES.R)
 class AdbMdns(
@@ -55,7 +61,7 @@ class AdbMdns(
 
     private fun onServiceLost(info: NsdServiceInfo) {
         if (info.serviceName == serviceName) {
-            clearEndpoint(serviceType)
+            endpoints.remove(serviceType)
             observer.onChanged(-1)
         }
     }
@@ -63,7 +69,6 @@ class AdbMdns(
     private fun onServiceResolved(resolvedService: NsdServiceInfo) {
         val host = resolvedService.host?.hostAddress ?: return
         val port = resolvedService.port
-
         if (running && NetworkInterface.getNetworkInterfaces()
                 .asSequence()
                 .any { networkInterface ->
@@ -74,7 +79,7 @@ class AdbMdns(
             && isPortAvailable(host, port)
         ) {
             serviceName = resolvedService.serviceName
-            setEndpoint(serviceType, AdbEndpoint(host, port))
+            endpoints[serviceType] = AdbEndpoint(host, port)
             observer.onChanged(port)
         }
     }
@@ -84,7 +89,7 @@ class AdbMdns(
             it.bind(InetSocketAddress(host, port), 1)
             false
         }
-    } catch (_: IOException) {
+    } catch (e: IOException) {
         true
     }
 
@@ -133,28 +138,8 @@ class AdbMdns(
         const val TLS_PAIRING = "_adb-tls-pairing._tcp"
         const val TAG = "AdbMdns"
 
-        private val endpointLock = Any()
-        private val endpoints = mutableMapOf<String, AdbEndpoint>()
+        private val endpoints = ConcurrentHashMap<String, AdbEndpoint>()
 
-        fun getResolvedEndpoint(serviceType: String): AdbEndpoint? = synchronized(endpointLock) {
-            endpoints[serviceType]
-        }
-
-        private fun setEndpoint(serviceType: String, endpoint: AdbEndpoint) {
-            synchronized(endpointLock) {
-                endpoints[serviceType] = endpoint
-            }
-        }
-
-        private fun clearEndpoint(serviceType: String) {
-            synchronized(endpointLock) {
-                endpoints.remove(serviceType)
-            }
-        }
+        internal fun getResolvedEndpoint(serviceType: String): AdbEndpoint? = endpoints[serviceType]
     }
 }
-
-data class AdbEndpoint(
-    val host: String,
-    val port: Int
-)
