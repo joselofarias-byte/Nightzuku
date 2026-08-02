@@ -151,8 +151,8 @@ class LabFeaturesActivity : AppActivity() {
                                     title = "Persistent TCP transport",
                                     summary = tcpStatus ?: if (tcpEnabled) "$tcpHost:$tcpPort" else "Disabled; wireless mDNS remains preferred",
                                     checked = tcpEnabled,
-                                    enabled = !tcpBusy,
                                     onCheckedChange = { enabled ->
+                                        if (tcpBusy) return@SwitchSettingsRow
                                         tcpStatus = null
                                         if (enabled) {
                                             tcpError = null
@@ -173,8 +173,8 @@ class LabFeaturesActivity : AppActivity() {
                                     icon = R.drawable.ic_settings_outline_24dp,
                                     title = "TCP endpoint",
                                     summary = "$tcpHost:$tcpPort",
-                                    enabled = !tcpBusy,
                                     onClick = {
+                                        if (tcpBusy) return@SettingsRow
                                         tcpError = null
                                         tcpStatus = null
                                         showTcpDialog = true
