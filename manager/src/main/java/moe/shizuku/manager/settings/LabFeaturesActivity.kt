@@ -217,7 +217,9 @@ class LabFeaturesActivity : AppActivity() {
                                         singleLine = true,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         isError = tcpError != null,
-                                        supportingText = tcpError?.let { message -> {{ Text(message) }} }
+                                        supportingText = tcpError?.let { message ->
+                                            { Text(message) }
+                                        }
                                     )
                                 }
                             },
