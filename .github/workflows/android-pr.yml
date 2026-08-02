@@ -1,6 +1,11 @@
 name: Android PR build
 
 on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+      - 'research/**'
   pull_request:
     branches:
       - main
