@@ -33,13 +33,12 @@ object AdbTcpController {
             append("stop adbd; start adbd")
         }
 
+        // Restarting adbd normally drops the socket before ADB can return a final close packet.
+        // Verification below is authoritative, so that disconnect is intentionally tolerated.
         runCatching { execute(source, command) }
-            .onFailure {
-                return@withContext Result(false, it.message ?: "Unable to request TCP mode")
-            }
 
         if (!awaitReachable(normalizedHost, port)) {
-            return@withContext Result(false, "TCP port did not become reachable")
+            return@withContext Result(false, "TCP port did not become reachable; previous setting was preserved")
         }
 
         if (!ShizukuSettings.setAdbTcpEndpoint(true, normalizedHost, port)) {
@@ -63,13 +62,10 @@ object AdbTcpController {
         }
 
         runCatching { execute(tcpEndpoint, command) }
-            .onFailure {
-                return@withContext Result(false, it.message ?: "Unable to disable TCP mode")
-            }
 
         delay(RESTART_SETTLE_MS)
         if (isReachable(tcpEndpoint.host, tcpEndpoint.port)) {
-            return@withContext Result(false, "TCP endpoint is still reachable; setting preserved")
+            return@withContext Result(false, "TCP endpoint is still reachable; setting was preserved")
         }
 
         ShizukuSettings.setAdbTcpEnabled(false)
