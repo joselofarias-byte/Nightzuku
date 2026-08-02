@@ -212,9 +212,10 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 startRoot()
             } else {
                 val discovered = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
-                val resolvedHost = discovered?.host?.takeIf { host.isNullOrBlank() || host == LOOPBACK_HOST } ?: host
-                val resolvedPort = discovered?.port?.takeIf { port <= 0 || resolvedHost != host } ?: port
-                startAdb(requireNotNull(resolvedHost), resolvedPort)
+                val useDiscovered = discovered != null && (host.isNullOrBlank() || host == LOOPBACK_HOST)
+                val resolvedHost = if (useDiscovered) discovered.host else requireNotNull(host)
+                val resolvedPort = if (useDiscovered) discovered.port else port
+                startAdb(resolvedHost, resolvedPort)
             }
         } catch (e: Throwable) {
             postResult(e)
