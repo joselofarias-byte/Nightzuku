@@ -25,6 +25,7 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
+import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.ui.compose.ExpressiveCard
@@ -210,7 +211,10 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
             if (root) {
                 startRoot()
             } else {
-                startAdb(host!!, port)
+                val discovered = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
+                val resolvedHost = discovered?.host?.takeIf { host.isNullOrBlank() || host == LOOPBACK_HOST } ?: host
+                val resolvedPort = discovered?.port?.takeIf { port <= 0 || resolvedHost != host } ?: port
+                startAdb(requireNotNull(resolvedHost), resolvedPort)
             }
         } catch (e: Throwable) {
             postResult(e)
@@ -311,5 +315,9 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 postResult(it)
             }
         }
+    }
+
+    companion object {
+        private const val LOOPBACK_HOST = "127.0.0.1"
     }
 }
