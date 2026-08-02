@@ -14,7 +14,8 @@ import java.net.ServerSocket
 
 @RequiresApi(Build.VERSION_CODES.R)
 class AdbMdns(
-    context: Context, private val serviceType: String,
+    context: Context,
+    private val serviceType: String,
     private val observer: Observer<Int>
 ) {
 
@@ -53,37 +54,43 @@ class AdbMdns(
     }
 
     private fun onServiceLost(info: NsdServiceInfo) {
-        if (info.serviceName == serviceName) observer.onChanged(-1)
+        if (info.serviceName == serviceName) {
+            clearEndpoint(serviceType)
+            observer.onChanged(-1)
+        }
     }
 
     private fun onServiceResolved(resolvedService: NsdServiceInfo) {
+        val host = resolvedService.host?.hostAddress ?: return
+        val port = resolvedService.port
+
         if (running && NetworkInterface.getNetworkInterfaces()
                 .asSequence()
                 .any { networkInterface ->
                     networkInterface.inetAddresses
                         .asSequence()
-                        .any { resolvedService.host.hostAddress == it.hostAddress }
+                        .any { host == it.hostAddress }
                 }
-            && isPortAvailable(resolvedService.port)
+            && isPortAvailable(host, port)
         ) {
             serviceName = resolvedService.serviceName
-            observer.onChanged(resolvedService.port)
+            setEndpoint(serviceType, AdbEndpoint(host, port))
+            observer.onChanged(port)
         }
     }
 
-    private fun isPortAvailable(port: Int) = try {
+    private fun isPortAvailable(host: String, port: Int) = try {
         ServerSocket().use {
-            it.bind(InetSocketAddress("127.0.0.1", port), 1)
+            it.bind(InetSocketAddress(host, port), 1)
             false
         }
-    } catch (e: IOException) {
+    } catch (_: IOException) {
         true
     }
 
     internal class DiscoveryListener(private val adbMdns: AdbMdns) : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String) {
             Log.v(TAG, "onDiscoveryStarted: $serviceType")
-
             adbMdns.onDiscoveryStart()
         }
 
@@ -93,7 +100,6 @@ class AdbMdns(
 
         override fun onDiscoveryStopped(serviceType: String) {
             Log.v(TAG, "onDiscoveryStopped: $serviceType")
-
             adbMdns.onDiscoveryStop()
         }
 
@@ -103,29 +109,52 @@ class AdbMdns(
 
         override fun onServiceFound(serviceInfo: NsdServiceInfo) {
             Log.v(TAG, "onServiceFound: ${serviceInfo.serviceName}")
-
             adbMdns.onServiceFound(serviceInfo)
         }
 
         override fun onServiceLost(serviceInfo: NsdServiceInfo) {
             Log.v(TAG, "onServiceLost: ${serviceInfo.serviceName}")
-
             adbMdns.onServiceLost(serviceInfo)
         }
     }
 
     internal class ResolveListener(private val adbMdns: AdbMdns) : NsdManager.ResolveListener {
-        override fun onResolveFailed(nsdServiceInfo: NsdServiceInfo, i: Int) {}
+        override fun onResolveFailed(nsdServiceInfo: NsdServiceInfo, errorCode: Int) {
+            Log.v(TAG, "onResolveFailed: ${nsdServiceInfo.serviceName}, $errorCode")
+        }
 
         override fun onServiceResolved(nsdServiceInfo: NsdServiceInfo) {
             adbMdns.onServiceResolved(nsdServiceInfo)
         }
-
     }
 
     companion object {
         const val TLS_CONNECT = "_adb-tls-connect._tcp"
         const val TLS_PAIRING = "_adb-tls-pairing._tcp"
         const val TAG = "AdbMdns"
+
+        private val endpointLock = Any()
+        private val endpoints = mutableMapOf<String, AdbEndpoint>()
+
+        fun getResolvedEndpoint(serviceType: String): AdbEndpoint? = synchronized(endpointLock) {
+            endpoints[serviceType]
+        }
+
+        private fun setEndpoint(serviceType: String, endpoint: AdbEndpoint) {
+            synchronized(endpointLock) {
+                endpoints[serviceType] = endpoint
+            }
+        }
+
+        private fun clearEndpoint(serviceType: String) {
+            synchronized(endpointLock) {
+                endpoints.remove(serviceType)
+            }
+        }
     }
 }
+
+data class AdbEndpoint(
+    val host: String,
+    val port: Int
+)
