@@ -40,6 +40,12 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
+      - name: Restore root Gradle wrapper jar
+        run: |
+          test -f api/gradle/wrapper/gradle-wrapper.jar
+          mkdir -p gradle/wrapper
+          cp api/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
+
       - name: Make Gradle executable
         run: chmod +x gradlew
 
