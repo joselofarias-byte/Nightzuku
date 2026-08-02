@@ -16,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -29,8 +30,10 @@ import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButto
 import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
 import androidx.wear.compose.material3.Text as WearText
+import kotlinx.coroutines.launch
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
+import moe.shizuku.manager.adb.AdbTcpController
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.module.ModuleSettings
 import moe.shizuku.manager.ui.compose.GroupDivider
@@ -45,11 +48,14 @@ class LabFeaturesActivity : AppActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
+            val scope = rememberCoroutineScope()
             var connectorEnabled by remember { mutableStateOf(ModuleSettings.isConnectorEnabled()) }
             var tcpEnabled by remember { mutableStateOf(ShizukuSettings.isAdbTcpEnabled()) }
             var tcpHost by remember { mutableStateOf(ShizukuSettings.getAdbTcpHost()) }
             var tcpPort by remember { mutableStateOf(ShizukuSettings.getAdbTcpPort().toString()) }
             var tcpError by remember { mutableStateOf<String?>(null) }
+            var tcpBusy by remember { mutableStateOf(false) }
+            var tcpStatus by remember { mutableStateOf<String?>(null) }
             var showUnsafeDialog by remember { mutableStateOf(false) }
             var showTcpDialog by remember { mutableStateOf(false) }
 
@@ -143,15 +149,22 @@ class LabFeaturesActivity : AppActivity() {
                                 SwitchSettingsRow(
                                     icon = R.drawable.ic_adb_24dp,
                                     title = "Persistent TCP transport",
-                                    summary = if (tcpEnabled) "$tcpHost:$tcpPort" else "Disabled; wireless mDNS remains preferred",
+                                    summary = tcpStatus ?: if (tcpEnabled) "$tcpHost:$tcpPort" else "Disabled; wireless mDNS remains preferred",
                                     checked = tcpEnabled,
+                                    enabled = !tcpBusy,
                                     onCheckedChange = { enabled ->
+                                        tcpStatus = null
                                         if (enabled) {
                                             tcpError = null
                                             showTcpDialog = true
                                         } else {
-                                            ShizukuSettings.setAdbTcpEnabled(false)
-                                            tcpEnabled = false
+                                            tcpBusy = true
+                                            scope.launch {
+                                                val result = AdbTcpController.disable()
+                                                tcpBusy = false
+                                                tcpStatus = result.message
+                                                if (result.success) tcpEnabled = false
+                                            }
                                         }
                                     }
                                 )
@@ -160,8 +173,10 @@ class LabFeaturesActivity : AppActivity() {
                                     icon = R.drawable.ic_settings_outline_24dp,
                                     title = "TCP endpoint",
                                     summary = "$tcpHost:$tcpPort",
+                                    enabled = !tcpBusy,
                                     onClick = {
                                         tcpError = null
+                                        tcpStatus = null
                                         showTcpDialog = true
                                     }
                                 )
@@ -191,11 +206,11 @@ class LabFeaturesActivity : AppActivity() {
 
                     if (showTcpDialog) {
                         AlertDialog(
-                            onDismissRequest = { showTcpDialog = false },
-                            title = { Text("Persistent ADB TCP endpoint") },
+                            onDismissRequest = { if (!tcpBusy) showTcpDialog = false },
+                            title = { Text("Enable persistent ADB TCP") },
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Use only an endpoint you explicitly configured and trust. This setting does not open a TCP port by itself.")
+                                    Text("Nightzuku will use the authenticated wireless-debugging session to restart adbd on this TCP port, verify that it is reachable, and save it only after verification.")
                                     OutlinedTextField(
                                         value = tcpHost,
                                         onValueChange = {
@@ -204,7 +219,8 @@ class LabFeaturesActivity : AppActivity() {
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                         label = { Text("Host") },
-                                        singleLine = true
+                                        singleLine = true,
+                                        enabled = !tcpBusy
                                     )
                                     OutlinedTextField(
                                         value = tcpPort,
@@ -215,32 +231,46 @@ class LabFeaturesActivity : AppActivity() {
                                         modifier = Modifier.fillMaxWidth(),
                                         label = { Text("Port") },
                                         singleLine = true,
+                                        enabled = !tcpBusy,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         isError = tcpError != null,
-                                        supportingText = tcpError?.let { message ->
-                                            { Text(message) }
-                                        }
+                                        supportingText = tcpError?.let { message -> { Text(message) } }
                                     )
+                                    if (tcpBusy) Text("Applying and verifying TCP mode…")
                                 }
                             },
                             confirmButton = {
-                                TextButton(onClick = {
-                                    val port = tcpPort.toIntOrNull()
-                                    val saved = port != null && ShizukuSettings.setAdbTcpEndpoint(true, tcpHost, port)
-                                    if (saved) {
-                                        tcpHost = ShizukuSettings.getAdbTcpHost()
-                                        tcpPort = ShizukuSettings.getAdbTcpPort().toString()
-                                        tcpEnabled = true
-                                        showTcpDialog = false
-                                    } else {
-                                        tcpError = "Enter a host and a port from 1 to 65535"
+                                TextButton(
+                                    enabled = !tcpBusy,
+                                    onClick = {
+                                        val port = tcpPort.toIntOrNull()
+                                        if (tcpHost.isBlank() || port == null || port !in 1..65535) {
+                                            tcpError = "Enter a host and a port from 1 to 65535"
+                                            return@TextButton
+                                        }
+                                        tcpBusy = true
+                                        tcpError = null
+                                        scope.launch {
+                                            val result = AdbTcpController.enable(tcpHost, port)
+                                            tcpBusy = false
+                                            tcpStatus = result.message
+                                            if (result.success) {
+                                                tcpHost = ShizukuSettings.getAdbTcpHost()
+                                                tcpPort = ShizukuSettings.getAdbTcpPort().toString()
+                                                tcpEnabled = true
+                                                showTcpDialog = false
+                                            } else {
+                                                tcpError = result.message
+                                            }
+                                        }
                                     }
-                                }) { Text(stringResource(android.R.string.ok)) }
+                                ) { Text("Enable") }
                             },
                             dismissButton = {
-                                TextButton(onClick = { showTcpDialog = false }) {
-                                    Text(stringResource(android.R.string.cancel))
-                                }
+                                TextButton(
+                                    enabled = !tcpBusy,
+                                    onClick = { showTcpDialog = false }
+                                ) { Text(stringResource(android.R.string.cancel)) }
                             }
                         )
                     }
