@@ -10,7 +10,7 @@ import moe.shizuku.manager.ShizukuSettings
  * 2. Current mDNS endpoint advertised by wireless debugging.
  * 3. Endpoint supplied by the caller.
  */
-object AdbTransportResolver {
+internal object AdbTransportResolver {
 
     private const val LOOPBACK_HOST = "127.0.0.1"
 
