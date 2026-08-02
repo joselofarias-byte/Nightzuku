@@ -8,8 +8,8 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * Changes adbd TCP mode through an already authenticated wireless-debugging session.
- * The preference is committed only after the requested endpoint becomes reachable.
+ * Changes adbd transport mode through the daemon's official restart services.
+ * The Nightzuku preference is committed only after the requested endpoint is verified.
  */
 object AdbTcpController {
 
@@ -27,18 +27,15 @@ object AdbTcpController {
         val source = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
             ?: return@withContext Result(false, "Wireless debugging endpoint is not available")
 
-        val command = buildString {
-            append("setprop service.adb.tcp.port ").append(port).append("; ")
-            append("setprop persist.adb.tcp.port ").append(port).append("; ")
-            append("stop adbd; start adbd")
-        }
-
-        // Restarting adbd normally drops the socket before ADB can return a final close packet.
-        // Verification below is authoritative, so that disconnect is intentionally tolerated.
-        runCatching { execute(source, command) }
+        // adbd closes the authenticated connection while switching transport.
+        // Reachability of the requested endpoint is the authoritative result.
+        runCatching { executeService(source, "tcpip:$port") }
 
         if (!awaitReachable(normalizedHost, port)) {
-            return@withContext Result(false, "TCP port did not become reachable; previous setting was preserved")
+            return@withContext Result(
+                false,
+                "TCP port did not become reachable; Nightzuku did not save the endpoint"
+            )
         }
 
         if (!ShizukuSettings.setAdbTcpEndpoint(true, normalizedHost, port)) {
@@ -55,13 +52,7 @@ object AdbTcpController {
                 return@withContext Result(true, "ADB TCP preference disabled")
             }
 
-        val command = buildString {
-            append("setprop service.adb.tcp.port -1; ")
-            append("setprop persist.adb.tcp.port -1; ")
-            append("stop adbd; start adbd")
-        }
-
-        runCatching { execute(tcpEndpoint, command) }
+        runCatching { executeService(tcpEndpoint, "usb:") }
 
         delay(RESTART_SETTLE_MS)
         if (isReachable(tcpEndpoint.host, tcpEndpoint.port)) {
@@ -72,11 +63,11 @@ object AdbTcpController {
         Result(true, "ADB TCP disabled")
     }
 
-    private fun execute(endpoint: AdbEndpoint, command: String) {
+    private fun executeService(endpoint: AdbEndpoint, service: String) {
         val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
         AdbClient(endpoint.host, endpoint.port, key).use { client ->
             client.connect()
-            client.shellCommand(command, null)
+            client.serviceCommand(service)
         }
     }
 
