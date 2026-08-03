@@ -15,19 +15,23 @@ import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.shizuku.Shizuku
 
 /**
- * Process-level watchdog that attempts to recover the Shizuku service after its binder dies.
+ * Process-level watchdog that keeps the Shizuku service aligned with the user's persisted
+ * desired state.
  *
- * Recovery deliberately reuses [StarterActivity], which is the same entry point used by the
- * successful manual wireless-ADB start flow. Attempts are bounded and cooled down to avoid
- * restart storms when ADB is unavailable or the saved endpoint is no longer usable.
+ * Any unexpected Binder loss is recoverable while [isDesiredRunning] is true. Recovery stops
+ * only after the user explicitly requests a manual stop. Attempts continue indefinitely with
+ * bounded backoff so temporary ADB, network or developer-option changes cannot permanently
+ * disable recovery.
  */
 object NightDogRecovery {
 
+    private const val PREFS_NAME = "nightdog_recovery"
+    private const val KEY_DESIRED_RUNNING = "desired_running"
+
     private const val POLL_INTERVAL_MS = 4_000L
     private const val RECOVERY_SETTLE_MS = 1_500L
-    private const val RECOVERY_COOLDOWN_MS = 8_000L
-    private const val MANUAL_STOP_SUPPRESSION_MS = 60_000L
-    private const val MAX_CONSECUTIVE_ATTEMPTS = 5
+    private const val MIN_RETRY_MS = 8_000L
+    private const val MAX_RETRY_MS = 60_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -41,18 +45,14 @@ object NightDogRecovery {
     private var recoveryJob: Job? = null
 
     @Volatile
-    private var consecutiveAttempts = 0
+    private var failedAttempts = 0
 
     @Volatile
     private var lastAttemptAt = 0L
 
-    @Volatile
-    private var recoverySuppressedUntil = 0L
-
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        consecutiveAttempts = 0
+        failedAttempts = 0
         lastAttemptAt = 0L
-        recoverySuppressedUntil = 0L
         recoveryJob?.cancel()
         recoveryJob = null
     }
@@ -63,18 +63,19 @@ object NightDogRecovery {
 
     @Synchronized
     fun start(context: Context) {
+        applicationContext = context.applicationContext
+        ensureDesiredStateInitialized(context)
         if (pollingJob?.isActive == true) return
 
-        applicationContext = context.applicationContext
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
 
         pollingJob = scope.launch {
             while (isActive) {
                 if (Shizuku.pingBinder()) {
-                    consecutiveAttempts = 0
+                    failedAttempts = 0
                     lastAttemptAt = 0L
-                } else {
+                } else if (isDesiredRunning()) {
                     requestRecovery()
                 }
                 delay(POLL_INTERVAL_MS)
@@ -82,17 +83,32 @@ object NightDogRecovery {
         }
     }
 
+    /** Records an explicit user request to keep the service running. */
+    @Synchronized
+    fun requestManualStart(context: Context) {
+        applicationContext = context.applicationContext
+        preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        failedAttempts = 0
+        lastAttemptAt = 0L
+        if (!Shizuku.pingBinder()) requestRecovery()
+    }
+
     /**
-     * Prevents the watchdog from undoing an explicit user-requested shutdown.
-     * The suppression is temporary so a later manual start can restore normal recovery.
+     * Records the only condition that disables automatic recovery: an explicit manual stop.
      */
     @Synchronized
-    fun prepareForManualStop() {
-        recoverySuppressedUntil = SystemClock.elapsedRealtime() + MANUAL_STOP_SUPPRESSION_MS
+    fun prepareForManualStop(context: Context) {
+        applicationContext = context.applicationContext
+        preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, false).apply()
         recoveryJob?.cancel()
         recoveryJob = null
-        consecutiveAttempts = 0
+        failedAttempts = 0
         lastAttemptAt = 0L
+    }
+
+    fun isDesiredRunning(context: Context? = applicationContext): Boolean {
+        val resolvedContext = context ?: return true
+        return preferences(resolvedContext).getBoolean(KEY_DESIRED_RUNNING, true)
     }
 
     @Synchronized
@@ -104,31 +120,47 @@ object NightDogRecovery {
         recoveryJob?.cancel()
         recoveryJob = null
         applicationContext = null
-        consecutiveAttempts = 0
+        failedAttempts = 0
         lastAttemptAt = 0L
-        recoverySuppressedUntil = 0L
+    }
+
+    private fun ensureDesiredStateInitialized(context: Context) {
+        val prefs = preferences(context)
+        if (!prefs.contains(KEY_DESIRED_RUNNING)) {
+            // Existing installations historically behaved as "keep running unless stopped".
+            prefs.edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        }
+    }
+
+    private fun preferences(context: Context) =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun retryDelayMs(): Long {
+        if (failedAttempts <= 0) return 0L
+        val shift = (failedAttempts - 1).coerceAtMost(3)
+        return (MIN_RETRY_MS shl shift).coerceAtMost(MAX_RETRY_MS)
     }
 
     private fun requestRecovery() {
         if (Shizuku.pingBinder()) return
-        if (SystemClock.elapsedRealtime() < recoverySuppressedUntil) return
+        if (!isDesiredRunning()) return
         if (recoveryJob?.isActive == true) return
-        if (consecutiveAttempts >= MAX_CONSECUTIVE_ATTEMPTS) return
 
         val now = SystemClock.elapsedRealtime()
-        if (lastAttemptAt != 0L && now - lastAttemptAt < RECOVERY_COOLDOWN_MS) return
+        val retryDelay = retryDelayMs()
+        if (lastAttemptAt != 0L && now - lastAttemptAt < retryDelay) return
 
         recoveryJob = scope.launch {
             delay(RECOVERY_SETTLE_MS)
-            if (Shizuku.pingBinder()) return@launch
-            if (SystemClock.elapsedRealtime() < recoverySuppressedUntil) return@launch
+            if (Shizuku.pingBinder() || !isDesiredRunning()) return@launch
 
             val context = applicationContext ?: return@launch
             val port = EnvironmentUtils.getAdbTcpPort()
-            if (port <= 0) return@launch
 
-            consecutiveAttempts++
+            failedAttempts++
             lastAttemptAt = SystemClock.elapsedRealtime()
+
+            if (port <= 0) return@launch
 
             val intent = Intent(context, StarterActivity::class.java).apply {
                 putExtra(StarterActivity.EXTRA_IS_ROOT, false)
