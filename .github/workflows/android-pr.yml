@@ -11,6 +11,7 @@ on:
       - main
       - feature/adb-mdns-endpoint
       - feature/adb-tcp-persistence
+      - fix/nightdog-adb-tcp-integration
   workflow_dispatch:
 
 permissions:
