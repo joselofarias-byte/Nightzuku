@@ -647,18 +647,7 @@ private fun HomeScreen(
                             expanded = moreOpen,
                             onDismissRequest = { moreOpen = false }
                         ) {
-                            if (running) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.action_stop)) },
-                                    leadingIcon = {
-                                        ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        moreOpen = false
-                                        onStop()
-                                    }
-                                )
-                            } else {
+                            if (!running) {
                                 if (isRooted) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.home_root_button_start)) },
@@ -791,6 +780,7 @@ private fun HomeScreen(
                 if (canUseWirelessAdb) {
                     item {
                         WirelessAdbCard(
+                            running = running,
                             localNetworkPermissionState = localNetworkPermissionState,
                             onStartWirelessAdb = onStartWirelessAdb,
                             onPairWirelessAdb = onPairWirelessAdb,
@@ -910,14 +900,7 @@ private fun StatusCard(
             LoadingIndicator(Modifier.size(32.dp))
         } else {
             val buttons = mutableListOf<HomeButtonSpec>()
-            if (running) {
-                buttons += HomeButtonSpec(
-                    label = R.string.action_stop,
-                    icon = R.drawable.ic_close_24,
-                    primary = true,
-                    onClick = onStop
-                )
-            } else {
+            if (!running) {
                 if (isRooted) {
                     buttons += HomeButtonSpec(
                         label = R.string.home_root_button_start,
@@ -1025,6 +1008,7 @@ private fun RootCard(
 
 @Composable
 private fun WirelessAdbCard(
+    running: Boolean,
     localNetworkPermissionState: LocalNetworkPermissionState,
     onStartWirelessAdb: () -> Unit,
     onPairWirelessAdb: () -> Unit,
@@ -1058,15 +1042,16 @@ private fun WirelessAdbCard(
         title = htmlStringResource(R.string.home_wireless_adb_title),
         body = listOfNotNull(body, permissionLine).joinToString("\n\n")
     ) {
-        val buttons = mutableListOf(
-            HomeButtonSpec(
+        val buttons = mutableListOf<HomeButtonSpec>()
+        if (!running) {
+            buttons += HomeButtonSpec(
                 label = R.string.home_root_button_start,
                 icon = R.drawable.ic_server_start_24dp,
                 primary = true,
                 onClick = onStartWirelessAdb
             )
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        }
+        if (!running && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             buttons += HomeButtonSpec(
                 label = R.string.adb_pairing,
                 icon = R.drawable.ic_numeric_1_circle_outline_24,
