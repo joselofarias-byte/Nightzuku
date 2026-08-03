@@ -51,6 +51,9 @@ object NightDogRecovery {
     private var lastAttemptAt = 0L
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        applicationContext?.let { context ->
+            preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        }
         failedAttempts = 0
         lastAttemptAt = 0L
         recoveryJob?.cancel()
