@@ -109,6 +109,12 @@ object NightDogRecovery {
         lastAttemptAt = 0L
     }
 
+    /** Compatibility entry point used by Settings after the watchdog has been started. */
+    fun prepareForManualStop() {
+        val context = applicationContext ?: return
+        prepareForManualStop(context)
+    }
+
     fun isDesiredRunning(context: Context? = applicationContext): Boolean {
         val resolvedContext = context ?: return true
         return preferences(resolvedContext).getBoolean(KEY_DESIRED_RUNNING, true)
