@@ -20,9 +20,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,6 +90,7 @@ import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.settings.SettingsActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.shell.ShellTutorialActivity
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.starter.StarterActivity
@@ -842,11 +846,19 @@ private fun StatusCard(
 ) {
     val context = LocalContext.current
     val running = status.isRunning
+    val desiredRunning = NightDogRecovery.isDesiredRunning(context)
     val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
+    val recovering = !running && desiredRunning && serviceResource?.status != Status.ERROR
     val title = when {
-        isLoading -> stringResource(R.string.home_status_checking)
+        isLoading || recovering -> stringResource(R.string.home_status_checking)
         running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
         else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+    }
+    val statusArtwork = when {
+        running -> R.drawable.nightdog_status_active
+        serviceResource?.status == Status.ERROR -> R.drawable.nightdog_status_error
+        desiredRunning -> R.drawable.nightdog_status_recovering
+        else -> R.drawable.nightdog_status_stopped
     }
     val summary = remember(status, running) {
         buildServiceSummary(context, status)
@@ -892,6 +904,7 @@ private fun StatusCard(
         },
         title = title,
         body = summary,
+        artwork = statusArtwork,
         iconContainerColor = iconContainerColor,
         iconContentColor = iconContentColor
     ) {
@@ -1180,6 +1193,7 @@ private fun HomeCard(
     body: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    @DrawableRes artwork: Int? = null,
     iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     onClick: (() -> Unit)? = null,
@@ -1203,18 +1217,27 @@ private fun HomeCard(
             modifier = Modifier.padding(18.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                color = iconContainerColor
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    ShizukuIcon(
-                        icon = icon,
-                        contentDescription = null,
-                        tint = iconContentColor,
-                        modifier = Modifier.size(24.dp)
-                    )
+            if (artwork != null) {
+                Image(
+                    painter = painterResource(artwork),
+                    contentDescription = null,
+                    modifier = Modifier.size(88.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = iconContainerColor
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        ShizukuIcon(
+                            icon = icon,
+                            contentDescription = null,
+                            tint = iconContentColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
             Column(
