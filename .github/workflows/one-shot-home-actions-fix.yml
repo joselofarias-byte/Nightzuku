@@ -1,0 +1,112 @@
+name: One-shot home action state fix
+
+on:
+  push:
+    branches:
+      - fix/home-actions-running-state
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/home-actions-running-state
+          fetch-depth: 0
+
+      - name: Hide invalid wireless ADB actions while running
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('manager/src/main/java/moe/shizuku/manager/home/HomeActivity.kt')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '''                        WirelessAdbCard(
+                            localNetworkPermissionState = localNetworkPermissionState,''',
+                  '''                        WirelessAdbCard(
+                            running = running,
+                            localNetworkPermissionState = localNetworkPermissionState,'''
+              ),
+              (
+                  '''private fun WirelessAdbCard(
+    localNetworkPermissionState: LocalNetworkPermissionState,''',
+                  '''private fun WirelessAdbCard(
+    running: Boolean,
+    localNetworkPermissionState: LocalNetworkPermissionState,'''
+              ),
+              (
+                  '''        val buttons = mutableListOf(
+            HomeButtonSpec(
+                label = R.string.home_root_button_start,
+                icon = R.drawable.ic_server_start_24dp,
+                primary = true,
+                onClick = onStartWirelessAdb
+            )
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            buttons += HomeButtonSpec(
+                label = R.string.adb_pairing,
+                icon = R.drawable.ic_numeric_1_circle_outline_24,
+                onClick = onPairWirelessAdb
+            )
+            buttons += HomeButtonSpec(
+                label = R.string.home_wireless_adb_view_guide_button,
+                icon = R.drawable.ic_help_outline_24dp,
+                onClick = onOpenWirelessGuide
+            )
+        }
+        HomeButtons(buttons)''',
+                  '''        val buttons = mutableListOf<HomeButtonSpec>()
+        if (!running) {
+            buttons += HomeButtonSpec(
+                label = R.string.home_root_button_start,
+                icon = R.drawable.ic_server_start_24dp,
+                primary = true,
+                onClick = onStartWirelessAdb
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                buttons += HomeButtonSpec(
+                    label = R.string.adb_pairing,
+                    icon = R.drawable.ic_numeric_1_circle_outline_24,
+                    onClick = onPairWirelessAdb
+                )
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            buttons += HomeButtonSpec(
+                label = R.string.home_wireless_adb_view_guide_button,
+                icon = R.drawable.ic_help_outline_24dp,
+                onClick = onOpenWirelessGuide
+            )
+        }
+        HomeButtons(buttons)'''
+              )
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+          rm .github/workflows/one-shot-home-actions-fix.yml
+
+      - name: Commit source fix
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add manager/src/main/java/moe/shizuku/manager/home/HomeActivity.kt .github/workflows/one-shot-home-actions-fix.yml
+          git commit -m "fix(home): hide start and pairing while service runs"
+          git push origin HEAD:fix/home-actions-running-state
