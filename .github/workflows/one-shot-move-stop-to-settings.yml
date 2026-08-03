@@ -1,0 +1,101 @@
+name: One-shot move stop action to settings
+
+on:
+  push:
+    branches:
+      - fix/home-actions-running-state
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/home-actions-running-state
+          fetch-depth: 0
+
+      - name: Move stop action and fix running-state actions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          home = Path('manager/src/main/java/moe/shizuku/manager/home/HomeActivity.kt')
+          text = home.read_text()
+
+          replacements = [
+              (
+                  '''                        WirelessAdbCard(\n                            localNetworkPermissionState = localNetworkPermissionState,''',
+                  '''                        WirelessAdbCard(\n                            running = running,\n                            localNetworkPermissionState = localNetworkPermissionState,'''
+              ),
+              (
+                  '''private fun WirelessAdbCard(\n    localNetworkPermissionState: LocalNetworkPermissionState,''',
+                  '''private fun WirelessAdbCard(\n    running: Boolean,\n    localNetworkPermissionState: LocalNetworkPermissionState,'''
+              ),
+              (
+                  '''        val buttons = mutableListOf(\n            HomeButtonSpec(\n                label = R.string.home_root_button_start,\n                icon = R.drawable.ic_server_start_24dp,\n                primary = true,\n                onClick = onStartWirelessAdb\n            )\n        )\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            buttons += HomeButtonSpec(\n                label = R.string.adb_pairing,\n                icon = R.drawable.ic_numeric_1_circle_outline_24,\n                onClick = onPairWirelessAdb\n            )''',
+                  '''        val buttons = mutableListOf<HomeButtonSpec>()\n        if (!running) {\n            buttons += HomeButtonSpec(\n                label = R.string.home_root_button_start,\n                icon = R.drawable.ic_server_start_24dp,\n                primary = true,\n                onClick = onStartWirelessAdb\n            )\n        }\n        if (!running && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            buttons += HomeButtonSpec(\n                label = R.string.adb_pairing,\n                icon = R.drawable.ic_numeric_1_circle_outline_24,\n                onClick = onPairWirelessAdb\n            )'''
+              ),
+              (
+                  '''                            if (running) {\n                                DropdownMenuItem(\n                                    text = { Text(stringResource(R.string.action_stop)) },\n                                    leadingIcon = {\n                                        ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)\n                                    },\n                                    onClick = {\n                                        moreOpen = false\n                                        onStop()\n                                    }\n                                )\n                            } else {''',
+                  '''                            if (!running) {'''
+              ),
+              (
+                  '''            if (running) {\n                buttons += HomeButtonSpec(\n                    label = R.string.action_stop,\n                    icon = R.drawable.ic_close_24,\n                    primary = true,\n                    onClick = onStop\n                )\n            } else {''',
+                  '''            if (!running) {'''
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'HomeActivity pattern not found: {old[:100]!r}')
+
+          home.write_text(text)
+
+          settings = Path('manager/src/main/java/moe/shizuku/manager/settings/SettingsActivity.kt')
+          text = settings.read_text()
+
+          old = 'import moe.shizuku.manager.receiver.BootCompleteReceiver\n'
+          new = old + 'import moe.shizuku.manager.shizuku.NightDogRecovery\nimport rikka.shizuku.Shizuku\n'
+          if old in text and 'import moe.shizuku.manager.shizuku.NightDogRecovery' not in text:
+              text = text.replace(old, new, 1)
+
+          old = '            var showCustomPermissionsDialog by remember { mutableStateOf(false) }\n'
+          new = old + '            var showStopDialog by remember { mutableStateOf(false) }\n'
+          if old in text and 'var showStopDialog by remember' not in text:
+              text = text.replace(old, new, 1)
+
+          anchor = '''                        item {\n                            SettingsGroup(title = stringResource(R.string.modules_settings_title)) {'''
+          service_item = '''                        item {\n                            SettingsGroup(title = stringResource(R.string.diagnostic_service)) {\n                                SettingsRow(\n                                    icon = R.drawable.ic_close_24,\n                                    title = stringResource(R.string.action_stop),\n                                    summary = stringResource(\n                                        R.string.home_status_service_is_running,\n                                        stringResource(R.string.app_name)\n                                    ),\n                                    onClick = { showStopDialog = true }\n                                )\n                            }\n                        }\n\n'''
+          if anchor in text and service_item not in text:
+              text = text.replace(anchor, service_item + anchor, 1)
+
+          anchor = '            if (showLanguageDialog) {\n'
+          dialog = '''            if (showStopDialog) {\n                ShizukuExpressiveTheme {\n                    AlertDialog(\n                        onDismissRequest = { showStopDialog = false },\n                        title = { Text(stringResource(R.string.action_stop)) },\n                        confirmButton = {\n                            TextButton(\n                                onClick = {\n                                    NightDogRecovery.prepareForManualStop()\n                                    runCatching { Shizuku.exit() }\n                                    showStopDialog = false\n                                    finish()\n                                }\n                            ) {\n                                Text(stringResource(R.string.action_stop))\n                            }\n                        },\n                        dismissButton = {\n                            TextButton(onClick = { showStopDialog = false }) {\n                                Text(stringResource(android.R.string.cancel))\n                            }\n                        },\n                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,\n                        shape = MaterialTheme.shapes.extraLarge\n                    )\n                }\n            }\n\n'''
+          if anchor in text and dialog not in text:
+              text = text.replace(anchor, dialog + anchor, 1)
+
+          settings.write_text(text)
+          PY
+
+      - name: Remove temporary workflows
+        run: |
+          rm -f .github/workflows/one-shot-home-actions-fix.yml
+          rm -f .github/workflows/one-shot-move-stop-to-settings.yml
+
+      - name: Commit result
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add manager/src/main/java/moe/shizuku/manager/home/HomeActivity.kt \
+                  manager/src/main/java/moe/shizuku/manager/settings/SettingsActivity.kt \
+                  .github/workflows
+          git diff --cached --check
+          git commit -m "fix: move stop action to settings"
+          git push origin HEAD:fix/home-actions-running-state
