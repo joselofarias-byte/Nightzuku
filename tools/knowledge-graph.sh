@@ -30,8 +30,8 @@ Usage: tools/knowledge-graph.sh <command>
 
 Commands:
   install    Install pinned CodeGraph and Graphify; register CodeGraph agents.
-  index      Build/update the local CodeGraph and Graphify indexes.
-  sync       Incrementally synchronize CodeGraph and Graphify.
+  index      Build/update the local CodeGraph and Graphify indexes and reports.
+  sync       Incrementally synchronize CodeGraph and Graphify reports.
   status     Validate installations and print local index status.
   obsidian   Export human-readable reports to the Engineering-KB vault.
   all        Run install, index, status and obsidian.
@@ -150,6 +150,7 @@ index_graphify() {
   (
     cd "$REPO_ROOT"
     graphify extract . --code-only
+    graphify cluster-only "$REPO_ROOT"
   )
 }
 
@@ -170,6 +171,7 @@ sync_all() {
     else
       graphify extract . --code-only
     fi
+    graphify cluster-only "$REPO_ROOT"
   )
 }
 
@@ -205,14 +207,15 @@ export_obsidian() {
 
   mkdir -p "$project_dir/Attachments"
 
-  if [[ -f "$REPO_ROOT/graphify-out/GRAPH_REPORT.md" ]]; then
-    cp -f "$REPO_ROOT/graphify-out/GRAPH_REPORT.md" \
-      "$project_dir/Graphify Report.md"
-  fi
-  if [[ -f "$REPO_ROOT/graphify-out/graph.html" ]]; then
-    cp -f "$REPO_ROOT/graphify-out/graph.html" \
-      "$project_dir/Attachments/graph.html"
-  fi
+  [[ -f "$REPO_ROOT/graphify-out/GRAPH_REPORT.md" ]] \
+    || fail "Graphify report is missing; run the index command first"
+  [[ -f "$REPO_ROOT/graphify-out/graph.html" ]] \
+    || fail "Graphify HTML is missing; run the index command first"
+
+  cp -f "$REPO_ROOT/graphify-out/GRAPH_REPORT.md" \
+    "$project_dir/Graphify Report.md"
+  cp -f "$REPO_ROOT/graphify-out/graph.html" \
+    "$project_dir/Attachments/graph.html"
 
   codegraph status "$REPO_ROOT" > "$project_dir/CodeGraph Status.txt"
 
@@ -256,6 +259,12 @@ show_status() {
     printf 'Graphify graph: %s\n' "$REPO_ROOT/graphify-out/graph.json"
   else
     printf 'Graphify graph: NOT INITIALIZED\n'
+  fi
+
+  if [[ -f "$REPO_ROOT/graphify-out/GRAPH_REPORT.md" ]]; then
+    printf 'Graphify report: %s\n' "$REPO_ROOT/graphify-out/GRAPH_REPORT.md"
+  else
+    printf 'Graphify report: NOT GENERATED\n'
   fi
 }
 
