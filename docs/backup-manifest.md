@@ -1,10 +1,20 @@
 # Manifiesto de respaldo — inteligencia de código
 
+## Automatización
+
+Los agentes no deben construir este respaldo manualmente. Al iniciar una tarea:
+
+```bash
+bash tools/llm-workflow.sh start --agent <llm> --objective "<objetivo>"
+```
+
+se crea una orden privada fuera del checkout con respaldo recuperable, evidencia de índices y `MANIFEST.sha256`. Los permisos se crean con `umask 077`.
+
 ## Principio
 
-Los índices de CodeGraph y Graphify son derivados del código y se pueden reconstruir. El respaldo recuperable debe priorizar Git, parches, archivos untracked relevantes y evidencia textual.
+Los índices de CodeGraph y Graphify son derivados del código y se pueden reconstruir. El respaldo recuperable prioriza Git, parches, archivos untracked relevantes y evidencia textual.
 
-## Contenido obligatorio del respaldo Git
+## Contenido generado automáticamente
 
 - estado del repositorio;
 - diff unstaged binario;
@@ -12,62 +22,51 @@ Los índices de CodeGraph y Graphify son derivados del código y se pueden recon
 - ramas y upstreams;
 - worktrees;
 - historial reciente;
-- bundle Git completo;
-- inventario de untracked;
-- manifiesto SHA-256.
+- bundle Git completo y verificado;
+- inventario y archivo `tar.gz` de untracked no ignorados;
+- rama, commit, origin y fecha;
+- versión y estado de CodeGraph;
+- versión y huellas de Graphify cuando existen;
+- manifiesto SHA-256 de toda la orden.
 
-## Evidencia adicional recomendada
+## Checkpoints y cierre
 
-Guardar un archivo `code-intelligence.txt` con una captura equivalente a:
-
-```bash
-{
-  date -Iseconds
-  printf 'repository=%s\n' "$(git rev-parse --show-toplevel)"
-  printf 'branch=%s\n' "$(git branch --show-current)"
-  printf 'commit=%s\n' "$(git rev-parse HEAD)"
-  printf 'codegraph_version='; codegraph --version || true
-  printf 'graphify_version='; graphify --version || true
-  codegraph status "$(git rev-parse --show-toplevel)" || true
-} > code-intelligence.txt
-```
-
-Cuando existan artefactos Graphify, guardar sólo sus huellas y ubicación:
+`checkpoint` vuelve a capturar Git e índices. El hook `pre-commit` lo ejecuta automáticamente antes de todo commit autorizado.
 
 ```bash
-{
-  printf 'vault=%s\n' '/storage/emulated/0/Documents/Engineering-KB/Projects/Nightzuku'
-  sha256sum graphify-out/GRAPH_REPORT.md graphify-out/graph.html 2>/dev/null || true
-} > graphify-evidence.txt
+bash tools/llm-workflow.sh checkpoint "antes del cambio crítico"
+bash tools/llm-workflow.sh finish "resultado final"
 ```
 
-El informe Markdown puede copiarse al respaldo si se necesita una fotografía documental de la arquitectura. El HTML interactivo puede permanecer únicamente en el vault.
+`finish` captura el estado final, sincroniza CodeGraph, regenera Graphify sólo si la orden fue marcada `--structural`, exporta la evidencia disponible a Obsidian y cierra la orden.
 
-## Exclusiones recomendadas
+## Exclusiones
 
-Excluir de TBM y de otros respaldos de archivos:
+No considerar datos esenciales:
 
 ```text
 .codegraph/
 graphify-out/
 ```
 
-También excluir bases SQLite, archivos `-wal`, `-shm`, cachés AST y temporales generados. Estas exclusiones no afectan la recuperación porque los índices se regeneran mediante:
+También quedan fuera como fuentes de verdad las bases SQLite, archivos `-wal`, `-shm`, cachés AST y temporales. Se reconstruyen mediante:
 
 ```bash
 bash tools/knowledge-graph.sh index
 bash tools/knowledge-graph.sh obsidian
 ```
 
+El informe Markdown puede conservarse como fotografía documental; el HTML interactivo puede permanecer en el vault.
+
 ## Restauración
 
-1. restaurar o clonar el repositorio desde bundle/remoto;
-2. aplicar staged y unstaged patches;
-3. restaurar untracked relevantes;
-4. verificar rama y commit;
-5. validar el entorno de Debian;
-6. reconstruir índices sólo cuando vuelvan a ser necesarios.
+1. restaurar o clonar desde `backup/repository.bundle` o el remoto;
+2. aplicar `staged.patch` y `unstaged.patch`;
+3. restaurar `untracked.tar.gz` cuando exista;
+4. verificar rama y commit con `repository-metadata.txt`;
+5. validar `MANIFEST.sha256`;
+6. reconstruir los índices sólo cuando vuelvan a ser necesarios.
 
 ## Regla
 
-No considerar `.codegraph/` ni `graphify-out/` como fuentes de verdad. La fuente de verdad es el repositorio Git y la evidencia de la orden de trabajo.
+La fuente de verdad es Git más la evidencia de la orden. `.codegraph/`, `graphify-out/` y Obsidian no sustituyen al bundle, los parches ni los untracked recuperables.
