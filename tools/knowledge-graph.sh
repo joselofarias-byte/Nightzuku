@@ -29,8 +29,7 @@ usage() {
 Usage: tools/knowledge-graph.sh <command>
 
 Commands:
-  install    Install pinned CodeGraph and Graphify, disable telemetry/logging,
-             and register project-aware agent integrations globally.
+  install    Install pinned CodeGraph and Graphify and register agent integrations.
   index      Build/update the local CodeGraph and Graphify indexes.
   sync       Incrementally synchronize CodeGraph and Graphify.
   status     Validate installations and print local index status.
@@ -109,7 +108,6 @@ install_codegraph() {
   fi
 
   require_command codegraph
-  codegraph telemetry off >/dev/null
   codegraph install --target=claude,codex,gemini --location=global --yes --no-permissions
 }
 
@@ -137,7 +135,10 @@ index_codegraph() {
   if [[ -d "$REPO_ROOT/.codegraph" ]]; then
     codegraph index "$REPO_ROOT" --force --quiet
   else
-    codegraph init "$REPO_ROOT"
+    (
+      cd "$REPO_ROOT"
+      codegraph init --index
+    )
   fi
 }
 
