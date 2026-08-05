@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+repo="$(git rev-parse --show-toplevel)"
+git_dir="$(git rev-parse --absolute-git-dir)"
+active="$git_dir/llm-work-current"
+
+if [[ ! -s "$active" ]]; then
+  cat >&2 <<'MSG'
+ERROR: commit blocked because no standard work order is active.
+Start one with:
+  bash tools/llm-workflow.sh start --agent <llm> --objective "<objective>"
+Do not bypass this guard with --no-verify.
+MSG
+  exit 1
+fi
+
+order="$(cat "$active")"
+[[ -f "$order/WORK-ORDER.md" ]] || {
+  printf 'ERROR: active work order is invalid: %s\n' "$order" >&2
+  exit 1
+}
+
+bash "$repo/tools/llm-workflow.sh" checkpoint pre-commit >/dev/null
