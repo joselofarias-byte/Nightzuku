@@ -8,6 +8,19 @@ Este repositorio usa índices generados localmente:
 
 El código se procesa localmente. Los índices generados quedan fuera de Git.
 
+## Flujo automático estándar
+
+Toda tarea realizada por un LLM debe seguir [`AI_WORKFLOW.md`](../AI_WORKFLOW.md). No se copian plantillas manualmente: `tools/llm-workflow.sh` crea la orden, el respaldo y la evidencia.
+
+```bash
+bash tools/llm-workflow.sh start --agent <llm> --objective "<objetivo>"
+bash tools/llm-workflow.sh note "<hallazgo>"
+bash tools/llm-workflow.sh run -- <prueba-o-build>
+bash tools/llm-workflow.sh finish "<resultado>"
+```
+
+Usar `--structural` en `start` cuando corresponda regenerar Graphify. Un commit autorizado queda bloqueado si no existe una orden activa y recibe automáticamente trailers que identifican la orden y el agente.
+
 ## Uso recomendado
 
 ### CodeGraph: uso cotidiano
@@ -63,52 +76,41 @@ Obsidian no sustituye Git, los bundles ni los parches de recuperación.
 
 ## Integración con órdenes de trabajo
 
-Toda orden de trabajo que use estas herramientas debe registrar:
+La orden automática registra:
 
 1. repositorio, rama y commit base;
 2. objetivo concreto de la investigación;
-3. si se consultó CodeGraph y qué símbolos o rutas se analizaron;
-4. callers, callees, dependencias o impactos relevantes;
-5. si se usó Graphify y para qué decisión;
-6. archivos previstos para modificar;
-7. pruebas, compilación y criterios de aceptación;
-8. resultado final y commit producido, o constancia de que no hubo commit/push.
+3. agente responsable;
+4. estado de CodeGraph y Graphify;
+5. notas de símbolos, callers, callees, dependencias e impacto;
+6. pruebas y compilaciones con salida y código de retorno;
+7. checkpoints previos a commits;
+8. resultado final, commit alcanzado y estado del árbol.
 
-Plantilla: [`work-order-template.md`](work-order-template.md).
+La plantilla [`work-order-template.md`](work-order-template.md) queda como referencia humana del contenido esperado.
 
 ## Integración con respaldos
 
-El respaldo recuperable continúa basándose en Git:
+`start` genera automáticamente:
 
 - `status.txt`;
-- `unstaged.patch`;
-- `staged.patch`;
-- `branches.txt`;
-- `worktrees.txt`;
-- `log.txt`;
-- bundle Git completo;
-- inventario de archivos untracked cuando corresponda;
-- manifiesto SHA-256.
+- `unstaged.patch` y `staged.patch` binarios;
+- ramas, worktrees e historial;
+- bundle Git completo y verificado;
+- archivo recuperable de untracked;
+- versiones y estado de CodeGraph/Graphify;
+- SHA-256 del reporte y del HTML cuando existen;
+- manifiesto SHA-256 integral.
 
-Agregar como evidencia liviana:
-
-- versión de CodeGraph y Graphify;
-- salida de `codegraph status`;
-- commit y rama usados para generar el índice;
-- SHA-256 del reporte y del HTML de Graphify, si existen;
-- ruta del vault donde quedaron los informes.
-
-No respaldar como datos esenciales:
+No se respaldan como fuentes de verdad:
 
 - `.codegraph/`;
 - `graphify-out/`;
-- bases SQLite, WAL, cachés AST o archivos temporales de Graphify.
+- bases SQLite, WAL, cachés AST o temporales.
 
-Son artefactos regenerables. El informe Markdown puede conservarse en Obsidian como evidencia, pero no es necesario para restaurar el repositorio.
+Son artefactos regenerables. Guía: [`backup-manifest.md`](backup-manifest.md).
 
-Guía: [`backup-manifest.md`](backup-manifest.md).
-
-## Comandos
+## Comandos directos de índices
 
 ```bash
 bash tools/knowledge-graph.sh install
@@ -117,11 +119,11 @@ bash tools/knowledge-graph.sh status
 bash tools/knowledge-graph.sh obsidian
 ```
 
-Para actualizar después de cambios relevantes:
+Para actualizar manualmente:
 
 ```bash
 bash tools/knowledge-graph.sh sync
 bash tools/knowledge-graph.sh obsidian
 ```
 
-El checkout debe estar en el sistema de archivos nativo de Debian. No crear índices SQLite en `/sdcard` ni `/storage/emulated`.
+Normalmente el cierre de `llm-workflow.sh` hace la actualización correspondiente. El checkout debe estar en el sistema de archivos nativo de Debian. No crear índices SQLite en `/sdcard` ni `/storage/emulated`.
