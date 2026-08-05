@@ -41,3 +41,9 @@ nightzuku-c*-build.txt
 *POLISH.md
 *WALKTHROUGH.md
 *LOCALIZATION.md
+
+# Local code intelligence
+/.codegraph/
+/.codegraph-*/
+/graphify-out/
+/graph.json
