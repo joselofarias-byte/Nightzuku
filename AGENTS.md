@@ -1,5 +1,18 @@
 # AGENTS.md
 
+## Mandatory automated work-order gate
+
+Before analyzing broadly or modifying any file, read [`AI_WORKFLOW.md`](AI_WORKFLOW.md) and execute:
+
+```bash
+bash tools/llm-workflow.sh status
+bash tools/llm-workflow.sh start --agent <agent-name> --objective "<objective>"
+```
+
+Use `--structural` for architecture, module, IPC, service, dependency or central-flow changes. Record findings with `note`, run tests and builds through `run --`, and always `finish` or `abort` the order. Do not use `--no-verify`. Commit, push and merge require express user authorization.
+
+This gate applies to Claude Code, Codex, ChatGPT, Gemini CLI, Cursor, Windsurf, Cline, OpenCode, Roo, Aider and any future coding agent. The remaining engineering standards below continue to apply.
+
 # Shizuku+ / EverCall / ShizukuCall / Stellar / Nightzuku Engineering Standard
 
 This file defines the default behavior for all AI coding agents operating in this repository.
