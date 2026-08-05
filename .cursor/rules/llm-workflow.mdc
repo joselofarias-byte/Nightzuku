@@ -1,0 +1,15 @@
+---
+description: Mandatory automated work orders, backups and evidence for every coding task
+alwaysApply: true
+---
+
+Read `AI_WORKFLOW.md` and `AGENTS.md` before acting.
+
+Before editing, run:
+
+```bash
+bash tools/llm-workflow.sh status
+bash tools/llm-workflow.sh start --agent cursor --objective "<objective>"
+```
+
+Use `--structural` when appropriate. Record findings and validations through the workflow script, never use `--no-verify`, and always finish or abort. Commit, push and merge require express user authorization.
