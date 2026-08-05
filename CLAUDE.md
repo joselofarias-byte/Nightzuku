@@ -1,6 +1,15 @@
 # CLAUDE.md
 
-Follow `AGENTS.md` as the source of truth.
+Follow `AGENTS.md` and `AI_WORKFLOW.md` as mandatory sources of truth.
+
+Before any edit, Claude Code must run:
+
+```bash
+bash tools/llm-workflow.sh status
+bash tools/llm-workflow.sh start --agent claude --objective "<objective>"
+```
+
+Add `--structural` for architecture, modules, IPC, services, dependencies or central flows. Use CodeGraph before broad file searches, record findings with `note`, execute tests/builds through `run --`, never use `--no-verify`, and always `finish` or `abort`. Commit, push and merge require express user authorization.
 
 Default behavior for Claude Code:
 - Start in Ponytail mode.
