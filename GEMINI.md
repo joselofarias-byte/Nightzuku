@@ -1,6 +1,15 @@
 # GEMINI.md
 
-Follow `AGENTS.md` as the source of truth.
+Follow `AGENTS.md` and `AI_WORKFLOW.md` as mandatory sources of truth.
+
+Before any edit, Gemini CLI must run:
+
+```bash
+bash tools/llm-workflow.sh status
+bash tools/llm-workflow.sh start --agent gemini --objective "<objective>"
+```
+
+Add `--structural` for architecture, modules, IPC, services, dependencies or central flows. Use CodeGraph before broad file searches, record findings with `note`, execute tests/builds through `run --`, never use `--no-verify`, and always `finish` or `abort`. Commit, push and merge require express user authorization.
 
 Gemini CLI default workflow:
 - Use minimal-change engineering.
