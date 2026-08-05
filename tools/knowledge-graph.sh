@@ -29,7 +29,7 @@ usage() {
 Usage: tools/knowledge-graph.sh <command>
 
 Commands:
-  install    Install pinned CodeGraph and Graphify and register agent integrations.
+  install    Install pinned CodeGraph and Graphify; register CodeGraph agents.
   index      Build/update the local CodeGraph and Graphify indexes.
   sync       Incrementally synchronize CodeGraph and Graphify.
   status     Validate installations and print local index status.
@@ -113,12 +113,15 @@ install_codegraph() {
 
 install_graphify() {
   install_uv
-  uv tool install --force "graphifyy==$GRAPHIFY_VERSION"
-  require_command graphify
 
-  graphify install
-  graphify install --platform codex
-  graphify install --platform gemini
+  if ! command -v graphify >/dev/null 2>&1; then
+    uv tool install "graphifyy==$GRAPHIFY_VERSION"
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+
+  require_command graphify
+  printf 'Graphify skill registration skipped: PRoot rejects its reference copy.\n'
+  printf 'The CLI remains fully usable through graphify extract --code-only.\n'
 }
 
 install_tools() {
