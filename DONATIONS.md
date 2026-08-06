@@ -10,6 +10,8 @@ Los identificadores públicos todavía no están configurados. No envíes fondos
 - Binance Pay: QR o Pay ID público; no se publicarán correo ni teléfono.
 - PayPal: enlace PayPal.Me verificado.
 
+La activación requiere los tres valores públicos exactos y una comprobación independiente de cada QR o enlace. Hasta entonces, la aplicación no mostrará botones de pago.
+
 ## Condiciones
 
 - Una donación no compra funciones, soporte prioritario, licencias ni garantías.
