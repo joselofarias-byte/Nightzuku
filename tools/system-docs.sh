@@ -106,53 +106,42 @@ render_snapshot() {
     codegraph_status="$(codegraph status "$REPO_ROOT" 2>&1 | sed -n '1,25p' || true)"
   fi
 
-  cat <<SNAP
-# System snapshot — $project
+  printf '# System snapshot — %s\n\n' "$project"
+  printf 'Generated: %s\n\n' "$(now_iso)"
+  printf '## Repository\n\n'
+  printf -- '- Path: %s\n' "$REPO_ROOT"
+  printf -- '- Origin: %s\n' "${origin:-NONE}"
+  printf -- '- Branch: %s\n' "$(git -C "$REPO_ROOT" branch --show-current)"
+  printf -- '- HEAD: %s\n' "$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  printf -- '- Hooks: %s\n\n' "${hooks:-NOT_CONFIGURED}"
+  printf '### Git status\n\n~~~text\n%s\n~~~\n\n' "$changes"
 
-Generated: $(now_iso)
+  printf '## Workflow state\n\n'
+  printf -- '- Active work order: %s\n' "${active:-NONE}"
+  printf -- '- Last work order: %s\n' "${last:-NONE}"
+  printf -- '- Swarm: %s\n' "$(swarm_state)"
+  printf -- '- Persistent history: %s\n\n' "$HISTORY"
 
-## Repository
+  printf '## Available tooling\n\n'
+  printf '| Tool | State |\n|---|---|\n'
+  printf '| CodeGraph | %s |\n' "$(presence codegraph)"
+  printf '| Graphify | %s |\n' "$(presence graphify)"
+  printf '| tmux | %s |\n' "$(presence tmux)"
+  printf '| Codex CLI | %s |\n' "$(presence codex)"
+  printf '| Claude CLI | %s |\n' "$(presence claude)"
+  printf '| Gemini CLI | %s |\n' "$(presence gemini)"
+  printf '| GitHub CLI | %s |\n\n' "$(presence gh)"
 
-- Path: `$REPO_ROOT`
-- Origin: `${origin:-NONE}`
-- Branch: `$(git -C "$REPO_ROOT" branch --show-current)`
-- HEAD: `$(git -C "$REPO_ROOT" rev-parse HEAD)`
-- Hooks: `${hooks:-NOT_CONFIGURED}`
-
-### Git status
-
-```text
-$changes
-```
-
-## Workflow state
-
-- Active work order: `${active:-NONE}`
-- Last work order: `${last:-NONE}`
-- Swarm: `$(swarm_state)`
-- Persistent history: `$HISTORY`
-
-## Available tooling
-
-| Tool | State |
-|---|---|
-| CodeGraph | $(presence codegraph) |
-| Graphify | $(presence graphify) |
-| tmux | $(presence tmux) |
-| Codex CLI | $(presence codex) |
-| Claude CLI | $(presence claude) |
-| Gemini CLI | $(presence gemini) |
-| GitHub CLI | $(presence gh) |
-
+  cat <<'SNAP'
 ## Canonical layers
 
-1. `START-HERE.md` — human/LLM entry point.
-2. `AGENTS.md` — repository engineering rules.
-3. `AI_WORKFLOW.md` — mandatory operational policy.
-4. `tools/llm-workflow.sh` — stable engine for order, backup, evidence, tests and close.
-5. `tools/work.sh` — canonical self-documenting front door for single-agent work.
-6. `tools/swarm-workflow.sh` — stable two-role orchestration engine.
-7. `tools/swarm.sh` — canonical self-documenting front door for swarm work.
+1. START-HERE.md — human/LLM entry point.
+2. AGENTS.md — repository engineering rules.
+3. AI_WORKFLOW.md — mandatory operational policy.
+4. tools/llm-workflow.sh — stable engine for order, backup, evidence, tests and close.
+5. tools/work.sh — canonical self-documenting front door for single-agent work.
+6. tools/swarm-workflow.sh — stable two-role orchestration engine.
+7. tools/swarm.sh — canonical self-documenting front door for swarm work.
 8. CodeGraph — primary code index.
 9. Graphify — occasional structural visualization.
 10. Obsidian — human-readable mirror, never the source of truth.
@@ -173,13 +162,10 @@ Known decisions:
 
 ## CodeGraph status
 
-```text
-${codegraph_status:-NOT_AVAILABLE}
-```
-
-## Recent work history
-
+~~~text
 SNAP
+  printf '%s\n' "${codegraph_status:-NOT_AVAILABLE}"
+  printf '~~~\n\n## Recent work history\n\n'
   if [[ -s "$HISTORY" ]]; then
     tail -n 40 "$HISTORY"
   else
@@ -190,14 +176,14 @@ SNAP
 
 ## Safe commands
 
-```bash
+~~~bash
 bash tools/system-docs.sh summary
 bash tools/system-docs.sh doctor
 bash tools/work.sh status
 bash tools/swarm.sh status
-```
+~~~
 
-Read `START-HERE.md` when no other context is available.
+Read START-HERE.md when no other context is available.
 SNAP
 }
 
@@ -245,7 +231,7 @@ record() {
     cat > "$HISTORY" <<'HEAD'
 # Work history
 
-This file is generated outside the checkout by `tools/system-docs.sh`. It is an operational index, not a replacement for each work order's evidence.
+This file is generated outside the checkout by tools/system-docs.sh. It is an operational index, not a replacement for each work order's evidence.
 
 | Closed at | Status | Agent | Objective | Base → final | Summary | Order |
 |---|---|---|---|---|---|---|
@@ -291,6 +277,7 @@ doctor() {
     tools/system-docs.sh
     tools/test-llm-workflow.sh
     tools/test-swarm-workflow.sh
+    tools/test-system-docs.sh
     .githooks/pre-commit
     .githooks/commit-msg
   )
@@ -301,7 +288,7 @@ doctor() {
     fi
   done
 
-  for path in tools/llm-workflow.sh tools/work.sh tools/swarm-workflow.sh tools/swarm.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh .githooks/pre-commit .githooks/commit-msg; do
+  for path in tools/llm-workflow.sh tools/work.sh tools/swarm-workflow.sh tools/swarm.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh tools/test-system-docs.sh .githooks/pre-commit .githooks/commit-msg; do
     [[ -f "$REPO_ROOT/$path" ]] && bash -n "$REPO_ROOT/$path"
   done
 
