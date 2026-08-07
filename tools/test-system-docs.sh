@@ -65,6 +65,7 @@ printf 'base\n' > "$REPO/README.md"
   export LLM_WORK_ROOT="$STATE"
   export OBSIDIAN_VAULT="$NO_VAULT"
 
+  bash tools/llm-workflow.sh install >/dev/null
   bash tools/system-docs.sh doctor
   bash tools/work.sh start \
     --agent synthetic-agent \
@@ -89,10 +90,17 @@ printf 'base\n' > "$REPO/README.md"
   find "$order/evidence/system-snapshots" -type f -name '*-finish.md' -print -quit | grep -q .
 
   out="$(bash tools/system-docs.sh record closed 'duplicate record must be ignored')"
-  printf '%s\n' "$out" | grep -q 'HISTORY_ALREADY_RECORDED='
+  grep -q 'HISTORY_ALREADY_RECORDED=' <<< "$out"
 
-  bash tools/system-docs.sh summary | grep -q '^WORK_ORDER=NONE$'
-  bash tools/system-docs.sh history | grep -q 'validate automatic documentation lifecycle'
+  # Capture complete output before matching. Piping a multi-line producer
+  # directly into grep -q can make grep close early and trigger SIGPIPE under
+  # `set -o pipefail`, which is not a failure of the dashboard itself.
+  summary_out="$(bash tools/system-docs.sh summary)"
+  grep -q '^WORK_ORDER=NONE$' <<< "$summary_out"
+
+  history_out="$(bash tools/system-docs.sh history)"
+  grep -q 'validate automatic documentation lifecycle' <<< "$history_out"
+
   bash tools/system-docs.sh snapshot "$TMP/final-system-snapshot.md" >/dev/null
   grep -q '# System snapshot' "$TMP/final-system-snapshot.md"
   grep -q 'Canonical layers' "$TMP/final-system-snapshot.md"
