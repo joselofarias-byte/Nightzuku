@@ -45,6 +45,11 @@ printf 'base\n' > "$REPO/README.md"
   order="$(dirname "$swarm_state")"
   grep -q '^status: active$' "$order/WORK-ORDER.md"
 
+  # Regression guard: rendering role instructions must never execute the
+  # command examples contained in those instructions.
+  test "$(find "$order/evidence/runs" -maxdepth 1 -type f -name '*.log' | wc -l | tr -d ' ')" -eq 0
+  grep -Fq 'bash tools/llm-workflow.sh run -- <comando> [argumentos]' "$swarm_state/roles/implementer.md"
+
   impl="$(sed -n 's/^implementer_worktree=//p' "$swarm_state/SWARM.conf")"
   test -d "$impl"
   printf 'implementation\n' >> "$impl/README.md"
@@ -58,6 +63,8 @@ printf 'base\n' > "$REPO/README.md"
   grep -q '^new file$' "$reviewer/NEW.txt"
   test -s "$swarm_state/roles/reviewer.md"
   test -n "$(sed -n 's/^handoff_snapshot=//p' "$swarm_state/SWARM.conf")"
+  test "$(find "$order/evidence/runs" -maxdepth 1 -type f -name '*.log' | wc -l | tr -d ' ')" -eq 0
+  grep -Fq 'bash tools/llm-workflow.sh run -- <comando> [argumentos]' "$swarm_state/roles/reviewer.md"
 
   bash tools/swarm-workflow.sh review-note 'Synthetic review completed.'
   grep -q 'Synthetic review completed' "$swarm_state/REVIEW.md"
