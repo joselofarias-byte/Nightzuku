@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+[[ -n "$REPO_ROOT" ]] || fail "must run inside a Git repository"
+GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
+ACTIVE_FILE="$GIT_DIR/llm-work-current"
+LAST_FILE="$GIT_DIR/llm-work-last"
+SWARM_CURRENT="$GIT_DIR/swarm-current"
+SWARM_LAST="$GIT_DIR/swarm-last"
+
+origin_raw="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+sanitize_origin() {
+  printf '%s' "$1" | sed -E 's#(https?://)[^/@]+@#\1#; s#(ssh://)[^/@]+@#\1#'
+}
+origin="$(sanitize_origin "$origin_raw")"
+project="$(basename "$REPO_ROOT")"
+repo_key="$project"
+if [[ -n "$origin" ]]; then
+  repo_key="$(printf '%s' "$origin" | sed -E 's#^[^:]+://##; s#^[^@]+@[^:]+:##; s#\.git$##; s#/#-#g')"
+fi
+repo_key="$(printf '%s' "$repo_key" | tr -cs '[:alnum:]_.-' '-' | sed -E 's/^-+//; s/-+$//')"
+STATE_BASE="${LLM_WORK_ROOT:-$HOME/.local/state/llm-work}"
+STATE_ROOT="$STATE_BASE/$repo_key"
+HISTORY="$STATE_ROOT/HISTORY.md"
+
+usage() {
+  cat <<'USAGE'
+Usage: bash tools/system-docs.sh <command> [args]
+
+Commands:
+  summary                 concise human/LLM dashboard
+  snapshot [FILE]         write a full Markdown snapshot; stdout if FILE omitted
+  history                 show persistent completed/aborted work history
+  record STATUS SUMMARY   append current order to persistent history
+  publish                 publish snapshot + history + START-HERE to Obsidian when available
+  doctor                  validate the documentation/workflow installation
+  explain                 print START-HERE.md
+USAGE
+}
+
+now_iso() { date -Iseconds; }
+
+presence() {
+  command -v "$1" >/dev/null 2>&1 && printf 'AVAILABLE' || printf 'NOT_INSTALLED'
+}
+
+active_order() {
+  [[ -s "$ACTIVE_FILE" ]] && cat "$ACTIVE_FILE" || true
+}
+
+last_order() {
+  [[ -s "$LAST_FILE" ]] && cat "$LAST_FILE" || true
+}
+
+swarm_state() {
+  if [[ -s "$SWARM_CURRENT" ]]; then
+    printf 'ACTIVE:%s' "$(cat "$SWARM_CURRENT")"
+  elif [[ -s "$SWARM_LAST" ]]; then
+    printf 'NO_ACTIVE;LAST:%s' "$(cat "$SWARM_LAST")"
+  else
+    printf 'NONE'
+  fi
+}
+
+summary() {
+  local active last
+  active="$(active_order)"
+  last="$(last_order)"
+  printf 'PROJECT=%s\n' "$project"
+  printf 'BRANCH=%s\n' "$(git -C "$REPO_ROOT" branch --show-current)"
+  printf 'HEAD=%s\n' "$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)"
+  printf 'WORKTREE=%s\n' "$(git -C "$REPO_ROOT" status --porcelain=v1 | wc -l | tr -d ' ') change(s)"
+  printf 'WORK_ORDER=%s\n' "${active:-NONE}"
+  printf 'LAST_ORDER=%s\n' "${last:-NONE}"
+  printf 'SWARM=%s\n' "$(swarm_state)"
+  printf 'HOOKS=%s\n' "$(git -C "$REPO_ROOT" config --get core.hooksPath || printf 'NOT_CONFIGURED')"
+  printf 'CODEGRAPH=%s\n' "$(presence codegraph)"
+  printf 'GRAPHIFY=%s\n' "$(presence graphify)"
+  printf 'TMUX=%s\n' "$(presence tmux)"
+  printf 'CODEX=%s CLAUDE=%s GEMINI=%s\n' "$(presence codex)" "$(presence claude)" "$(presence gemini)"
+  printf 'DOCS=START-HERE.md -> AI_WORKFLOW.md -> AGENTS.md\n'
+  if [[ -n "$active" ]]; then
+    printf 'NEXT=continue the active order; do not start another one\n'
+  else
+    printf 'NEXT_NORMAL=bash tools/llm-workflow.sh start --agent <agent> --objective "<objective>"\n'
+    printf 'NEXT_COMPLEX=bash tools/swarm-workflow.sh start --objective "<objective>"\n'
+  fi
+}
+
+render_snapshot() {
+  local active last hooks changes codegraph_status=""
+  active="$(active_order)"
+  last="$(last_order)"
+  hooks="$(git -C "$REPO_ROOT" config --get core.hooksPath || true)"
+  changes="$(git -C "$REPO_ROOT" status --short --branch)"
+
+  if command -v codegraph >/dev/null 2>&1; then
+    codegraph_status="$(codegraph status "$REPO_ROOT" 2>&1 | sed -n '1,25p' || true)"
+  fi
+
+  cat <<SNAP
+# System snapshot — $project
+
+Generated: $(now_iso)
+
+## Repository
+
+- Path: `$REPO_ROOT`
+- Origin: `${origin:-NONE}`
+- Branch: `$(git -C "$REPO_ROOT" branch --show-current)`
+- HEAD: `$(git -C "$REPO_ROOT" rev-parse HEAD)`
+- Hooks: `${hooks:-NOT_CONFIGURED}`
+
+### Git status
+
+```text
+$changes
+```
+
+## Workflow state
+
+- Active work order: `${active:-NONE}`
+- Last work order: `${last:-NONE}`
+- Swarm: `$(swarm_state)`
+- Persistent history: `$HISTORY`
+
+## Available tooling
+
+| Tool | State |
+|---|---|
+| CodeGraph | $(presence codegraph) |
+| Graphify | $(presence graphify) |
+| tmux | $(presence tmux) |
+| Codex CLI | $(presence codex) |
+| Claude CLI | $(presence claude) |
+| Gemini CLI | $(presence gemini) |
+| GitHub CLI | $(presence gh) |
+
+## Canonical layers
+
+1. `START-HERE.md` — human/LLM entry point.
+2. `AGENTS.md` — repository engineering rules.
+3. `AI_WORKFLOW.md` — mandatory operational policy.
+4. `tools/llm-workflow.sh` — single source of truth for order, backup, evidence, tests and close.
+5. `tools/swarm-workflow.sh` — optional two-role orchestration on top of the same order.
+6. CodeGraph — primary code index.
+7. Graphify — occasional structural visualization.
+8. Obsidian — human-readable mirror, never the source of truth.
+9. Muse Code — optional backend only; not required.
+
+## Duplication policy
+
+Do not introduce a second implementation for backups, work orders, test logs, agent constitutions, handoffs or mandatory code indexing unless the existing canonical layer is intentionally replaced and the migration is documented.
+
+Known decisions:
+
+- TBM: historical; do not duplicate current work-order backups.
+- SwarmForge: concepts absorbed; external runtime not vendored.
+- Loop Engineering: reference for patterns; not a second mandatory runtime.
+- Repowise: reference/pilot while CodeGraph covers daily graph needs.
+- Graphify: not run by default.
+- Muse Code: optional and gated by real platform compatibility.
+
+## CodeGraph status
+
+```text
+${codegraph_status:-NOT_AVAILABLE}
+```
+
+## Recent work history
+
+SNAP
+  if [[ -s "$HISTORY" ]]; then
+    tail -n 40 "$HISTORY"
+  else
+    printf 'No recorded completed/aborted orders yet.\n'
+  fi
+
+  cat <<'SNAP'
+
+## Safe commands
+
+```bash
+bash tools/system-docs.sh summary
+bash tools/system-docs.sh doctor
+bash tools/llm-workflow.sh status
+bash tools/swarm-workflow.sh status
+```
+
+Read `START-HERE.md` when no other context is available.
+SNAP
+}
+
+snapshot() {
+  local out="${1:-}"
+  if [[ -z "$out" ]]; then
+    render_snapshot
+    return
+  fi
+  mkdir -p "$(dirname "$out")"
+  render_snapshot > "$out"
+  printf 'SNAPSHOT=%s\n' "$out"
+}
+
+history() {
+  if [[ -s "$HISTORY" ]]; then
+    cat "$HISTORY"
+  else
+    printf 'No persistent history yet: %s\n' "$HISTORY"
+  fi
+}
+
+record() {
+  local status="${1:-}"; shift || true
+  local summary_text="${*:-No summary supplied.}"
+  [[ "$status" == "closed" || "$status" == "aborted" ]] || fail "record STATUS must be closed or aborted"
+  local order agent objective base_head line
+  order="$(active_order)"
+  [[ -n "$order" && -d "$order" ]] || fail "record requires an active work order"
+  agent="$(cat "$order/AGENT.txt" 2>/dev/null || printf 'unknown')"
+  objective="$(cat "$order/OBJECTIVE.txt" 2>/dev/null || printf 'unknown')"
+  base_head="$(cat "$order/BASE-HEAD.txt" 2>/dev/null || printf 'unknown')"
+  summary_text="$(printf '%s' "$summary_text" | tr '\n\r' '  ')"
+  objective="$(printf '%s' "$objective" | tr '\n\r' '  ')"
+
+  mkdir -p "$STATE_ROOT"
+  chmod 700 "$STATE_BASE" "$STATE_ROOT" 2>/dev/null || true
+  if [[ ! -s "$HISTORY" ]]; then
+    cat > "$HISTORY" <<'HEAD'
+# Work history
+
+This file is generated outside the checkout by `tools/system-docs.sh`. It is an operational index, not a replacement for each work order's evidence.
+
+| Closed at | Status | Agent | Objective | Base → final | Summary | Order |
+|---|---|---|---|---|---|---|
+HEAD
+  fi
+  printf -v line '| %s | %s | %s | %s | `%s` → `%s` | %s | `%s` |\n' \
+    "$(now_iso)" "$status" "$agent" \
+    "${objective//|/\\|}" "${base_head:0:12}" "$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)" \
+    "${summary_text//|/\\|}" "$(basename "$order")"
+  printf '%s' "$line" >> "$HISTORY"
+  printf 'HISTORY_UPDATED=%s\n' "$HISTORY"
+}
+
+publish() {
+  local vault="${OBSIDIAN_VAULT:-/storage/emulated/0/Documents/Engineering-KB}"
+  if [[ ! -d "$vault" || ! -w "$vault" ]]; then
+    printf 'OBSIDIAN_PUBLISH=SKIPPED vault unavailable or not writable: %s\n' "$vault"
+    return 0
+  fi
+  local out="$vault/Projects/$project/Operations"
+  mkdir -p "$out"
+  render_snapshot > "$out/System Status.md"
+  cp "$REPO_ROOT/START-HERE.md" "$out/START HERE.md"
+  if [[ -s "$HISTORY" ]]; then
+    cp "$HISTORY" "$out/Work History.md"
+  else
+    printf '# Work history\n\nNo completed/aborted orders recorded yet.\n' > "$out/Work History.md"
+  fi
+  printf 'OBSIDIAN_PUBLISH=%s\n' "$out"
+}
+
+doctor() {
+  local missing=0 path
+  local required=(
+    START-HERE.md
+    AGENTS.md
+    AI_WORKFLOW.md
+    SWARM_WORKFLOW.md
+    tools/llm-workflow.sh
+    tools/swarm-workflow.sh
+    tools/system-docs.sh
+    tools/test-llm-workflow.sh
+    tools/test-swarm-workflow.sh
+    .githooks/pre-commit
+    .githooks/commit-msg
+  )
+  for path in "${required[@]}"; do
+    if [[ ! -f "$REPO_ROOT/$path" ]]; then
+      printf 'MISSING=%s\n' "$path"
+      missing=1
+    fi
+  done
+
+  for path in tools/llm-workflow.sh tools/swarm-workflow.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh .githooks/pre-commit .githooks/commit-msg; do
+    [[ -f "$REPO_ROOT/$path" ]] && bash -n "$REPO_ROOT/$path"
+  done
+
+  local hooks
+  hooks="$(git -C "$REPO_ROOT" config --get core.hooksPath || true)"
+  printf 'core.hooksPath=%s\n' "${hooks:-NOT_CONFIGURED}"
+  [[ "$hooks" == ".githooks" ]] || printf 'WARNING=Git hooks are not activated; run: bash tools/llm-workflow.sh install\n'
+
+  if [[ -e "$REPO_ROOT/.swarm-forge" || -d "$REPO_ROOT/swarm-forge" ]]; then
+    printf 'WARNING=external SwarmForge runtime detected; review for duplication\n'
+  else
+    printf 'external_swarmforge_runtime=NOT_VENDORED\n'
+  fi
+
+  [[ "$missing" -eq 0 ]] || fail "documentation/workflow installation is incomplete"
+  printf 'SYSTEM_DOCS_DOCTOR=OK\n'
+}
+
+explain() {
+  cat "$REPO_ROOT/START-HERE.md"
+}
+
+case "${1:-}" in
+  summary) shift; summary "$@" ;;
+  snapshot) shift; snapshot "$@" ;;
+  history) shift; history "$@" ;;
+  record) shift; record "$@" ;;
+  publish) shift; publish "$@" ;;
+  doctor) shift; doctor "$@" ;;
+  explain) shift; explain "$@" ;;
+  -h|--help|help|'') usage ;;
+  *) usage >&2; fail "unknown command: $1" ;;
+esac
