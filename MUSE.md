@@ -1,10 +1,19 @@
 # Meta Muse Code
 
-Muse Code debe cumplir la política canónica de [`AI_WORKFLOW.md`](AI_WORKFLOW.md) y todas las reglas de [`AGENTS.md`](AGENTS.md).
+Muse Code debe cumplir `START-HERE.md`, [`AI_WORKFLOW.md`](AI_WORKFLOW.md) y [`AGENTS.md`](AGENTS.md).
 
-## Inicio obligatorio
+## Estado actual
 
-No iniciar Muse directamente. Usar el adaptador estándar:
+Muse Code es **opcional e inactivo** en este entorno. La auditoría real sobre Linux `aarch64` no encontró evidencia suficiente de soporte ARM64 en el instalador oficial, por lo que la instalación permanece bloqueada. Esto no afecta el flujo normal con otros agentes.
+
+## Antes de usarlo, si alguna vez queda habilitado
+
+```bash
+bash tools/system-docs.sh summary
+bash tools/system-docs.sh doctor
+```
+
+No iniciar Muse directamente. Usar el adaptador:
 
 ```bash
 bash tools/muse-workflow.sh \
@@ -19,7 +28,7 @@ bash tools/muse-workflow.sh \
   --structural
 ```
 
-El adaptador abre antes una orden recuperable mediante `tools/llm-workflow.sh`, crea respaldo Git, activa guardas y registra el agente como `muse-code`.
+`muse-workflow.sh` es una excepción controlada: abre la orden mediante el motor base porque necesita lanzar el proceso de Muse en la misma operación. Una vez abierta la orden, usar los comandos autodocumentados de `tools/work.sh` para evidencia y cierre.
 
 ## Skills de Muse
 
@@ -27,35 +36,40 @@ Al comenzar la sesión:
 
 1. usar `/plan` antes de editar;
 2. usar `/grill` antes de cambios estructurales o de riesgo alto;
-3. usar `/goal` únicamente dentro del objetivo y alcance ya autorizados.
+3. usar `/goal` únicamente dentro del objetivo y alcance autorizados.
 
-Los subagentes persistentes forman parte de la misma orden de trabajo. No crean órdenes, commits o respaldos independientes.
+Los subagentes persistentes forman parte de la misma orden. No crean órdenes, commits o respaldos independientes.
 
 ## Evidencia
 
-- Registrar hallazgos con `bash tools/llm-workflow.sh note "..."`.
-- Ejecutar pruebas y compilaciones con `bash tools/llm-workflow.sh run -- ...`.
-- Crear checkpoints antes de operaciones importantes.
-- El registro local de eventos de Muse es evidencia complementaria; no sustituye bundles, patches, manifiestos, pruebas ni Git.
+```bash
+bash tools/work.sh note "<hallazgo>"
+bash tools/work.sh run -- <prueba/build>
+bash tools/work.sh checkpoint "<etapa>"
+```
+
+El registro local de eventos de Muse es evidencia complementaria; no sustituye bundles, patches, manifiestos, pruebas ni Git.
 
 ## Cierre
 
-El lanzador deja la orden activa cuando termina el proceso de Muse. Revisar el estado y cerrarla expresamente:
+El lanzador deja la orden activa cuando Muse termina. Cerrarla mediante el front door autodocumentado:
 
 ```bash
-bash tools/llm-workflow.sh status
-bash tools/llm-workflow.sh finish "<resultado>"
+bash tools/work.sh status
+bash tools/work.sh finish "<resultado>"
 ```
 
-Si el trabajo quedó bloqueado o cancelado:
+Si quedó bloqueada o cancelada:
 
 ```bash
-bash tools/llm-workflow.sh abort "<motivo>"
+bash tools/work.sh abort "<motivo>"
 ```
+
+Así el trabajo queda además incorporado al historial persistente, snapshots y Obsidian.
 
 ## Autorización
 
-Muse Code no puede crear commits, hacer push, abrir o cerrar PR, fusionar ni alterar las guardas sin autorización expresa del usuario. Está prohibido usar `--no-verify`.
+Muse Code no puede crear commits, hacer push, abrir/cerrar PR, fusionar ni alterar guardas sin autorización expresa. Está prohibido usar `--no-verify`.
 
 ## Instalación
 
@@ -65,4 +79,4 @@ No ejecutar `curl | bash` directamente. Primero auditar el instalador oficial si
 bash tools/audit-muse-installer.sh
 ```
 
-La instalación sólo se evalúa después de revisar el reporte y demostrar soporte para la arquitectura real del entorno.
+La instalación sólo puede reconsiderarse después de demostrar soporte para la arquitectura real del entorno y volver a revisar el instalador que se pretenda ejecutar.
