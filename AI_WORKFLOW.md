@@ -1,10 +1,12 @@
 # Flujo obligatorio para agentes de IA
 
-Esta política se aplica a Codex, Claude, Gemini, Copilot, Cursor y cualquier otro agente o LLM que analice o modifique este repositorio.
+Esta política se aplica a Codex, Claude, ChatGPT, Gemini, Meta Muse Code, Copilot, Cursor y cualquier otro agente o LLM que analice o modifique este repositorio.
 
-## Regla principal
+## Elegir el modo de trabajo
 
-Antes de modificar archivos, el agente debe abrir una orden de trabajo estándar:
+### Trabajo normal: un solo agente
+
+Antes de modificar archivos, abrir una orden estándar:
 
 ```bash
 bash tools/llm-workflow.sh status
@@ -13,15 +15,41 @@ bash tools/llm-workflow.sh start --agent <nombre-del-agente> --objective "<objet
 
 Agregar `--structural` cuando el trabajo cambie arquitectura, módulos, dependencias principales, IPC, servicios, flujos centrales o límites entre componentes.
 
-El comando `start` debe ejecutarse antes de cualquier edición. Automáticamente:
+### Trabajo complejo: implementador + revisor independiente
 
-- activa las guardas Git del repositorio;
-- crea una orden de trabajo externa al checkout;
-- guarda estado Git, patches binarios, ramas, worktrees e historial;
-- crea y verifica un bundle Git;
-- archiva los untracked recuperables;
-- registra versiones y estado de CodeGraph/Graphify;
-- genera un manifiesto SHA-256.
+No abrir primero una orden normal. Usar directamente:
+
+```bash
+bash tools/swarm-workflow.sh start --objective "<objetivo concreto>"
+```
+
+Agregar `--structural` cuando corresponda. El swarm reutiliza `llm-workflow.sh` y crea **una sola orden maestra y un solo respaldo**, por lo que no debe abrirse una orden separada por cada agente.
+
+El diseño, comandos y criterios de uso están en [`SWARM_WORKFLOW.md`](SWARM_WORKFLOW.md).
+
+Si el entorno contiene `SWARM_ROLE` y `SWARM_ROLE_PROMPT`, el agente ya pertenece a una orden maestra: debe leer el archivo indicado por `SWARM_ROLE_PROMPT` y **no ejecutar `start` nuevamente**.
+
+Usar swarm únicamente cuando una revisión independiente aporte valor suficiente para justificar el consumo adicional. Las tareas pequeñas siguen con un solo agente.
+
+### Meta Muse Code
+
+Muse Code se integra como backend opcional mediante [`MUSE.md`](MUSE.md) y `tools/muse-workflow.sh`. No ejecutar su instalador remoto sin auditoría previa. La ausencia de Muse no bloquea el flujo estándar.
+
+## Qué automatiza la orden maestra
+
+`tools/llm-workflow.sh` sigue siendo la única fuente de verdad para:
+
+- guardas Git;
+- orden de trabajo externa al checkout;
+- estado Git y patches binarios;
+- ramas, worktrees e historial;
+- bundle Git verificado;
+- untracked recuperables;
+- evidencia CodeGraph/Graphify;
+- manifiesto SHA-256;
+- pruebas, builds, checkpoints y cierre.
+
+Ningún orquestador debe duplicar esas funciones.
 
 ## Investigación
 
@@ -53,8 +81,6 @@ Cada ejecución conserva comando, salida completa, fecha y código de salida den
 
 ## Checkpoints
 
-Crear evidencia intermedia cuando cambie el alcance o antes de una operación importante:
-
 ```bash
 bash tools/llm-workflow.sh checkpoint "descripción"
 ```
@@ -65,22 +91,23 @@ bash tools/llm-workflow.sh checkpoint "descripción"
 - No usar `--no-verify`.
 - No desactivar ni modificar `core.hooksPath` para eludir el flujo.
 - Todo commit autorizado requiere una orden activa. Los hooks agregan automáticamente los trailers `Work-Order` y `Agent`.
+- Un handoff entre agentes no requiere commit: `swarm-workflow.sh handoff` transfiere una fotografía binaria reproducible.
 
 ## Cierre
 
-Al terminar:
+Para una orden normal:
 
 ```bash
 bash tools/llm-workflow.sh finish "resumen del resultado"
 ```
 
-El cierre captura el estado final, actualiza CodeGraph cuando existe, actualiza Graphify sólo para órdenes estructurales, exporta la evidencia disponible a Obsidian y recalcula el manifiesto.
-
-Si el trabajo se cancela o bloquea:
+Para un swarm:
 
 ```bash
-bash tools/llm-workflow.sh abort "motivo"
+bash tools/swarm-workflow.sh finish "resumen del resultado"
 ```
+
+Si el trabajo se cancela o bloquea, usar el `abort` del mismo motor con el que se inició.
 
 Nunca dejar una orden activa sin cerrarla o abortarla.
 
@@ -92,4 +119,4 @@ Por defecto, órdenes y respaldos se guardan fuera del repositorio en:
 $HOME/.local/state/llm-work/<repositorio>/<fecha-objetivo>/
 ```
 
-Puede cambiarse con `LLM_WORK_ROOT`. `.codegraph/` y `graphify-out/` siguen siendo artefactos regenerables y no son fuentes de verdad.
+Los worktrees del swarm viven bajo `/.worktrees/`, están ignorados por Git y no son respaldo. `.codegraph/` y `graphify-out/` siguen siendo artefactos regenerables y tampoco son fuentes de verdad.
