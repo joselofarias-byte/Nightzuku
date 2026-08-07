@@ -2,118 +2,119 @@
 
 Este archivo es el **punto de entrada único** para cualquier persona o LLM que llegue al repositorio sin contexto previo.
 
-No es necesario recordar qué herramientas fueron agregadas ni cómo se conectan. El sistema debe poder explicarse y validarse solo.
+No hace falta recordar qué agregamos ni cómo se conecta cada herramienta. El sistema debe poder explicarse, diagnosticarse y reconstruir su historial por sí mismo.
 
-## 1. Qué manda
+## 1. Si no recordás nada
 
-La jerarquía es:
-
-1. `AGENTS.md` — reglas de ingeniería del repositorio.
-2. `AI_WORKFLOW.md` — política operativa para cualquier LLM.
-3. `tools/llm-workflow.sh` — única fuente de verdad para orden, respaldo, evidencia, tests y cierre.
-4. `tools/swarm-workflow.sh` — orquestación opcional implementador + revisor; reutiliza la misma orden.
-5. `CodeGraph` — índice principal para impacto, dependencias, callers/callees y trazado.
-6. `Graphify` — sólo arquitectura/refactors grandes cuando aporte valor.
-7. `Obsidian` — vista humana y memoria de ingeniería; no reemplaza Git ni los respaldos.
-8. `MUSE.md` / `tools/muse-workflow.sh` — backend experimental opcional, no requisito.
-
-Si dos herramientas cubren lo mismo, gana la capa ya canónica y se evita agregar otra dependencia.
-
-## 2. Antes de hacer cualquier cosa
+Ejecutar:
 
 ```bash
 bash tools/system-docs.sh summary
 bash tools/system-docs.sh doctor
 ```
 
-Eso muestra el estado real del repositorio, herramientas disponibles, orden activa, hooks, swarm y documentación.
+`summary` muestra proyecto, rama, HEAD, cambios locales, orden activa, último trabajo, swarm, hooks, herramientas disponibles y próximos comandos seguros. `doctor` valida que la instalación documental/operativa esté completa.
+
+## 2. Jerarquía canónica
+
+1. `START-HERE.md` — entrada humana y para LLM.
+2. `AGENTS.md` — reglas de ingeniería del repositorio.
+3. `AI_WORKFLOW.md` — política operativa obligatoria.
+4. `tools/llm-workflow.sh` — motor estable de orden, backup, evidencia, pruebas y cierre.
+5. `tools/work.sh` — **front door obligatorio para trabajo normal**, añade autodocumentación al motor.
+6. `tools/swarm-workflow.sh` — motor interno de worktrees/handoff.
+7. `tools/swarm.sh` — **front door obligatorio para trabajo multi-LLM**.
+8. `tools/system-docs.sh` — dashboard, snapshots, historial, doctor y publicación a Obsidian.
+9. CodeGraph — índice principal del código.
+10. Graphify — arquitectura/refactors grandes, sólo cuando aporte valor.
+11. Obsidian — espejo humano, no fuente de verdad.
+12. Muse Code — backend experimental opcional, no requisito.
 
 ## 3. Trabajo normal: un agente
 
 ```bash
-bash tools/llm-workflow.sh start \
+bash tools/work.sh start \
   --agent <agente> \
   --objective "<objetivo>"
 ```
 
-Para cambio estructural, agregar `--structural`.
+Agregar `--structural` para cambios de arquitectura, módulos, IPC, servicios, dependencias principales o flujos centrales.
 
 Durante el trabajo:
 
 ```bash
-bash tools/llm-workflow.sh note "<hallazgo o decisión>"
-bash tools/llm-workflow.sh run -- <test/build/comando>
-bash tools/llm-workflow.sh checkpoint "<etapa>"
+bash tools/work.sh note "<hallazgo o decisión>"
+bash tools/work.sh run -- <test/build/comando>
+bash tools/work.sh checkpoint "<etapa>"
 ```
 
 Cerrar siempre:
 
 ```bash
-bash tools/llm-workflow.sh finish "<resultado>"
+bash tools/work.sh finish "<resultado>"
 ```
 
-O, si se cancela:
+O cancelar preservando evidencia:
 
 ```bash
-bash tools/llm-workflow.sh abort "<motivo>"
+bash tools/work.sh abort "<motivo>"
 ```
 
-## 4. Trabajo complejo: dos agentes
+El wrapper genera snapshots del sistema, actualiza el historial persistente y publica la vista humana a Obsidian cuando el vault está disponible.
+
+## 4. Trabajo complejo: implementador + revisor
 
 ```bash
-bash tools/swarm-workflow.sh start \
-  --objective "<objetivo>"
+bash tools/swarm.sh start --objective "<objetivo>"
 ```
 
-Topología estándar:
+Topología:
 
 ```text
 orden + respaldo únicos
         ↓
-implementador en worktree aislado
+implementador / worktree aislado
         ↓
-handoff reproducible sin commit
+handoff binario reproducible sin commit
         ↓
-revisor independiente en otro worktree
+revisor independiente / segundo worktree
         ↓
-decisión / evidencia / cierre
+evidencia + decisión + cierre
 ```
 
 Comandos principales:
 
 ```bash
-bash tools/swarm-workflow.sh prompt implementer
-bash tools/swarm-workflow.sh handoff
-bash tools/swarm-workflow.sh prompt reviewer
-bash tools/swarm-workflow.sh review-note "<observación>"
-bash tools/swarm-workflow.sh finish "<resultado>"
+bash tools/swarm.sh prompt implementer
+bash tools/swarm.sh handoff
+bash tools/swarm.sh prompt reviewer
+bash tools/swarm.sh review-note "<observación>"
+bash tools/swarm.sh finish "<resultado>"
 ```
 
-Usar swarm sólo cuando una revisión independiente compense el consumo extra de cuota/contexto.
+Usar swarm sólo cuando una revisión realmente independiente compense el consumo adicional de cuota/contexto.
 
-## 5. Cómo saber qué ocurrió anteriormente
+## 5. Recuperar qué se hizo
 
 ```bash
 bash tools/system-docs.sh history
 ```
 
-Cada `finish` o `abort` registra automáticamente una entrada en el historial persistente externo al checkout.
-
-Para generar una fotografía completa del sistema:
+Generar una fotografía completa:
 
 ```bash
 bash tools/system-docs.sh snapshot
 ```
 
-Para actualizar la vista de Obsidian cuando esté disponible:
+Actualizar manualmente Obsidian:
 
 ```bash
 bash tools/system-docs.sh publish
 ```
 
-El propio `llm-workflow.sh` captura snapshots al abrir, en checkpoints y al cerrar, y publica la vista humana al final.
+Los cierres normales y swarm hacen el registro/publicación automáticamente.
 
-## 6. Qué NO se debe duplicar
+## 6. No duplicar
 
 No crear otro sistema paralelo para:
 
@@ -122,32 +123,26 @@ No crear otro sistema paralelo para:
 - logs de pruebas;
 - worktrees/handoffs;
 - políticas de agentes;
-- índices de código obligatorios;
-- historial de ejecución.
+- índice obligatorio de código;
+- historial operativo.
 
-Antes de integrar un proyecto externo, revisar si su función ya existe. En particular:
+Decisiones vigentes:
 
-- TBM permanece histórico y no duplica el backup de `llm-workflow`;
-- SwarmForge aportó conceptos, no su runtime;
-- Loop Engineering permanece referencia para patrones y técnicas, no un segundo runtime obligatorio;
-- Repowise permanece piloto/referencia mientras CodeGraph sea suficiente;
-- Graphify no se ejecuta por defecto;
-- Muse Code no es dependencia y su instalación sigue condicionada a compatibilidad real.
+- TBM: histórico; no duplicar el backup actual.
+- SwarmForge: se absorbieron roles/worktrees/handoffs, no su runtime.
+- Loop Engineering: referencia de patrones, no segundo runtime obligatorio.
+- Repowise: referencia/piloto mientras CodeGraph cubra la necesidad diaria.
+- Graphify: no se ejecuta por defecto.
+- Muse Code: opcional y condicionado a compatibilidad real.
 
 ## 7. Seguridad y autorización
 
 - No usar `--no-verify`.
 - No desactivar `core.hooksPath` para saltar guardas.
 - Commit, push, merge y apertura/cierre de PR requieren autorización expresa.
-- No versionar índices regenerables ni secretos.
-- Ante duda, preservar evidencia y abortar antes que destruir estado.
+- No versionar secretos ni índices regenerables.
+- Ante una situación incierta, preservar evidencia y abortar antes que destruir estado.
 
-## 8. Si no recordás nada
+## 8. Regla para cualquier LLM futuro
 
-Ejecutar solamente:
-
-```bash
-bash tools/system-docs.sh summary
-```
-
-La salida indica qué existe, qué está activo y cuáles son los siguientes comandos seguros.
+Si una CLI o modelo nuevo no conoce este entorno, debe leer este archivo y `AI_WORKFLOW.md`, ejecutar `tools/system-docs.sh summary` y continuar desde el estado real. No debe pedir al usuario que recuerde el historial técnico si éste ya puede recuperarse del sistema.
