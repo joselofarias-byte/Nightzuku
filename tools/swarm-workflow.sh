@@ -101,8 +101,8 @@ Reglas obligatorias:
 1. Leer AGENTS.md y AI_WORKFLOW.md antes de trabajar.
 2. Esta sesión pertenece a la orden maestra indicada por SWARM_MASTER_ORDER; no abrir otra orden.
 3. Usar CodeGraph antes de búsquedas amplias cuando esté disponible.
-4. Registrar hallazgos con `bash tools/llm-workflow.sh note "..."`.
-5. Ejecutar pruebas/builds con `bash tools/llm-workflow.sh run -- ...`.
+4. Registrar hallazgos con: bash tools/llm-workflow.sh note "..."
+5. Ejecutar pruebas/builds con: bash tools/llm-workflow.sh run -- <comando> [argumentos]
 6. Hacer el cambio mínimo y seguro dentro de este worktree.
 7. No hacer commit, push, merge ni abrir/cerrar PR sin autorización expresa.
 8. Al terminar, no copiar cambios manualmente al checkout maestro. El orquestador hará un handoff reproducible.
@@ -122,8 +122,8 @@ Reglas obligatorias:
 3. Revisar corrección, seguridad, estabilidad, simplicidad, pruebas y alcance.
 4. Usar CodeGraph cuando ayude a confirmar impacto o dependencias.
 5. No modificar archivos de aplicación: este rol es de revisión independiente.
-6. Registrar observaciones con `bash tools/swarm-workflow.sh review-note "..."`.
-7. Puede ejecutar pruebas mediante `bash tools/llm-workflow.sh run -- ...`.
+6. Registrar observaciones con: bash tools/swarm-workflow.sh review-note "..."
+7. Puede ejecutar pruebas mediante: bash tools/llm-workflow.sh run -- <comando> [argumentos]
 8. No hacer commit, push, merge ni abrir/cerrar PR.
 PROMPT
   fi
