@@ -47,3 +47,6 @@ nightzuku-c*-build.txt
 /.codegraph-*/
 /graphify-out/
 /graph.json
+
+# Local multi-LLM orchestration
+/.worktrees/
