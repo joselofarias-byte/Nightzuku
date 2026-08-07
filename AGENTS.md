@@ -2,16 +2,26 @@
 
 ## Mandatory automated work-order gate
 
-Before analyzing broadly or modifying any file, read [`AI_WORKFLOW.md`](AI_WORKFLOW.md) and execute:
+Before analyzing broadly or modifying any file, read [`AI_WORKFLOW.md`](AI_WORKFLOW.md).
+
+If `SWARM_ROLE` and `SWARM_ROLE_PROMPT` are set, this agent already belongs to a master swarm order: read the file indicated by `SWARM_ROLE_PROMPT` and **do not start another work order**.
+
+For normal single-agent work:
 
 ```bash
 bash tools/llm-workflow.sh status
 bash tools/llm-workflow.sh start --agent <agent-name> --objective "<objective>"
 ```
 
-Use `--structural` for architecture, module, IPC, service, dependency or central-flow changes. Record findings with `note`, run tests and builds through `run --`, and always `finish` or `abort` the order. Do not use `--no-verify`. Commit, push and merge require express user authorization.
+For complex work that benefits from an independent second review:
 
-This gate applies to Claude Code, Codex, ChatGPT, Gemini CLI, Cursor, Windsurf, Cline, OpenCode, Roo, Aider and any future coding agent. The remaining engineering standards below continue to apply.
+```bash
+bash tools/swarm-workflow.sh start --objective "<objective>"
+```
+
+Use `--structural` for architecture, module, IPC, service, dependency or central-flow changes. Record findings with `note`, run tests and builds through `run --`, and always close or abort using the same workflow that opened the work. Do not use `--no-verify`. Commit, push and merge require express user authorization.
+
+This gate applies to Claude Code, Codex, ChatGPT, Gemini CLI, Meta Muse Code, Cursor, Windsurf, Cline, OpenCode, Roo, Aider and any future coding agent. The remaining engineering standards below continue to apply.
 
 # Shizuku+ / EverCall / ShizukuCall / Stellar / Nightzuku Engineering Standard
 
