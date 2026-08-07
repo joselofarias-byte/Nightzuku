@@ -143,6 +143,12 @@ Decisiones vigentes:
 - No versionar secretos ni índices regenerables.
 - Ante una situación incierta, preservar evidencia y abortar antes que destruir estado.
 
-## 8. Regla para cualquier LLM futuro
+## 8. Troubleshooting conocido
+
+Antes de volver a diagnosticar un warning o fallo del harness, consultar [`docs/workflow-troubleshooting.md`](docs/workflow-troubleshooting.md).
+
+Ese documento registra fallos reales ya observados, sus causas y las pruebas de regresión incorporadas. Incluye el warning PRoot de `/proc/self/fd/0`, el antiguo `rc=127` generado accidentalmente al renderizar prompts del swarm y el `Broken pipe` del test de autodocumentación.
+
+## 9. Regla para cualquier LLM futuro
 
 Si una CLI o modelo nuevo no conoce este entorno, debe leer este archivo y `AI_WORKFLOW.md`, ejecutar `tools/system-docs.sh summary` y continuar desde el estado real. No debe pedir al usuario que recuerde el historial técnico si éste ya puede recuperarse del sistema.
