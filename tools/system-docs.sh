@@ -39,7 +39,7 @@ Commands:
   summary                 concise human/LLM dashboard
   snapshot [FILE]         write a full Markdown snapshot; stdout if FILE omitted
   history                 show persistent completed/aborted work history
-  record STATUS SUMMARY   append current order to persistent history
+  record STATUS SUMMARY   append active or most recently closed order to persistent history
   publish                 publish snapshot + history + START-HERE to Obsidian when available
   doctor                  validate the documentation/workflow installation
   explain                 print START-HERE.md
@@ -90,8 +90,8 @@ summary() {
   if [[ -n "$active" ]]; then
     printf 'NEXT=continue the active order; do not start another one\n'
   else
-    printf 'NEXT_NORMAL=bash tools/llm-workflow.sh start --agent <agent> --objective "<objective>"\n'
-    printf 'NEXT_COMPLEX=bash tools/swarm-workflow.sh start --objective "<objective>"\n'
+    printf 'NEXT_NORMAL=bash tools/work.sh start --agent <agent> --objective "<objective>"\n'
+    printf 'NEXT_COMPLEX=bash tools/swarm.sh start --objective "<objective>"\n'
   fi
 }
 
@@ -149,12 +149,14 @@ $changes
 1. `START-HERE.md` — human/LLM entry point.
 2. `AGENTS.md` — repository engineering rules.
 3. `AI_WORKFLOW.md` — mandatory operational policy.
-4. `tools/llm-workflow.sh` — single source of truth for order, backup, evidence, tests and close.
-5. `tools/swarm-workflow.sh` — optional two-role orchestration on top of the same order.
-6. CodeGraph — primary code index.
-7. Graphify — occasional structural visualization.
-8. Obsidian — human-readable mirror, never the source of truth.
-9. Muse Code — optional backend only; not required.
+4. `tools/llm-workflow.sh` — stable engine for order, backup, evidence, tests and close.
+5. `tools/work.sh` — canonical self-documenting front door for single-agent work.
+6. `tools/swarm-workflow.sh` — stable two-role orchestration engine.
+7. `tools/swarm.sh` — canonical self-documenting front door for swarm work.
+8. CodeGraph — primary code index.
+9. Graphify — occasional structural visualization.
+10. Obsidian — human-readable mirror, never the source of truth.
+11. Muse Code — optional backend only; not required.
 
 ## Duplication policy
 
@@ -191,8 +193,8 @@ SNAP
 ```bash
 bash tools/system-docs.sh summary
 bash tools/system-docs.sh doctor
-bash tools/llm-workflow.sh status
-bash tools/swarm-workflow.sh status
+bash tools/work.sh status
+bash tools/swarm.sh status
 ```
 
 Read `START-HERE.md` when no other context is available.
@@ -222,9 +224,15 @@ record() {
   local status="${1:-}"; shift || true
   local summary_text="${*:-No summary supplied.}"
   [[ "$status" == "closed" || "$status" == "aborted" ]] || fail "record STATUS must be closed or aborted"
-  local order agent objective base_head line
+  local order agent objective base_head line order_id
   order="$(active_order)"
-  [[ -n "$order" && -d "$order" ]] || fail "record requires an active work order"
+  [[ -n "$order" ]] || order="$(last_order)"
+  [[ -n "$order" && -d "$order" ]] || fail "record requires an active or most recently closed work order"
+  order_id="$(basename "$order")"
+  if [[ -s "$HISTORY" ]] && grep -Fq "| \`$order_id\` |" "$HISTORY"; then
+    printf 'HISTORY_ALREADY_RECORDED=%s\n' "$order_id"
+    return 0
+  fi
   agent="$(cat "$order/AGENT.txt" 2>/dev/null || printf 'unknown')"
   objective="$(cat "$order/OBJECTIVE.txt" 2>/dev/null || printf 'unknown')"
   base_head="$(cat "$order/BASE-HEAD.txt" 2>/dev/null || printf 'unknown')"
@@ -246,7 +254,7 @@ HEAD
   printf -v line '| %s | %s | %s | %s | `%s` → `%s` | %s | `%s` |\n' \
     "$(now_iso)" "$status" "$agent" \
     "${objective//|/\\|}" "${base_head:0:12}" "$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)" \
-    "${summary_text//|/\\|}" "$(basename "$order")"
+    "${summary_text//|/\\|}" "$order_id"
   printf '%s' "$line" >> "$HISTORY"
   printf 'HISTORY_UPDATED=%s\n' "$HISTORY"
 }
@@ -277,7 +285,9 @@ doctor() {
     AI_WORKFLOW.md
     SWARM_WORKFLOW.md
     tools/llm-workflow.sh
+    tools/work.sh
     tools/swarm-workflow.sh
+    tools/swarm.sh
     tools/system-docs.sh
     tools/test-llm-workflow.sh
     tools/test-swarm-workflow.sh
@@ -291,7 +301,7 @@ doctor() {
     fi
   done
 
-  for path in tools/llm-workflow.sh tools/swarm-workflow.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh .githooks/pre-commit .githooks/commit-msg; do
+  for path in tools/llm-workflow.sh tools/work.sh tools/swarm-workflow.sh tools/swarm.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh .githooks/pre-commit .githooks/commit-msg; do
     [[ -f "$REPO_ROOT/$path" ]] && bash -n "$REPO_ROOT/$path"
   done
 
