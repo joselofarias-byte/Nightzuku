@@ -17,10 +17,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
       - name: Verify server compile
         shell: bash
         run: |
           set -Eeuo pipefail
-          chmod +x ./gradlew
-          ./gradlew :server:assembleDebug --stacktrace --no-daemon
+          gradle :server:assembleDebug --stacktrace --no-daemon
