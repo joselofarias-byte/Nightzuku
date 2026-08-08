@@ -10,6 +10,34 @@ Estado: **warning tolerable mientras el proceso posterior continúe**.
 
 No se considera por sí solo un fallo del flujo. La validación debe juzgar el código de salida y las comprobaciones posteriores.
 
+## CodeGraph aparece como `NOT_INSTALLED` en un shell no interactivo
+
+### Síntoma real
+
+Durante la validación de Codebase Memory 0.9.0, el sistema ya tenía CodeGraph instalado, pero `tools/code-intel.sh codegraph-status` devolvió:
+
+```text
+ERROR: CodeGraph is not installed
+```
+
+### Causa
+
+CodeGraph estaba instalado bajo `$HOME/.local/bin`, pero el `bash -s` no interactivo lanzado dentro de Debian PRoot no heredó esa ruta en `PATH`.
+
+No era una desinstalación ni una pérdida del índice.
+
+### Corrección
+
+`tools/code-intel.sh` agrega `$HOME/.local/bin` a `PATH` y además resuelve herramientas conocidas por rutas explícitas (`$HOME/.local/bin`, `/usr/local/bin`, `/usr/bin`). Los validadores también pueden exponer de forma estable un binario local existente en `/usr/local/bin` sin reinstalarlo ni sobrescribir otro binario.
+
+Regla: **antes de afirmar que una herramienta local desapareció, distinguir `command not found` por PATH de una instalación realmente ausente**.
+
+## Codebase Memory y el artefacto `.codebase-memory/graph.db.zst`
+
+Codebase Memory 0.9.0 soporta un artefacto compartible del grafo dentro del repositorio. Su pipeline sólo lo exporta cuando `persistence` está habilitado.
+
+Para nuestros pilotos, el índice candidato no debe modificar el checkout. La validación debe comprobar que `index_repository --help` expone `--persistence` y ejecutar el indexado con `--persistence false`. Si esa capacidad no está disponible, se aborta antes de indexar; no se limpia silenciosamente el repositorio después.
+
 ## `ERROR ... rc=127 ... tee -a "$log_file"` durante el test swarm
 
 ### Causa real
@@ -57,11 +85,12 @@ Una fixture de prueba es un repositorio Git nuevo y no hereda la configuración 
 
 Los validadores deben:
 
-1. detener la actualización ante repositorios piloto sucios u órdenes activas;
+1. detener la actualización ante repositorios piloto sucios u órdenes activas, salvo una orden de validación propia que pueda abortarse preservando evidencia;
 2. conservar la salida completa;
 3. comparar la huella del Nightzuku original antes y después;
 4. no hacer push ni merge;
 5. no borrar worktrees con cambios;
-6. convertir todo fallo reproducible en una prueba de regresión cuando sea razonable.
+6. convertir todo fallo reproducible en una prueba de regresión cuando sea razonable;
+7. no reparar automáticamente un checkout generado por una herramienta si puede desactivar esa escritura antes de ejecutarla.
 
-La validación del 7 de agosto de 2026 confirmó que el Nightzuku original permaneció intacto incluso cuando falló el test de autodocumentación.
+La validación del 7 de agosto de 2026 confirmó que el Nightzuku original permaneció intacto incluso cuando falló el test de autodocumentación. La validación de Codebase Memory del 8 de agosto volvió a confirmar el mismo comportamiento ante un falso negativo de PATH.
