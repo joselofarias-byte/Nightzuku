@@ -9,9 +9,11 @@ import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.view.setPadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -23,6 +25,7 @@ import moe.shizuku.manager.shizuku.NightDogRecovery
 class MainActivity : HomeActivity() {
 
     private var nightDogStatusView: TextView? = null
+    private var lastStage: NightDogRecovery.Stage? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,18 +47,19 @@ class MainActivity : HomeActivity() {
 
     private fun installNightDogStatusOverlay() {
         val root = findViewById<ViewGroup>(android.R.id.content)
-        val overlayHorizontalMargin = dp(16)
-        val overlayBottomMargin = dp(20)
+        val horizontalMargin = dp(16)
+        val overlayBottomMargin = dp(16)
 
         nightDogStatusView = TextView(this).apply {
-            setPadding(dp(16))
-            textSize = 14f
+            visibility = View.GONE
+            setPadding(dp(12))
+            textSize = 13f
             setTextColor(Color.WHITE)
             elevation = dp(6).toFloat()
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(18).toFloat()
-                setColor(0xEB202124.toInt())
+                cornerRadius = dp(16).toFloat()
+                setColor(0xF0202124.toInt())
             }
         }.also { view ->
             root.addView(
@@ -65,8 +69,8 @@ class MainActivity : HomeActivity() {
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM
                 ).apply {
-                    leftMargin = overlayHorizontalMargin
-                    rightMargin = overlayHorizontalMargin
+                    leftMargin = horizontalMargin
+                    rightMargin = horizontalMargin
                     bottomMargin = overlayBottomMargin
                 }
             )
@@ -74,23 +78,33 @@ class MainActivity : HomeActivity() {
     }
 
     private fun renderNightDogStatus(snapshot: NightDogRecovery.Snapshot) {
-        val (headline, color) = when {
-            snapshot.binderAlive && snapshot.stage == NightDogRecovery.Stage.RUNNING ->
-                "Servicio iniciado correctamente" to 0xFF66BB6A.toInt()
+        val previousStage = lastStage
+        lastStage = snapshot.stage
 
-            snapshot.stage == NightDogRecovery.Stage.ERROR ->
+        if (snapshot.binderAlive && snapshot.stage == NightDogRecovery.Stage.RUNNING) {
+            nightDogStatusView?.visibility = View.GONE
+            if (previousStage != NightDogRecovery.Stage.RUNNING) {
+                Toast.makeText(this, "Servicio iniciado correctamente", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        if (!snapshot.desiredRunning || snapshot.stage == NightDogRecovery.Stage.MANUALLY_STOPPED) {
+            nightDogStatusView?.visibility = View.GONE
+            return
+        }
+
+        val (headline, color) = when (snapshot.stage) {
+            NightDogRecovery.Stage.ERROR ->
                 "Error al iniciar el servicio" to 0xFFEF5350.toInt()
 
-            snapshot.stage == NightDogRecovery.Stage.MANUALLY_STOPPED || !snapshot.desiredRunning ->
-                "Servicio detenido" to 0xFFBDBDBD.toInt()
-
-            snapshot.stage == NightDogRecovery.Stage.STARTING_SERVICE ->
+            NightDogRecovery.Stage.STARTING_SERVICE ->
                 "Iniciando servicio…" to 0xFFFFCA28.toInt()
 
-            snapshot.stage == NightDogRecovery.Stage.DISCOVERING_ADB ->
+            NightDogRecovery.Stage.DISCOVERING_ADB ->
                 "Buscando transporte ADB…" to 0xFFFFCA28.toInt()
 
-            snapshot.stage == NightDogRecovery.Stage.WAITING_FOR_ADB ->
+            NightDogRecovery.Stage.WAITING_FOR_ADB ->
                 "Recuperando servicio…" to 0xFFFFCA28.toInt()
 
             else ->
@@ -101,12 +115,9 @@ class MainActivity : HomeActivity() {
         val transport = snapshot.transport ?: "buscando"
         val endpoint = snapshot.endpoint ?: "no resuelto"
         val detail = buildString {
-            append("Chequeo: ${snapshot.stage.name}")
-            append("  •  Binder: $binder")
-            append("\nTransporte: $transport")
-            append("  •  Endpoint: $endpoint")
-            append("\nIntentos: ${snapshot.failedAttempts}")
-            append("  •  Resultado: ${snapshot.lastResult}")
+            append("Chequeo: ${snapshot.stage.name}  •  Binder: $binder")
+            append("\nTransporte: $transport  •  Endpoint: $endpoint")
+            append("\nIntentos: ${snapshot.failedAttempts}  •  ${snapshot.lastResult}")
         }
 
         val text = SpannableString("$headline\n$detail").apply {
@@ -124,7 +135,10 @@ class MainActivity : HomeActivity() {
             )
         }
 
-        nightDogStatusView?.text = text
+        nightDogStatusView?.apply {
+            this.text = text
+            visibility = View.VISIBLE
+        }
     }
 
     private fun dp(value: Int): Int =
