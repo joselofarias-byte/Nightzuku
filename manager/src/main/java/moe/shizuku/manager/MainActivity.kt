@@ -44,8 +44,8 @@ class MainActivity : HomeActivity() {
 
     private fun installNightDogStatusOverlay() {
         val root = findViewById<ViewGroup>(android.R.id.content)
-        val horizontalMargin = dp(16)
-        val bottomMargin = dp(20)
+        val overlayHorizontalMargin = dp(16)
+        val overlayBottomMargin = dp(20)
 
         nightDogStatusView = TextView(this).apply {
             setPadding(dp(16))
@@ -65,9 +65,9 @@ class MainActivity : HomeActivity() {
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM
                 ).apply {
-                    leftMargin = horizontalMargin
-                    rightMargin = horizontalMargin
-                    bottomMargin = bottomMargin
+                    leftMargin = overlayHorizontalMargin
+                    rightMargin = overlayHorizontalMargin
+                    bottomMargin = overlayBottomMargin
                 }
             )
         }
