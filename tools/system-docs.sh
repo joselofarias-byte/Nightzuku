@@ -15,6 +15,7 @@ ACTIVE_FILE="$GIT_DIR/llm-work-current"
 LAST_FILE="$GIT_DIR/llm-work-last"
 SWARM_CURRENT="$GIT_DIR/swarm-current"
 SWARM_LAST="$GIT_DIR/swarm-last"
+CONTEXT_TOOL="$REPO_ROOT/tools/context-pack.sh"
 
 origin_raw="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
 sanitize_origin() {
@@ -52,6 +53,16 @@ presence() {
   command -v "$1" >/dev/null 2>&1 && printf 'AVAILABLE' || printf 'NOT_INSTALLED'
 }
 
+repomix_state() {
+  if [[ ! -f "$CONTEXT_TOOL" ]]; then
+    printf 'NOT_CONFIGURED'
+    return
+  fi
+  local line
+  line="$(bash "$CONTEXT_TOOL" status --brief 2>/dev/null | sed -n '1p' || true)"
+  [[ -n "$line" ]] && printf '%s' "${line#REPOMIX=}" || printf 'UNKNOWN'
+}
+
 active_order() {
   [[ -s "$ACTIVE_FILE" ]] && cat "$ACTIVE_FILE" || true
 }
@@ -84,11 +95,13 @@ summary() {
   printf 'HOOKS=%s\n' "$(git -C "$REPO_ROOT" config --get core.hooksPath || printf 'NOT_CONFIGURED')"
   printf 'CODEGRAPH=%s\n' "$(presence codegraph)"
   printf 'GRAPHIFY=%s\n' "$(presence graphify)"
+  printf 'REPOMIX=%s\n' "$(repomix_state)"
   printf 'TMUX=%s\n' "$(presence tmux)"
   printf 'CODEX=%s CLAUDE=%s GEMINI=%s\n' "$(presence codex)" "$(presence claude)" "$(presence gemini)"
   printf 'DOCS=START-HERE.md -> AI_WORKFLOW.md -> AGENTS.md\n'
   if [[ -n "$active" ]]; then
     printf 'NEXT=continue the active order; do not start another one\n'
+    printf 'CONTEXT=bash tools/work.sh context --mode compact --include <globs> --name <name>\n'
   else
     printf 'NEXT_NORMAL=bash tools/work.sh start --agent <agent> --objective "<objective>"\n'
     printf 'NEXT_COMPLEX=bash tools/swarm.sh start --objective "<objective>"\n'
@@ -126,6 +139,7 @@ render_snapshot() {
   printf '| Tool | State |\n|---|---|\n'
   printf '| CodeGraph | %s |\n' "$(presence codegraph)"
   printf '| Graphify | %s |\n' "$(presence graphify)"
+  printf '| Repomix context transport | %s |\n' "$(repomix_state)"
   printf '| tmux | %s |\n' "$(presence tmux)"
   printf '| Codex CLI | %s |\n' "$(presence codex)"
   printf '| Claude CLI | %s |\n' "$(presence claude)"
@@ -142,10 +156,11 @@ render_snapshot() {
 5. tools/work.sh — canonical self-documenting front door for single-agent work.
 6. tools/swarm-workflow.sh — stable two-role orchestration engine.
 7. tools/swarm.sh — canonical self-documenting front door for swarm work.
-8. CodeGraph — primary code index.
-9. Graphify — occasional structural visualization.
-10. Obsidian — human-readable mirror, never the source of truth.
-11. Muse Code — optional backend only; not required.
+8. CodeGraph — primary code index for relationships and impact.
+9. Repomix / tools/context-pack.sh — optional context transport with token budgeting and secret scanning.
+10. Graphify — occasional structural visualization.
+11. Obsidian — human-readable mirror, never the source of truth.
+12. Muse Code — optional backend only; not required.
 
 ## Duplication policy
 
@@ -157,6 +172,7 @@ Known decisions:
 - SwarmForge: concepts absorbed; external runtime not vendored.
 - Loop Engineering: reference for patterns; not a second mandatory runtime.
 - Repowise: reference/pilot while CodeGraph covers daily graph needs.
+- Repomix: context transport only; not a graph, backup, wiki or mandatory per-task step.
 - Graphify: not run by default.
 - Muse Code: optional and gated by real platform compatibility.
 
@@ -179,6 +195,7 @@ SNAP
 ~~~bash
 bash tools/system-docs.sh summary
 bash tools/system-docs.sh doctor
+bash tools/context-pack.sh status
 bash tools/work.sh status
 bash tools/swarm.sh status
 ~~~
@@ -255,6 +272,7 @@ publish() {
   mkdir -p "$out"
   render_snapshot > "$out/System Status.md"
   cp "$REPO_ROOT/START-HERE.md" "$out/START HERE.md"
+  [[ -f "$REPO_ROOT/REPOMIX.md" ]] && cp "$REPO_ROOT/REPOMIX.md" "$out/Repomix Context Packs.md"
   if [[ -s "$HISTORY" ]]; then
     cp "$HISTORY" "$out/Work History.md"
   else
@@ -270,13 +288,17 @@ doctor() {
     AGENTS.md
     AI_WORKFLOW.md
     SWARM_WORKFLOW.md
+    REPOMIX.md
+    .repomixignore
     tools/llm-workflow.sh
     tools/work.sh
     tools/swarm-workflow.sh
     tools/swarm.sh
+    tools/context-pack.sh
     tools/system-docs.sh
     tools/test-llm-workflow.sh
     tools/test-swarm-workflow.sh
+    tools/test-context-pack.sh
     tools/test-system-docs.sh
     .githooks/pre-commit
     .githooks/commit-msg
@@ -288,7 +310,7 @@ doctor() {
     fi
   done
 
-  for path in tools/llm-workflow.sh tools/work.sh tools/swarm-workflow.sh tools/swarm.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh tools/test-system-docs.sh .githooks/pre-commit .githooks/commit-msg; do
+  for path in tools/llm-workflow.sh tools/work.sh tools/swarm-workflow.sh tools/swarm.sh tools/context-pack.sh tools/system-docs.sh tools/test-llm-workflow.sh tools/test-swarm-workflow.sh tools/test-context-pack.sh tools/test-system-docs.sh .githooks/pre-commit .githooks/commit-msg; do
     [[ -f "$REPO_ROOT/$path" ]] && bash -n "$REPO_ROOT/$path"
   done
 
@@ -302,6 +324,8 @@ doctor() {
   else
     printf 'external_swarmforge_runtime=NOT_VENDORED\n'
   fi
+
+  printf '%s\n' "$(bash "$CONTEXT_TOOL" status --brief 2>/dev/null || printf 'REPOMIX=UNKNOWN')"
 
   [[ "$missing" -eq 0 ]] || fail "documentation/workflow installation is incomplete"
   printf 'SYSTEM_DOCS_DOCTOR=OK\n'
