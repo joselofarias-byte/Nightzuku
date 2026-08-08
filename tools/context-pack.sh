@@ -38,6 +38,7 @@ Policy:
 - pack and mcp require an active work order.
 - output is stored under the active order's evidence/context directory.
 - Secretlint/security checking remains enabled; --no-security-check is never used.
+- repository Repomix configs are bypassed with a generated safe JSON config.
 - remote repository packing and remote config trust are intentionally not exposed.
 - MCP always runs with --sandbox confined to this repository.
 USAGE
@@ -94,6 +95,7 @@ status() {
     printf 'INSTALL_ROOT=%s\n' "$INSTALL_ROOT"
     printf 'LICENSE=MIT\n'
     printf 'SECURITY_CHECK=MANDATORY\n'
+    printf 'LOCAL_REPOMIX_CONFIG=AUTOLOAD_BYPASSED\n'
     printf 'REMOTE_PACKING=DISABLED_BY_WRAPPER\n'
     printf 'MCP_SANDBOX=MANDATORY\n'
   fi
@@ -110,7 +112,7 @@ require_node22() {
 
 install_repomix() {
   require_node22
-  local tmp old bin version
+  local tmp old bin version cleanup
   mkdir -p "$(dirname "$INSTALL_ROOT")"
   chmod 700 "$INSTALL_BASE" "$(dirname "$INSTALL_ROOT")" 2>/dev/null || true
 
@@ -126,7 +128,8 @@ install_repomix() {
   tmp="${INSTALL_ROOT}.tmp.$$"
   old="${INSTALL_ROOT}.old.$$"
   rm -rf "$tmp" "$old"
-  trap 'rm -rf "$tmp"' RETURN
+  printf -v cleanup 'rm -rf -- %q' "$tmp"
+  trap "$cleanup" EXIT
   mkdir -p "$tmp"
 
   npm install \
@@ -148,7 +151,7 @@ install_repomix() {
   fi
   mv "$tmp" "$INSTALL_ROOT"
   rm -rf "$old"
-  trap - RETURN
+  trap - EXIT
 
   printf 'REPOMIX_INSTALLED=%s\n' "$PINNED_BIN"
   status
@@ -170,6 +173,18 @@ active_order() {
   order="$(cat "$ACTIVE_FILE")"
   [[ -d "$order" ]] || fail "active work order path is invalid: $order"
   printf '%s\n' "$order"
+}
+
+write_safe_config() {
+  local path="$1"
+  cat > "$path" <<'JSON'
+{
+  "security": {
+    "enableSecurityCheck": true
+  }
+}
+JSON
+  chmod 600 "$path" 2>/dev/null || true
 }
 
 sanitize_name() {
@@ -196,7 +211,7 @@ pack_context() {
       --ignore) [[ $# -ge 2 ]] || fail "--ignore requires a value"; ignore="$2"; shift 2 ;;
       --token-budget) [[ $# -ge 2 ]] || fail "--token-budget requires a value"; token_budget="$2"; shift 2 ;;
       --name) [[ $# -ge 2 ]] || fail "--name requires a value"; name="$2"; shift 2 ;;
-      --no-security-check|--remote|--remote-trust-config|--force)
+      --no-security-check|--remote|--remote-trust-config|--force|--config)
         fail "option is forbidden by the governed wrapper: $1"
         ;;
       *) fail "unknown pack argument: $1" ;;
@@ -213,7 +228,7 @@ pack_context() {
   name="$(sanitize_name "$name")"
   [[ -n "$name" ]] || name='context'
 
-  local bin order dir stamp out log meta rc sha bytes
+  local bin order dir stamp out log meta safe_config rc sha bytes
   bin="$(require_pinned_bin)"
   order="$(active_order)"
   dir="$order/evidence/context"
@@ -222,9 +237,12 @@ pack_context() {
   out="$dir/${stamp}-repomix-${name}-${mode}.${ext}"
   log="$out.log"
   meta="$out.meta.md"
+  safe_config="$dir/${stamp}-repomix-safe-config.json"
+  write_safe_config "$safe_config"
 
   local -a args=(
     "$REPO_ROOT"
+    --config "$safe_config"
     --output "$out"
     --style "$style"
     --parsable-style
@@ -265,6 +283,8 @@ pack_context() {
     printf -- '- Additional ignore: `%s`\n' "${ignore:-NONE}"
     printf -- '- `.repomixignore`: enabled when present\n'
     printf -- '- Security check: enabled/mandatory\n'
+    printf -- '- Repository Repomix config: bypassed; generated safe config used\n'
+    printf -- '- Safe config: `%s`\n' "${safe_config#"$order/"}"
     printf -- '- Remote packing: not used\n'
     printf -- '- Bytes: `%s`\n' "$bytes"
     printf -- '- SHA-256: `%s`\n' "$sha"
@@ -273,7 +293,7 @@ pack_context() {
   } > "$meta"
 
   if [[ -f "$WORKFLOW" ]]; then
-    bash "$WORKFLOW" note "Repomix context pack created: ${out#"$order/"}; mode=$mode; sha256=$sha; rc=$rc. Security scan remained enabled." || true
+    bash "$WORKFLOW" note "Repomix context pack created: ${out#"$order/"}; mode=$mode; sha256=$sha; rc=$rc. Security scan enabled; repository Repomix config bypassed." || true
   fi
 
   printf 'CONTEXT_PACK=%s\n' "$out"
@@ -284,16 +304,21 @@ pack_context() {
 }
 
 run_mcp() {
-  local bin order
+  local bin order dir safe_config
   bin="$(require_pinned_bin)"
   order="$(active_order)"
+  dir="$order/evidence/context"
+  mkdir -p "$dir"
+  safe_config="$dir/repomix-mcp-safe-config.json"
+  write_safe_config "$safe_config"
   if [[ -f "$WORKFLOW" ]]; then
-    bash "$WORKFLOW" note "Starting Repomix MCP in mandatory sandbox mode, confined to repository root. Remote packing and skill generation are disabled by Repomix sandbox mode." || true
+    bash "$WORKFLOW" note "Starting Repomix MCP with generated safe config and mandatory sandbox mode confined to repository root. Remote packing and skill generation are disabled by Repomix sandbox mode." || true
   fi
   printf 'REPOMIX_MCP_SANDBOX=%s\n' "$REPO_ROOT" >&2
+  printf 'REPOMIX_SAFE_CONFIG=%s\n' "$safe_config" >&2
   printf 'WORK_ORDER=%s\n' "$order" >&2
   cd "$REPO_ROOT"
-  exec "$bin" --mcp --sandbox "$REPO_ROOT"
+  exec "$bin" --config "$safe_config" --mcp --sandbox "$REPO_ROOT"
 }
 
 doctor() {
@@ -308,6 +333,7 @@ doctor() {
   printf 'REPOMIX_LICENSE=MIT\n'
   printf 'NODE=%s\n' "$(node --version)"
   printf 'SECURITY_CHECK=MANDATORY\n'
+  printf 'LOCAL_REPOMIX_CONFIG=AUTOLOAD_BYPASSED\n'
   printf 'MCP_SANDBOX=MANDATORY\n'
   printf 'REMOTE_PACKING=DISABLED_BY_WRAPPER\n'
   printf 'CONTEXT_PACK_DOCTOR=OK\n'
