@@ -22,6 +22,14 @@ subprojects {
             }
         }
     }
+
+    plugins.withId("com.android.application") {
+        afterEvaluate {
+            if (project.name == "manager") {
+                android.defaultConfig.applicationId = "com.joselofarias.nightzuku"
+            }
+        }
+    }
 }
 
 apply from: 'api/manifest.gradle'
@@ -30,5 +38,5 @@ def gitCommitCount = 47
 def baseVersionName = "${api_version_major}.6.0"
 ext {
     versionCode = gitCommitCount
-    versionName = "${baseVersionName}.r${gitCommitCount}.${gitCommitId}"
+    versionName = "${baseVersionName}.jf.r${gitCommitCount}.${gitCommitId}"
 }

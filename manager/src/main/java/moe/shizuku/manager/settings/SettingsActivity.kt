@@ -62,6 +62,8 @@ import moe.shizuku.manager.ktx.isComponentEnabled
 import moe.shizuku.manager.ktx.setComponentEnabled
 import moe.shizuku.manager.module.ModuleSettings
 import moe.shizuku.manager.receiver.BootCompleteReceiver
+import moe.shizuku.manager.shizuku.NightDogRecovery
+import rikka.shizuku.Shizuku
 import moe.shizuku.manager.ui.compose.GroupDivider
 import moe.shizuku.manager.ui.compose.SettingsGroup
 import moe.shizuku.manager.ui.compose.SettingsRow
@@ -114,6 +116,7 @@ class SettingsActivity : AppActivity() {
             var showNightDialog by remember { mutableStateOf(false) }
             var showModuleModeDialog by remember { mutableStateOf(false) }
             var showCustomPermissionsDialog by remember { mutableStateOf(false) }
+            var showStopDialog by remember { mutableStateOf(false) }
 
             var moduleAccessMode by remember {
                 mutableStateOf(ModuleSettings.getAccessMode())
@@ -336,6 +339,20 @@ class SettingsActivity : AppActivity() {
                         }
 
                         item {
+                            SettingsGroup(title = stringResource(R.string.diagnostic_service)) {
+                                SettingsRow(
+                                    icon = R.drawable.ic_close_24,
+                                    title = stringResource(R.string.action_stop),
+                                    summary = stringResource(
+                                        R.string.home_status_service_is_running,
+                                        stringResource(R.string.app_name)
+                                    ),
+                                    onClick = { showStopDialog = true }
+                                )
+                            }
+                        }
+
+                        item {
                             SettingsGroup(title = stringResource(R.string.modules_settings_title)) {
                                 SettingsRow(
                                     icon = R.drawable.ic_settings_outline_24dp,
@@ -380,6 +397,34 @@ class SettingsActivity : AppActivity() {
                 }
             }
 
+
+            if (showStopDialog) {
+                ShizukuExpressiveTheme {
+                    AlertDialog(
+                        onDismissRequest = { showStopDialog = false },
+                        title = { Text(stringResource(R.string.action_stop)) },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    NightDogRecovery.prepareForManualStop()
+                                    runCatching { Shizuku.exit() }
+                                    showStopDialog = false
+                                    finish()
+                                }
+                            ) {
+                                Text(stringResource(R.string.action_stop))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showStopDialog = false }) {
+                                Text(stringResource(android.R.string.cancel))
+                            }
+                        },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = MaterialTheme.shapes.extraLarge
+                    )
+                }
+            }
 
             if (showLanguageDialog) {
                 val choices = remember {
