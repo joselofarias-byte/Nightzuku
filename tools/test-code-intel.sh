@@ -43,6 +43,14 @@ fi
 if [[ "${1:-}" == 'cli' ]]; then
   if [[ "${2:-}" == '--progress' ]]; then shift; fi
   tool="${2:-}"
+  if [[ "$tool" == 'index_repository' && " ${*:3} " == *' --help '* ]]; then
+    cat <<'HELP'
+Usage: codebase-memory-mcp cli index_repository [options]
+  --repo-path <path>       Repository path
+  --persistence <boolean> Export shared graph artifact
+HELP
+    exit 0
+  fi
   case "$tool" in
     index_repository)
       printf '{"status":"indexed","project":"repo","nodes":42,"edges":84}\n'
@@ -101,8 +109,11 @@ chmod +x "$CBM_HOME/codebase-memory-mcp"
 
   index_out="$(bash tools/code-intel.sh cbm-index)"
   grep -q '^CBM_INDEX_SECONDS=' <<< "$index_out"
+  grep -q '^CBM_INDEX_PERSISTENCE=false$' <<< "$index_out"
   grep -q '"status":"indexed"' <<< "$index_out"
+  grep -q -- 'cli index_repository --help' "$ARGS"
   grep -q -- 'cli --progress index_repository --repo-path' "$ARGS"
+  grep -q -- '--persistence false' "$ARGS"
   grep -Fq "$REPO" "$ARGS"
 
   arch_out="$(bash tools/code-intel.sh cbm get_architecture --project repo)"
