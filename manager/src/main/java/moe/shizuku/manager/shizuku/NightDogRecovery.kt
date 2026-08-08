@@ -10,11 +10,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.starter.StarterActivity
 import moe.shizuku.manager.utils.EnvironmentUtils
@@ -80,7 +80,7 @@ object NightDogRecovery {
         lastAttemptAt = 0L
         recoveryJob?.cancel()
         recoveryJob = null
-        publish(Stage.RUNNING, "Binder recibido; servicio activo", binderAlive = true)
+        publishRunning("Binder recibido; servicio activo")
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
@@ -107,7 +107,7 @@ object NightDogRecovery {
                 if (alive) {
                     failedAttempts = 0
                     lastAttemptAt = 0L
-                    publish(Stage.RUNNING, "Binder responde correctamente", binderAlive = true)
+                    publishRunning("Binder responde correctamente")
                 } else if (isDesiredRunning()) {
                     publish(Stage.CHECKING_BINDER, "Binder no responde; buscando transporte ADB", binderAlive = false)
                     requestRecovery()
@@ -206,7 +206,7 @@ object NightDogRecovery {
 
     private fun requestRecovery() {
         if (Shizuku.pingBinder()) {
-            publish(Stage.RUNNING, "Binder ya está activo", binderAlive = true)
+            publishRunning("Binder ya está activo")
             return
         }
         if (!isDesiredRunning()) {
@@ -269,6 +269,16 @@ object NightDogRecovery {
                 )
             }
         }
+    }
+
+    private fun publishRunning(result: String) {
+        publish(
+            Stage.RUNNING,
+            result,
+            binderAlive = true,
+            transport = "Binder activo",
+            endpoint = "no requerido"
+        )
     }
 
     private fun publish(
