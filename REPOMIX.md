@@ -9,7 +9,7 @@ Versión fijada: **1.18.0**. Licencia upstream: **MIT**. Requisito upstream: **N
 Repomix empaqueta archivos seleccionados del repositorio en un único artefacto orientado a LLM, con:
 
 - formatos Markdown, XML, JSON o texto;
-- conteo de tokens;
+- conteo de tokens y presupuesto máximo;
 - compresión estructural mediante Tree-sitter;
 - respeto por `.gitignore` y `.repomixignore`;
 - detección de secretos mediante Secretlint;
@@ -87,12 +87,29 @@ Cada paquete conserva:
 - salida Repomix;
 - log de ejecución;
 - SHA-256;
+- configuración JSON segura usada en esa ejecución;
 - metadata con HEAD, modo, filtros, tamaño y código de salida;
 - una nota en la orden de trabajo.
 
 ## Seguridad
 
-El wrapper mantiene siempre habilitado el security check de Repomix. Se rechazan explícitamente las opciones que intentarían desactivarlo o ampliar confianza de forma peligrosa.
+El wrapper mantiene siempre habilitado el security check de Repomix. Se rechazan explícitamente `--no-security-check`, `--remote`, `--remote-trust-config`, `--force` y cualquier `--config` suministrado por el agente.
+
+### Configuración local del repositorio: no se ejecuta
+
+Repomix puede cargar configuraciones de proyecto, incluidas variantes JavaScript/TypeScript capaces de ejecutar código. Para que un archivo agregado más adelante por upstream no amplíe silenciosamente la superficie de confianza, el wrapper **no usa la configuración Repomix del checkout**.
+
+En cada paquete genera dentro de la evidencia una configuración JSON mínima:
+
+```json
+{
+  "security": {
+    "enableSecurityCheck": true
+  }
+}
+```
+
+y llama a Repomix mediante `--config <archivo-seguro>`. El mismo criterio se aplica al servidor MCP. Por lo tanto una futura `repomix.config.js`, `.mjs`, `.ts`, `.json` u otra configuración del proyecto no se convierte automáticamente en código confiable del flujo.
 
 `.repomixignore` excluye además:
 
@@ -123,10 +140,10 @@ Para un agente compatible con MCP:
 bash tools/context-pack.sh mcp
 ```
 
-Sólo funciona con una orden activa y siempre ejecuta:
+Sólo funciona con una orden activa. El wrapper genera primero la configuración segura y ejecuta conceptualmente:
 
 ```text
-repomix --mcp --sandbox <repository-root>
+repomix --config <safe-config> --mcp --sandbox <repository-root>
 ```
 
 En el sandbox de Repomix:
@@ -154,3 +171,4 @@ Esto es defensa en profundidad a nivel aplicación, no un sandbox del sistema op
 4. Preferir `compact` salvo que el receptor necesite implementación exacta.
 5. Nunca considerar el paquete Repomix como backup o fuente de verdad.
 6. No generar paquetes automáticamente en todas las tareas: hacerlo sólo cuando aporte contexto real y ahorre lecturas/tokens posteriores.
+7. Nunca desactivar el escaneo de secretos ni confiar automáticamente en configuración Repomix proveniente del checkout.
