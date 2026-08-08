@@ -7,12 +7,14 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)
 [[ -n "$REPO_ROOT" ]] || { echo 'ERROR: not inside a Git repository' >&2; exit 1; }
 ENGINE="$REPO_ROOT/tools/swarm-workflow.sh"
 DOCS="$REPO_ROOT/tools/system-docs.sh"
+CONTEXT="$REPO_ROOT/tools/context-pack.sh"
 GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
 ACTIVE_FILE="$GIT_DIR/llm-work-current"
 LAST_FILE="$GIT_DIR/llm-work-last"
 
 [[ -f "$ENGINE" ]] || { echo 'ERROR: missing swarm-workflow.sh' >&2; exit 1; }
 [[ -f "$DOCS" ]] || { echo 'ERROR: missing system-docs.sh' >&2; exit 1; }
+[[ -f "$CONTEXT" ]] || { echo 'ERROR: missing context-pack.sh' >&2; exit 1; }
 
 usage() {
   cat <<'USAGE'
@@ -29,6 +31,7 @@ Main commands:
   attach implementer|reviewer
   handoff
   review-note TEXT
+  context [Repomix context-pack options]
   finish [SUMMARY]
   abort [REASON]
   cleanup
@@ -80,6 +83,11 @@ case "$cmd" in
     bash "$ENGINE" handoff "$@"
     snapshot_active handoff
     publish_quiet
+    ;;
+  context)
+    shift
+    bash "$CONTEXT" pack "$@"
+    snapshot_active context-pack
     ;;
   finish)
     shift
