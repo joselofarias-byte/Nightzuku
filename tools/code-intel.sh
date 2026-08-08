@@ -38,7 +38,7 @@ Commands:
   doctor                    Validate integration; CBM may be absent.
   install-cbm               Install pinned CBM binary, isolated and checksum-verified.
   doctor-cbm                Strictly validate the pinned CBM installation.
-  cbm-index                 Index current repository with one-shot CBM CLI.
+  cbm-index                 Index current repository one-shot with persistence disabled.
   cbm <tool> [flags...]     Run one CBM CLI tool and record evidence.
   cbm-mcp                   Start CBM MCP explicitly for this repo/order.
   codegraph-status          Show current CodeGraph status.
@@ -50,6 +50,8 @@ Policy:
 - CBM cache is repo-specific and outside the checkout.
 - CBM analysis/indexing requires an active work order.
 - CLI one-shot mode is preferred; daemon/watch are not enabled by default.
+- cbm-index requires upstream --persistence and forces it false.
+- cbm-index must not change Git worktree state; any mutation fails closed.
 - Upstream MCP performs a best-effort GitHub release-metadata update check after initialize; CLI one-shot does not use the persistent MCP daemon.
 USAGE
 }
@@ -61,10 +63,7 @@ resolve_tool() {
     printf '%s\n' "$candidate"
     return 0
   fi
-  for candidate in \
-    "$HOME/.local/bin/$name" \
-    "/usr/local/bin/$name" \
-    "/usr/bin/$name"; do
+  for candidate in "$HOME/.local/bin/$name" "/usr/local/bin/$name" "/usr/bin/$name"; do
     if [[ -x "$candidate" ]]; then
       printf '%s\n' "$candidate"
       return 0
@@ -122,6 +121,7 @@ status() {
   printf 'CBM_ALLOWED_ROOT=%s\n' "$REPO_ROOT"
   printf 'CBM_DEFAULT_MODE=CLI_ONE_SHOT\n'
   printf 'CBM_AUTO_WATCH=DISABLED_BY_POLICY\n'
+  printf 'CBM_PERSISTENCE=DISABLED_BY_WRAPPER\n'
   printf 'CBM_AGENT_CONFIG_MUTATION=DISABLED\n'
   printf 'CBM_MCP_NETWORK_NOTE=GitHub_release_metadata_update_check_after_initialize\n'
 }
@@ -155,10 +155,8 @@ install_cbm() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
 
-  curl -fL --proto '=https' --proto-redir '=https' --max-redirs 5 \
-    "$RELEASE_BASE/$archive" -o "$tmp/$archive"
-  curl -fL --proto '=https' --proto-redir '=https' --max-redirs 5 \
-    "$RELEASE_BASE/checksums.txt" -o "$tmp/checksums.txt"
+  curl -fL --proto '=https' --proto-redir '=https' --max-redirs 5 "$RELEASE_BASE/$archive" -o "$tmp/$archive"
+  curl -fL --proto '=https' --proto-redir '=https' --max-redirs 5 "$RELEASE_BASE/checksums.txt" -o "$tmp/checksums.txt"
 
   [[ "$(wc -c < "$tmp/checksums.txt")" -le 1048576 ]] || fail 'checksums.txt exceeds 1 MiB'
   expected="$(awk -v f="$archive" '$2 == f || $2 == "*" f {print $1}' "$tmp/checksums.txt" | head -n1)"
@@ -267,18 +265,34 @@ cbm_cli() {
 
 cbm_index() {
   doctor_cbm >/dev/null
-  local order started rc elapsed
+  local order started rc elapsed help before after
   order="$(active_order)"
   cbm_env
   mkdir -p "$CBM_CACHE_ROOT"
+
+  help="$("$CBM_BIN" cli index_repository --help 2>&1 || true)"
+  grep -q -- '--repo-path' <<< "$help" || fail 'CBM index_repository does not expose --repo-path'
+  grep -q -- '--persistence' <<< "$help" || fail 'CBM index_repository does not expose --persistence; refusing checkout-mutating index'
+
+  before="$(git -C "$REPO_ROOT" status --porcelain=v1 -uall)"
   started=$SECONDS
   set +e
-  log_run "$order" index_repository "$CBM_BIN" cli --progress index_repository --repo-path "$REPO_ROOT"
+  log_run "$order" index_repository "$CBM_BIN" cli --progress index_repository --repo-path "$REPO_ROOT" --persistence false
   rc=$?
   set -e
   elapsed=$((SECONDS - started))
-  [[ ! -f "$WORKFLOW" ]] || bash "$WORKFLOW" note "Codebase Memory candidate index: rc=$rc elapsed=${elapsed}s cache=$CBM_CACHE_ROOT" || true
+  after="$(git -C "$REPO_ROOT" status --porcelain=v1 -uall)"
+
+  [[ ! -f "$WORKFLOW" ]] || bash "$WORKFLOW" note "Codebase Memory candidate index: rc=$rc elapsed=${elapsed}s persistence=false cache=$CBM_CACHE_ROOT" || true
   printf 'CBM_INDEX_SECONDS=%s\n' "$elapsed"
+  printf 'CBM_INDEX_PERSISTENCE=false\n'
+
+  if [[ "$after" != "$before" ]]; then
+    printf 'ERROR: Codebase Memory changed Git worktree state during governed index. Changes preserved for inspection.\n' >&2
+    printf '--- BEFORE ---\n%s\n--- AFTER ---\n%s\n' "$before" "$after" >&2
+    return 1
+  fi
+
   [[ "$rc" -eq 0 ]] || return "$rc"
   "$CBM_BIN" cli list_projects
 }
