@@ -16,9 +16,11 @@ for file in \
   work.sh \
   swarm-workflow.sh \
   swarm.sh \
+  context-pack.sh \
   system-docs.sh \
   test-llm-workflow.sh \
   test-swarm-workflow.sh \
+  test-context-pack.sh \
   test-system-docs.sh; do
   cp "$SOURCE_ROOT/tools/$file" "$REPO/tools/$file"
 done
@@ -37,6 +39,9 @@ DOC
 cat > "$REPO/SWARM_WORKFLOW.md" <<'DOC'
 # Swarm
 DOC
+cat > "$REPO/REPOMIX.md" <<'DOC'
+# Repomix
+DOC
 cat > "$REPO/CLAUDE.md" <<'DOC'
 # Claude
 DOC
@@ -52,6 +57,7 @@ alwaysApply: true
 ---
 DOC
 printf '/.worktrees/\n' > "$REPO/.gitignore"
+printf '.env\n*.keystore\n' > "$REPO/.repomixignore"
 printf 'base\n' > "$REPO/README.md"
 
 (
@@ -92,11 +98,9 @@ printf 'base\n' > "$REPO/README.md"
   out="$(bash tools/system-docs.sh record closed 'duplicate record must be ignored')"
   grep -q 'HISTORY_ALREADY_RECORDED=' <<< "$out"
 
-  # Capture complete output before matching. Piping a multi-line producer
-  # directly into grep -q can make grep close early and trigger SIGPIPE under
-  # `set -o pipefail`, which is not a failure of the dashboard itself.
   summary_out="$(bash tools/system-docs.sh summary)"
   grep -q '^WORK_ORDER=NONE$' <<< "$summary_out"
+  grep -q '^REPOMIX=' <<< "$summary_out"
 
   history_out="$(bash tools/system-docs.sh history)"
   grep -q 'validate automatic documentation lifecycle' <<< "$history_out"
@@ -104,6 +108,7 @@ printf 'base\n' > "$REPO/README.md"
   bash tools/system-docs.sh snapshot "$TMP/final-system-snapshot.md" >/dev/null
   grep -q '# System snapshot' "$TMP/final-system-snapshot.md"
   grep -q 'Canonical layers' "$TMP/final-system-snapshot.md"
+  grep -q 'Repomix' "$TMP/final-system-snapshot.md"
 )
 
 printf 'Self-documenting workflow synthetic test: OK\n'
