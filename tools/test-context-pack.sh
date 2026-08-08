@@ -25,6 +25,7 @@ printf 'fixture\n' > "$REPO/.cursor/rules/llm-workflow.mdc"
 printf '.env\n*.keystore\n' > "$REPO/.repomixignore"
 printf 'base\n' > "$REPO/README.md"
 printf 'secret\n' > "$REPO/.env"
+printf 'throw new Error("repository config must not be auto-loaded by wrapper");\n' > "$REPO/repomix.config.js"
 
 cat > "$FAKE" <<'FAKE'
 #!/usr/bin/env bash
@@ -35,13 +36,17 @@ if [[ "${1:-}" == '--version' ]]; then
 fi
 printf '%q ' "$@" >> "${FAKE_ARGS_FILE:?}"
 printf '\n' >> "$FAKE_ARGS_FILE"
+mcp=0
 for arg in "$@"; do
-  if [[ "$arg" == '--no-security-check' || "$arg" == '--remote' || "$arg" == '--remote-trust-config' ]]; then
-    printf 'forbidden arg reached fake repomix: %s\n' "$arg" >&2
-    exit 91
-  fi
+  case "$arg" in
+    --no-security-check|--remote|--remote-trust-config)
+      printf 'forbidden arg reached fake repomix: %s\n' "$arg" >&2
+      exit 91
+      ;;
+    --mcp) mcp=1 ;;
+  esac
 done
-if printf '%s\n' "$@" | grep -qx -- '--mcp'; then
+if [[ "$mcp" == '1' ]]; then
   printf 'fake mcp ok\n'
   exit 0
 fi
@@ -49,7 +54,7 @@ out=''
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o|--output) out="$2"; shift 2 ;;
-    --style|--token-count-tree|--top-files-len|--token-budget|--include|--ignore) shift 2 ;;
+    --config|--style|--token-count-tree|--top-files-len|--token-budget|--include|--ignore) shift 2 ;;
     *) shift ;;
   esac
 done
@@ -96,13 +101,25 @@ chmod +x "$FAKE"
   [[ -f "$context_file" && -f "$meta_file" && -f "$context_file.sha256" ]]
   [[ "$context_file" == "$order/evidence/context/"* ]]
   grep -q 'Security check: enabled/mandatory' "$meta_file"
+  grep -q 'Repository Repomix config: bypassed' "$meta_file"
   grep -q -- '--compress' "$ARGS"
   grep -q -- '--output-show-line-numbers' "$ARGS"
+  grep -q -- '--config' "$ARGS"
   ! grep -q -- '--no-security-check' "$ARGS"
   test ! -e "$REPO/repomix-output.xml"
 
+  safe_config="$(awk '{for (i=1;i<=NF;i++) if ($i=="--config") {print $(i+1); exit}}' "$ARGS")"
+  [[ -n "$safe_config" && -f "$safe_config" ]]
+  [[ "$safe_config" == "$order/evidence/context/"* ]]
+  grep -q '"enableSecurityCheck": true' "$safe_config"
+  [[ "$safe_config" != "$REPO/repomix.config.js" ]]
+
   if bash tools/context-pack.sh pack --no-security-check >/dev/null 2>&1; then
     printf 'ERROR: wrapper accepted --no-security-check.\n' >&2
+    exit 1
+  fi
+  if bash tools/context-pack.sh pack --config "$REPO/repomix.config.js" >/dev/null 2>&1; then
+    printf 'ERROR: wrapper accepted caller-supplied --config.\n' >&2
     exit 1
   fi
 
@@ -110,8 +127,12 @@ chmod +x "$FAKE"
   bash tools/context-pack.sh mcp >/dev/null
   grep -q -- '--mcp' "$ARGS"
   grep -q -- '--sandbox' "$ARGS"
+  grep -q -- '--config' "$ARGS"
   grep -Fq "$REPO" "$ARGS"
   ! grep -q -- '--remote' "$ARGS"
+  mcp_config="$(awk '{for (i=1;i<=NF;i++) if ($i=="--config") {print $(i+1); exit}}' "$ARGS")"
+  [[ -f "$mcp_config" && "$mcp_config" == "$order/evidence/context/"* ]]
+  grep -q '"enableSecurityCheck": true' "$mcp_config"
 
   bash tools/llm-workflow.sh finish 'Governed Repomix context pack test completed.'
 )
