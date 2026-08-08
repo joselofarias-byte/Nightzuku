@@ -1,20 +1,20 @@
 package moe.shizuku.manager.starter
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +26,7 @@ import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.ui.compose.ExpressiveCard
@@ -96,7 +97,9 @@ class StarterActivity : AppActivity() {
         setContent {
             val outputResource by viewModel.output.observeAsState()
             val output = outputResource?.data.orEmpty()
-            val failed = outputResource?.status == Status.ERROR
+            val pairRequired = outputResource?.status == Status.ERROR &&
+                    outputResource?.error is SSLProtocolException
+            val failed = outputResource?.status == Status.ERROR && !pairRequired
             var errorToShow by remember(outputResource) {
                 mutableIntStateOf(if (outputResource?.status == Status.ERROR) {
                     when (outputResource?.error) {
@@ -107,6 +110,14 @@ class StarterActivity : AppActivity() {
                         else -> 0
                     }
                 } else 0)
+            }
+
+            val openPairingGuide = {
+                errorToShow = 0
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    startActivity(Intent(this@StarterActivity, AdbPairingTutorialActivity::class.java))
+                }
+                finish()
             }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@StarterActivity)
@@ -123,7 +134,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = { errorToShow = 0 }
+                                onDismiss = if (pairRequired) openPairingGuide else {{ errorToShow = 0 }}
                             )
                         }
                     }
@@ -141,7 +152,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = { errorToShow = 0 }
+                                onDismiss = if (pairRequired) openPairingGuide else {{ errorToShow = 0 }}
                             )
                         }
                     }
@@ -162,10 +173,10 @@ class StarterActivity : AppActivity() {
                                     } else {
                                         HtmlText(R.string.home_wireless_adb_title)
                                     },
-                                    body = if (failed) {
-                                        stringResource(R.string.notification_service_start_failed)
-                                    } else {
-                                        stringResource(R.string.notification_service_starting)
+                                    body = when {
+                                        pairRequired -> stringResource(R.string.adb_pair_required)
+                                        failed -> stringResource(R.string.notification_service_start_failed)
+                                        else -> stringResource(R.string.notification_service_starting)
                                     },
                                     danger = failed
                                 )
@@ -180,7 +191,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = { errorToShow = 0 }
+                                onDismiss = if (pairRequired) openPairingGuide else {{ errorToShow = 0 }}
                             )
                         }
                     }
