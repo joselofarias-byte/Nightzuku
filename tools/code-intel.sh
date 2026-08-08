@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 
-readonly CBM_PIN='0.8.1'
+readonly CBM_PIN='0.9.0'
 readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
 readonly INSTALL_BASE="${ENGINEERING_TOOLS_HOME:-$HOME/.local/share/engineering-tools}"
@@ -45,6 +45,7 @@ Policy:
 - CBM cache is repo-specific and outside the checkout.
 - CBM analysis/indexing requires an active work order.
 - CLI one-shot mode is preferred; daemon/watch are not enabled by default.
+- Upstream MCP performs a best-effort GitHub release-metadata update check after initialize; CLI one-shot does not use the persistent MCP daemon.
 USAGE
 }
 
@@ -94,6 +95,7 @@ status() {
   printf 'CBM_DEFAULT_MODE=CLI_ONE_SHOT\n'
   printf 'CBM_AUTO_WATCH=DISABLED_BY_POLICY\n'
   printf 'CBM_AGENT_CONFIG_MUTATION=DISABLED\n'
+  printf 'CBM_MCP_NETWORK_NOTE=GitHub_release_metadata_update_check_after_initialize\n'
 }
 
 platform_archive() {
@@ -269,9 +271,10 @@ cbm_mcp() {
   "$CBM_BIN" config set auto_index false >/dev/null
   "$CBM_BIN" config set auto_watch false >/dev/null
   if [[ -f "$WORKFLOW" ]]; then
-    bash "$WORKFLOW" note "Starting Codebase Memory candidate MCP explicitly; allowed_root=$REPO_ROOT cache=$CBM_CACHE_ROOT auto_index=false auto_watch=false" || true
+    bash "$WORKFLOW" note "Starting Codebase Memory candidate MCP explicitly; allowed_root=$REPO_ROOT cache=$CBM_CACHE_ROOT auto_index=false auto_watch=false. Upstream performs a best-effort GitHub release metadata update check after MCP initialize." || true
   fi
   printf 'CBM_MCP_MODE=EXPLICIT_PILOT\n' >&2
+  printf 'CBM_MCP_NETWORK_NOTE=upstream_checks_GitHub_release_metadata_after_initialize\n' >&2
   printf 'CBM_ALLOWED_ROOT=%s\n' "$REPO_ROOT" >&2
   printf 'CBM_CACHE_DIR=%s\n' "$CBM_CACHE_ROOT" >&2
   printf 'WORK_ORDER=%s\n' "$order" >&2
