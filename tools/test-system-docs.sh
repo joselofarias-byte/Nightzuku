@@ -17,10 +17,12 @@ for file in \
   swarm-workflow.sh \
   swarm.sh \
   context-pack.sh \
+  code-intel.sh \
   system-docs.sh \
   test-llm-workflow.sh \
   test-swarm-workflow.sh \
   test-context-pack.sh \
+  test-code-intel.sh \
   test-system-docs.sh; do
   cp "$SOURCE_ROOT/tools/$file" "$REPO/tools/$file"
 done
@@ -42,6 +44,9 @@ DOC
 cat > "$REPO/REPOMIX.md" <<'DOC'
 # Repomix
 DOC
+cat > "$REPO/CODEBASE-MEMORY.md" <<'DOC'
+# Codebase Memory candidate
+DOC
 cat > "$REPO/CLAUDE.md" <<'DOC'
 # Claude
 DOC
@@ -58,6 +63,7 @@ alwaysApply: true
 DOC
 printf '/.worktrees/\n' > "$REPO/.gitignore"
 printf '.env\n*.keystore\n' > "$REPO/.repomixignore"
+printf '.git/\nbuild/\n' > "$REPO/.cbmignore"
 printf 'base\n' > "$REPO/README.md"
 
 (
@@ -101,6 +107,8 @@ printf 'base\n' > "$REPO/README.md"
   summary_out="$(bash tools/system-docs.sh summary)"
   grep -q '^WORK_ORDER=NONE$' <<< "$summary_out"
   grep -q '^REPOMIX=' <<< "$summary_out"
+  grep -q '^CODE_INTEL_PRIMARY=CodeGraph:' <<< "$summary_out"
+  grep -q '^CODE_INTEL_CANDIDATE=CodebaseMemory:' <<< "$summary_out"
 
   history_out="$(bash tools/system-docs.sh history)"
   grep -q 'validate automatic documentation lifecycle' <<< "$history_out"
@@ -109,6 +117,8 @@ printf 'base\n' > "$REPO/README.md"
   grep -q '# System snapshot' "$TMP/final-system-snapshot.md"
   grep -q 'Canonical layers' "$TMP/final-system-snapshot.md"
   grep -q 'Repomix' "$TMP/final-system-snapshot.md"
+  grep -q 'Codebase Memory MCP' "$TMP/final-system-snapshot.md"
+  grep -q 'CANDIDATE/SHADOW' "$TMP/final-system-snapshot.md"
 )
 
 printf 'Self-documenting workflow synthetic test: OK\n'
