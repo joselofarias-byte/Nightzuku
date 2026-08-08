@@ -34,7 +34,7 @@ printf '%q ' "$@" >> "${FAKE_CBM_ARGS:?}"
 printf '\n' >> "$FAKE_CBM_ARGS"
 
 if [[ "${1:-}" == '--version' ]]; then
-  printf 'codebase-memory-mcp 0.8.1\n'
+  printf 'codebase-memory-mcp 0.9.0\n'
   exit 0
 fi
 if [[ "${1:-}" == 'config' ]]; then
@@ -80,7 +80,8 @@ chmod +x "$CBM_HOME/codebase-memory-mcp"
 
   status_out="$(bash tools/code-intel.sh status)"
   grep -q '^CODE_INTEL_PRIMARY=CodeGraph$' <<< "$status_out"
-  grep -q '^CBM=CANDIDATE_AVAILABLE version=0.8.1 ' <<< "$status_out"
+  grep -q '^CBM=CANDIDATE_AVAILABLE version=0.9.0 ' <<< "$status_out"
+  grep -q '^CBM_MCP_NETWORK_NOTE=' <<< "$status_out"
 
   doctor_out="$(bash tools/code-intel.sh doctor)"
   grep -q '^CBM_DOCTOR=OK$' <<< "$doctor_out"
