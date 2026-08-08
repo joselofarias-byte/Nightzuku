@@ -2,6 +2,11 @@
 set -Eeuo pipefail
 umask 077
 
+# Coding agents and PRoot validation often run non-interactive shells that do
+# not inherit ~/.local/bin. Keep locally installed engineering tools visible
+# without requiring shell startup files.
+export PATH="$HOME/.local/bin:$PATH"
+
 readonly CBM_PIN='0.9.0'
 readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
@@ -49,6 +54,27 @@ Policy:
 USAGE
 }
 
+resolve_tool() {
+  local name="$1" candidate
+  candidate="$(command -v "$name" 2>/dev/null || true)"
+  if [[ -n "$candidate" && -x "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in \
+    "$HOME/.local/bin/$name" \
+    "/usr/local/bin/$name" \
+    "/usr/bin/$name"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+codegraph_bin() { resolve_tool codegraph; }
+
 active_order() {
   [[ -s "$ACTIVE_FILE" ]] || fail 'code-intel operation requires an active work order'
   local order
@@ -72,9 +98,11 @@ cbm_version() {
 }
 
 status() {
+  local cg=''
+  cg="$(codegraph_bin 2>/dev/null || true)"
   printf 'CODE_INTEL_PRIMARY=CodeGraph\n'
-  if command -v codegraph >/dev/null 2>&1; then
-    printf 'CODEGRAPH=AVAILABLE %s\n' "$(codegraph --version 2>/dev/null | head -n1 || true)"
+  if [[ -n "$cg" ]]; then
+    printf 'CODEGRAPH=AVAILABLE path=%s %s\n' "$cg" "$("$cg" --version 2>/dev/null | head -n1 || true)"
   else
     printf 'CODEGRAPH=NOT_INSTALLED\n'
   fi
@@ -122,7 +150,7 @@ install_cbm() {
     return 0
   fi
 
-  local archive tmp expected actual extracted staged old
+  local archive tmp expected actual extracted staged old version
   archive="$(platform_archive)"
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
@@ -143,8 +171,6 @@ install_cbm() {
   extracted="$(find "$tmp/extract" -type f -name codebase-memory-mcp -print -quit)"
   [[ -n "$extracted" ]] || fail 'binary missing from verified archive'
   chmod 755 "$extracted"
-
-  local version
   version="$("$extracted" --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
   [[ "$version" == "$CBM_PIN" ]] || fail "candidate version mismatch: expected $CBM_PIN, got ${version:-UNKNOWN}"
 
@@ -164,7 +190,7 @@ install_cbm() {
     printf 'agent_config_modified=NO\n'
   } > "$staged/INSTALL-METADATA.txt"
 
-  if [[ -e "$CBM_ROOT" ]]; then mv "$CBM_ROOT" "$old"; fi
+  [[ ! -e "$CBM_ROOT" ]] || mv "$CBM_ROOT" "$old"
   mv "$staged" "$CBM_ROOT"
   rm -rf "$old"
   trap - EXIT
@@ -200,8 +226,8 @@ doctor() {
   bash -n "$REPO_ROOT/tools/code-intel.sh"
   [[ -f "$REPO_ROOT/CODEBASE-MEMORY.md" ]] || fail 'missing CODEBASE-MEMORY.md'
   [[ -f "$REPO_ROOT/.cbmignore" ]] || fail 'missing .cbmignore'
-  if command -v codegraph >/dev/null 2>&1; then
-    printf 'CODEGRAPH_PRIMARY=AVAILABLE\n'
+  if codegraph_bin >/dev/null 2>&1; then
+    printf 'CODEGRAPH_PRIMARY=AVAILABLE path=%s\n' "$(codegraph_bin)"
   else
     printf 'WARNING=CodeGraph primary backend is not installed\n'
   fi
@@ -235,9 +261,7 @@ cbm_cli() {
   log_run "$order" "$tool" "$CBM_BIN" cli "$@"
   rc=$?
   set -e
-  if [[ -f "$WORKFLOW" ]]; then
-    bash "$WORKFLOW" note "Codebase Memory candidate CLI: tool=$tool rc=$rc; cache=$CBM_CACHE_ROOT" || true
-  fi
+  [[ ! -f "$WORKFLOW" ]] || bash "$WORKFLOW" note "Codebase Memory candidate CLI: tool=$tool rc=$rc; cache=$CBM_CACHE_ROOT" || true
   return "$rc"
 }
 
@@ -253,9 +277,7 @@ cbm_index() {
   rc=$?
   set -e
   elapsed=$((SECONDS - started))
-  if [[ -f "$WORKFLOW" ]]; then
-    bash "$WORKFLOW" note "Codebase Memory candidate index: rc=$rc elapsed=${elapsed}s cache=$CBM_CACHE_ROOT" || true
-  fi
+  [[ ! -f "$WORKFLOW" ]] || bash "$WORKFLOW" note "Codebase Memory candidate index: rc=$rc elapsed=${elapsed}s cache=$CBM_CACHE_ROOT" || true
   printf 'CBM_INDEX_SECONDS=%s\n' "$elapsed"
   [[ "$rc" -eq 0 ]] || return "$rc"
   "$CBM_BIN" cli list_projects
@@ -267,12 +289,9 @@ cbm_mcp() {
   order="$(active_order)"
   cbm_env
   mkdir -p "$CBM_CACHE_ROOT"
-  # Explicit MCP pilot: disable automatic indexing/watcher before daemon-backed mode.
   "$CBM_BIN" config set auto_index false >/dev/null
   "$CBM_BIN" config set auto_watch false >/dev/null
-  if [[ -f "$WORKFLOW" ]]; then
-    bash "$WORKFLOW" note "Starting Codebase Memory candidate MCP explicitly; allowed_root=$REPO_ROOT cache=$CBM_CACHE_ROOT auto_index=false auto_watch=false. Upstream performs a best-effort GitHub release metadata update check after MCP initialize." || true
-  fi
+  [[ ! -f "$WORKFLOW" ]] || bash "$WORKFLOW" note "Starting Codebase Memory candidate MCP explicitly; allowed_root=$REPO_ROOT cache=$CBM_CACHE_ROOT auto_index=false auto_watch=false. Upstream performs a best-effort GitHub release metadata update check after MCP initialize." || true
   printf 'CBM_MCP_MODE=EXPLICIT_PILOT\n' >&2
   printf 'CBM_MCP_NETWORK_NOTE=upstream_checks_GitHub_release_metadata_after_initialize\n' >&2
   printf 'CBM_ALLOWED_ROOT=%s\n' "$REPO_ROOT" >&2
@@ -283,8 +302,10 @@ cbm_mcp() {
 }
 
 codegraph_status() {
-  command -v codegraph >/dev/null 2>&1 || fail 'CodeGraph is not installed'
-  codegraph status "$REPO_ROOT"
+  local cg
+  cg="$(codegraph_bin 2>/dev/null || true)"
+  [[ -n "$cg" ]] || fail 'CodeGraph is not installed'
+  "$cg" status "$REPO_ROOT"
 }
 
 case "${1:-}" in
