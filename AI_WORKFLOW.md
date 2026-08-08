@@ -56,23 +56,49 @@ Muse Code es un backend opcional documentado en [`MUSE.md`](MUSE.md). No es requ
 - `tools/swarm-workflow.sh`: motor de worktrees/handoff de dos roles.
 - `tools/swarm.sh`: front door swarm con autodocumentación.
 - `tools/system-docs.sh`: dashboard, snapshots, historial, doctor y publicación a Obsidian.
-- CodeGraph: índice principal de código.
+- CodeGraph: índice principal de código y relaciones.
+- Repomix / `tools/context-pack.sh`: transporte opcional de contexto seleccionado a otros LLM.
 - Graphify: sólo para trabajo estructural cuando aporte una decisión.
 - Obsidian: espejo humano; no fuente de verdad.
 
 No agregar otro sistema paralelo para backups, órdenes, logs, constitución de agentes, handoffs o índice obligatorio sin documentar primero el reemplazo del sistema canónico.
 
-Decisiones ya tomadas: TBM queda histórico; SwarmForge aportó conceptos pero no se vende su runtime; Loop Engineering queda como referencia de patrones y no segundo runtime obligatorio; Repowise sigue como referencia/piloto; Graphify no se ejecuta por defecto.
+Decisiones ya tomadas: TBM queda histórico; SwarmForge aportó conceptos pero no se vende su runtime; Loop Engineering queda como referencia de patrones y no segundo runtime obligatorio; Repowise sigue como referencia/piloto; **Repomix sólo transporta contexto y no reemplaza CodeGraph, backups, handoffs ni documentación operativa**; Graphify no se ejecuta por defecto.
 
 ## Investigación
 
-Cuando CodeGraph esté disponible, usarlo antes de recorrer masivamente archivos. Registrar hallazgos:
+Cuando CodeGraph esté disponible, usarlo antes de recorrer masivamente archivos. Registrar símbolos, callers, callees, rutas, dependencias e impacto:
 
 ```bash
-bash tools/work.sh note "Símbolos consultados, callers, callees, flujo e impacto encontrado."
+bash tools/work.sh note "Hallazgo y decisión técnica."
 ```
 
-Los índices orientan la investigación, pero no sustituyen lectura de código, diff, pruebas ni compilación.
+El índice orienta la investigación, pero no sustituye lectura de código, diff, pruebas ni compilación.
+
+### Contexto transportable con Repomix
+
+Usar Repomix **después de acotar el alcance con CodeGraph**, cuando otro LLM necesite una vista autocontenida del código o cuando un paquete reduzca lecturas repetidas.
+
+Ejemplo recomendado:
+
+```bash
+bash tools/work.sh context \
+  --mode compact \
+  --include 'app/src/**/*.kt,docs/**/*.md' \
+  --name focused-context
+```
+
+Reglas obligatorias:
+
+- Repomix está fijado a la versión documentada en [`REPOMIX.md`](REPOMIX.md).
+- Debe existir una orden activa.
+- El output va a `evidence/context/` de la orden, fuera del checkout.
+- El security check/Secretlint no se desactiva.
+- El wrapper no permite remote packing ni `--remote-trust-config`.
+- MCP sólo se inicia mediante `tools/context-pack.sh mcp`, que fuerza `--sandbox` al root del repositorio.
+- Preferir `--include` y modo `compact`; usar `full` sólo para un conjunto pequeño que requiera implementación exacta.
+- Un paquete Repomix no es backup ni fuente de verdad y debe revisarse antes de compartirse externamente.
+- No generar Repomix automáticamente en todas las tareas: hacerlo cuando el beneficio de contexto supere su costo de tokens/tiempo.
 
 ## Pruebas y compilaciones
 
@@ -116,7 +142,7 @@ Swarm:
 bash tools/swarm.sh finish "resumen del resultado"
 ```
 
-Si se cancela, usar `abort` en el mismo front door. El cierre registra automáticamente el historial persistente y publica `System Status`, `START HERE` y `Work History` en Obsidian cuando el vault esté disponible.
+Si se cancela, usar `abort` en el mismo front door. El cierre registra automáticamente el historial persistente y publica `System Status`, `START HERE`, `Repomix Context Packs` y `Work History` en Obsidian cuando el vault esté disponible.
 
 Nunca dejar una orden activa sin cerrar o abortar.
 
@@ -134,4 +160,4 @@ Por defecto, órdenes, respaldos e historial viven fuera del checkout bajo:
 $HOME/.local/state/llm-work/<repositorio>/
 ```
 
-Los worktrees del swarm, `.codegraph/` y `graphify-out/` son regenerables y no son fuentes de verdad.
+Los worktrees del swarm, `.codegraph/`, SQLite, WAL, Graphify, paquetes Repomix y cachés no son fuentes de verdad. Los paquetes Repomix se conservan como evidencia de contexto sólo cuando una orden los genera.
