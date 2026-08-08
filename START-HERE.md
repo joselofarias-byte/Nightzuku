@@ -25,10 +25,11 @@ bash tools/system-docs.sh doctor
 6. `tools/swarm-workflow.sh` — motor interno de worktrees/handoff.
 7. `tools/swarm.sh` — **front door obligatorio para trabajo multi-LLM**.
 8. `tools/system-docs.sh` — dashboard, snapshots, historial, doctor y publicación a Obsidian.
-9. CodeGraph — índice principal del código.
-10. Graphify — arquitectura/refactors grandes, sólo cuando aporte valor.
-11. Obsidian — espejo humano, no fuente de verdad.
-12. Muse Code — backend experimental opcional, no requisito.
+9. CodeGraph — índice principal del código y relaciones.
+10. Repomix / `tools/context-pack.sh` — transporte opcional de contexto seleccionado a otros LLM, con presupuesto de tokens y escaneo de secretos.
+11. Graphify — arquitectura/refactors grandes, sólo cuando aporte valor.
+12. Obsidian — espejo humano, no fuente de verdad.
+13. Muse Code — backend experimental opcional, no requisito.
 
 ## 3. Trabajo normal: un agente
 
@@ -47,6 +48,17 @@ bash tools/work.sh note "<hallazgo o decisión>"
 bash tools/work.sh run -- <test/build/comando>
 bash tools/work.sh checkpoint "<etapa>"
 ```
+
+Si hace falta entregar a otro LLM una vista autocontenida del código relevante, después de usar CodeGraph para acotar el alcance:
+
+```bash
+bash tools/work.sh context \
+  --mode compact \
+  --include 'app/src/**/*.kt,docs/**/*.md' \
+  --name focused-context
+```
+
+Ver [`REPOMIX.md`](REPOMIX.md). Los paquetes se guardan dentro de la evidencia de la orden, nunca como archivos fuente ni backups.
 
 Cerrar siempre:
 
@@ -92,7 +104,7 @@ bash tools/swarm.sh review-note "<observación>"
 bash tools/swarm.sh finish "<resultado>"
 ```
 
-Usar swarm sólo cuando una revisión realmente independiente compense el consumo adicional de cuota/contexto.
+Usar swarm sólo cuando una revisión realmente independiente compense el consumo adicional de cuota/contexto. Repomix puede usarse dentro de la orden maestra si un rol necesita un paquete de contexto, pero no sustituye el handoff reproducible.
 
 ## 5. Recuperar qué se hizo
 
@@ -132,6 +144,7 @@ Decisiones vigentes:
 - SwarmForge: se absorbieron roles/worktrees/handoffs, no su runtime.
 - Loop Engineering: referencia de patrones, no segundo runtime obligatorio.
 - Repowise: referencia/piloto mientras CodeGraph cubra la necesidad diaria.
+- **Repomix: contexto transportable, no grafo, backup, wiki ni paso obligatorio de cada tarea.**
 - Graphify: no se ejecuta por defecto.
 - Muse Code: opcional y condicionado a compatibilidad real.
 
@@ -141,6 +154,8 @@ Decisiones vigentes:
 - No desactivar `core.hooksPath` para saltar guardas.
 - Commit, push, merge y apertura/cierre de PR requieren autorización expresa.
 - No versionar secretos ni índices regenerables.
+- El wrapper de Repomix mantiene Secretlint habilitado, prohíbe remote packing/config trust y confina MCP mediante `--sandbox`.
+- Un scan de secretos es heurístico: revisar cualquier paquete antes de compartirlo externamente.
 - Ante una situación incierta, preservar evidencia y abortar antes que destruir estado.
 
 ## 8. Troubleshooting conocido
