@@ -13,7 +13,7 @@ bash tools/system-docs.sh summary
 bash tools/system-docs.sh doctor
 ```
 
-`summary` muestra proyecto, rama, HEAD, cambios locales, orden activa, último trabajo, swarm, hooks, herramientas disponibles y próximos comandos seguros. `doctor` valida que la instalación documental/operativa esté completa.
+`summary` muestra proyecto, rama, HEAD, cambios locales, orden activa, último trabajo, swarm, hooks, herramientas disponibles, backend de inteligencia primario/candidato y próximos comandos seguros. `doctor` valida que la instalación documental/operativa esté completa.
 
 ## 2. Jerarquía canónica
 
@@ -25,11 +25,12 @@ bash tools/system-docs.sh doctor
 6. `tools/swarm-workflow.sh` — motor interno de worktrees/handoff.
 7. `tools/swarm.sh` — **front door obligatorio para trabajo multi-LLM**.
 8. `tools/system-docs.sh` — dashboard, snapshots, historial, doctor y publicación a Obsidian.
-9. CodeGraph — índice principal del código y relaciones.
-10. Repomix / `tools/context-pack.sh` — transporte opcional de contexto seleccionado a otros LLM, con presupuesto de tokens y escaneo de secretos.
-11. Graphify — arquitectura/refactors grandes, sólo cuando aporte valor.
-12. Obsidian — espejo humano, no fuente de verdad.
-13. Muse Code — backend experimental opcional, no requisito.
+9. CodeGraph — **índice PRIMARY** del código y relaciones.
+10. `tools/code-intel.sh` / Codebase Memory MCP — **CANDIDATE/SHADOW** para búsqueda semántica, Hybrid LSP, Cypher y `detect_changes`; no se ejecuta automáticamente en paralelo.
+11. Repomix / `tools/context-pack.sh` — transporte opcional de contexto seleccionado a otros LLM, con presupuesto de tokens y escaneo de secretos.
+12. Graphify — arquitectura/refactors grandes, sólo cuando aporte valor.
+13. Obsidian — espejo humano, no fuente de verdad.
+14. Muse Code — backend experimental opcional, no requisito.
 
 ## 3. Trabajo normal: un agente
 
@@ -49,7 +50,27 @@ bash tools/work.sh run -- <test/build/comando>
 bash tools/work.sh checkpoint "<etapa>"
 ```
 
-Si hace falta entregar a otro LLM una vista autocontenida del código relevante, después de usar CodeGraph para acotar el alcance:
+### Inteligencia de código
+
+Ver estado antes de elegir backend:
+
+```bash
+bash tools/code-intel.sh status
+```
+
+**Ruta normal:** usar CodeGraph primero. Codebase Memory MCP sólo se usa cuando una tarea necesita una capacidad diferencial o durante la comparación controlada. Ver [`CODEBASE-MEMORY.md`](CODEBASE-MEMORY.md).
+
+El candidato se indexa únicamente dentro de una orden activa:
+
+```bash
+bash tools/code-intel.sh cbm-index
+```
+
+No habilitar sus watchers, daemon o configuración global de agentes por rutina.
+
+### Transporte de contexto
+
+Si hace falta entregar a otro LLM una vista autocontenida del código relevante, después de usar el índice para acotar el alcance:
 
 ```bash
 bash tools/work.sh context \
@@ -104,7 +125,7 @@ bash tools/swarm.sh review-note "<observación>"
 bash tools/swarm.sh finish "<resultado>"
 ```
 
-Usar swarm sólo cuando una revisión realmente independiente compense el consumo adicional de cuota/contexto. Repomix puede usarse dentro de la orden maestra si un rol necesita un paquete de contexto, pero no sustituye el handoff reproducible.
+Usar swarm sólo cuando una revisión realmente independiente compense el consumo adicional de cuota/contexto. Repomix puede usarse dentro de la orden maestra si un rol necesita un paquete de contexto, pero no sustituye el handoff reproducible. Codebase Memory tampoco crea una segunda orden ni reemplaza la evidencia del swarm.
 
 ## 5. Recuperar qué se hizo
 
@@ -135,7 +156,7 @@ No crear otro sistema paralelo para:
 - logs de pruebas;
 - worktrees/handoffs;
 - políticas de agentes;
-- índice obligatorio de código;
+- índice **obligatorio** de código;
 - historial operativo.
 
 Decisiones vigentes:
@@ -144,6 +165,7 @@ Decisiones vigentes:
 - SwarmForge: se absorbieron roles/worktrees/handoffs, no su runtime.
 - Loop Engineering: referencia de patrones, no segundo runtime obligatorio.
 - Repowise: referencia/piloto mientras CodeGraph cubra la necesidad diaria.
+- **Codebase Memory MCP: candidato avanzado, no segundo índice obligatorio.** Sin auto-watch ni mutación global; sólo se promoverá si gana una comparación real.
 - **Repomix: contexto transportable, no grafo, backup, wiki ni paso obligatorio de cada tarea.**
 - Graphify: no se ejecuta por defecto.
 - Muse Code: opcional y condicionado a compatibilidad real.
@@ -154,6 +176,7 @@ Decisiones vigentes:
 - No desactivar `core.hooksPath` para saltar guardas.
 - Commit, push, merge y apertura/cierre de PR requieren autorización expresa.
 - No versionar secretos ni índices regenerables.
+- Codebase Memory se instala desde release fijada y SHA-256 verificado; no se ejecuta su instalador nativo ni se dejan agentes/watchers globales.
 - El wrapper de Repomix mantiene Secretlint habilitado, prohíbe remote packing/config trust y confina MCP mediante `--sandbox`.
 - Un scan de secretos es heurístico: revisar cualquier paquete antes de compartirlo externamente.
 - Ante una situación incierta, preservar evidencia y abortar antes que destruir estado.
