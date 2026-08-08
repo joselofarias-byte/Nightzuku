@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 umask 077
 
+export PATH="$HOME/.local/bin:$PATH"
+
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
   exit 1
