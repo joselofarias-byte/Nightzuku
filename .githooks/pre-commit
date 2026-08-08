@@ -9,7 +9,7 @@ if [[ ! -s "$active" ]]; then
   cat >&2 <<'MSG'
 ERROR: commit blocked because no standard work order is active.
 Start one with:
-  bash tools/llm-workflow.sh start --agent <llm> --objective "<objective>"
+  bash tools/work.sh start --agent <llm> --objective "<objective>"
 Do not bypass this guard with --no-verify.
 MSG
   exit 1
@@ -20,5 +20,13 @@ order="$(cat "$active")"
   printf 'ERROR: active work order is invalid: %s\n' "$order" >&2
   exit 1
 }
+
+if [[ -f "$order/MODE.txt" && "$(cat "$order/MODE.txt")" == 'light' ]]; then
+  cat >&2 <<'MSG'
+ERROR: commit blocked because the active work order is read-only (--light).
+Finish or abort it, then start a normal work order before modifying/committing code.
+MSG
+  exit 1
+fi
 
 bash "$repo/tools/llm-workflow.sh" checkpoint pre-commit >/dev/null
