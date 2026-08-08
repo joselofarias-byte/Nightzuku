@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
@@ -106,7 +108,7 @@ class StarterActivity : AppActivity() {
                         is AdbKeyException -> R.string.adb_error_key_store
                         is NotRootedException -> R.string.start_with_root_failed
                         is ConnectException -> R.string.cannot_connect_port
-                        is SSLProtocolException -> R.string.adb_pair_required
+                        is SSLProtocolException -> 0
                         else -> 0
                     }
                 } else 0)
@@ -120,7 +122,6 @@ class StarterActivity : AppActivity() {
                 }
                 finish()
             }
-            val errorDismissAction = if (pairRequired) openPairingGuide else dismissError
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@StarterActivity)
             val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@StarterActivity)
@@ -128,7 +129,7 @@ class StarterActivity : AppActivity() {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
                     Box {
                         WearStarterScreen(
-                            output = output,
+                            output = if (pairRequired) stringResource(R.string.adb_pair_required) else output,
                             failed = failed,
                             startedWithRoot = startedWithRoot
                         )
@@ -136,7 +137,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = errorDismissAction
+                                onDismiss = dismissError
                             )
                         }
                     }
@@ -146,7 +147,7 @@ class StarterActivity : AppActivity() {
                     Box {
                         TvStarterScreen(
                             onNavigateUp = { finish() },
-                            output = output,
+                            output = if (pairRequired) stringResource(R.string.adb_pair_required) else output,
                             failed = failed,
                             startedWithRoot = startedWithRoot
                         )
@@ -154,7 +155,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = errorDismissAction
+                                onDismiss = dismissError
                             )
                         }
                     }
@@ -181,19 +182,27 @@ class StarterActivity : AppActivity() {
                                         else -> stringResource(R.string.notification_service_starting)
                                     },
                                     danger = failed
-                                )
+                                ) {
+                                    if (pairRequired) {
+                                        FilledTonalButton(onClick = openPairingGuide) {
+                                            Text(stringResource(R.string.adb_pairing))
+                                        }
+                                    }
+                                }
                             }
-                            item {
-                                MonospaceLog(
-                                    text = output.ifBlank { stringResource(R.string.starting_root_shell) }
-                                )
+                            if (!pairRequired) {
+                                item {
+                                    MonospaceLog(
+                                        text = output.ifBlank { stringResource(R.string.starting_root_shell) }
+                                    )
+                                }
                             }
                         }
 
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = errorDismissAction
+                                onDismiss = dismissError
                             )
                         }
                     }
