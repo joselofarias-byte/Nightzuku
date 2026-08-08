@@ -7,12 +7,14 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)
 [[ -n "$REPO_ROOT" ]] || { echo 'ERROR: not inside a Git repository' >&2; exit 1; }
 ENGINE="$REPO_ROOT/tools/llm-workflow.sh"
 DOCS="$REPO_ROOT/tools/system-docs.sh"
+CONTEXT="$REPO_ROOT/tools/context-pack.sh"
 GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
 ACTIVE_FILE="$GIT_DIR/llm-work-current"
 LAST_FILE="$GIT_DIR/llm-work-last"
 
 [[ -f "$ENGINE" ]] || { echo 'ERROR: missing llm-workflow.sh' >&2; exit 1; }
 [[ -f "$DOCS" ]] || { echo 'ERROR: missing system-docs.sh' >&2; exit 1; }
+[[ -f "$CONTEXT" ]] || { echo 'ERROR: missing context-pack.sh' >&2; exit 1; }
 
 usage() {
   cat <<'USAGE'
@@ -20,19 +22,21 @@ Canonical self-documenting work command.
 
 Usage: bash tools/work.sh <command> [args]
 
-Commands are compatible with llm-workflow.sh:
+Commands:
   install
   start --agent NAME --objective TEXT [--structural]
   status
   note TEXT
   run -- COMMAND [ARG ...]
   checkpoint [LABEL]
+  context [Repomix context-pack options]
   finish [SUMMARY]
   abort [REASON]
   verify
   docs
   history
 
+`context` delegates to the governed Repomix wrapper and requires an active order.
 Use this wrapper instead of invoking llm-workflow.sh directly for normal work.
 USAGE
 }
@@ -92,6 +96,11 @@ case "${1:-}" in
     bash "$ENGINE" checkpoint "$@"
     snapshot_active checkpoint
     publish_quiet
+    ;;
+  context)
+    shift
+    bash "$CONTEXT" pack "$@"
+    snapshot_active context-pack
     ;;
   finish)
     shift
