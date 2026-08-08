@@ -120,7 +120,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             if (waited >= WAIT_SERVICE_TIMEOUT_S) {
                 LOGGER.e("service " + name + " did not start within "
                         + WAIT_SERVICE_TIMEOUT_S + "s, exiting.");
-                System.exit(51); // 51 = system service wait timeout
+                System.exit(51);
             }
             try {
                 LOGGER.i("service " + name + " is not started, wait 1s. ("
@@ -217,8 +217,13 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         if (UserHandleCompat.getAppId(callingUid) == managerAppId) {
             return true;
         }
-        if (clientRecord == null && checkCallingPermission() == PackageManager.PERMISSION_GRANTED) {
-            return true;
+        if (clientRecord == null) {
+            if (checkCallingPermission() == PackageManager.PERMISSION_GRANTED) {
+                return true;
+            }
+            if ((getFlagsForUidInternal(callingUid, ConfigManager.MASK_PERMISSION, false) & ConfigManager.FLAG_ALLOWED) == ConfigManager.FLAG_ALLOWED) {
+                return true;
+            }
         }
         return false;
     }
