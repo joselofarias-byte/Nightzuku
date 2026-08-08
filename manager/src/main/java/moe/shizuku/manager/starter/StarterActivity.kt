@@ -112,6 +112,7 @@ class StarterActivity : AppActivity() {
                 } else 0)
             }
 
+            val dismissError = { errorToShow = 0 }
             val openPairingGuide = {
                 errorToShow = 0
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -119,6 +120,7 @@ class StarterActivity : AppActivity() {
                 }
                 finish()
             }
+            val errorDismissAction = if (pairRequired) openPairingGuide else dismissError
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@StarterActivity)
             val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@StarterActivity)
@@ -134,7 +136,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = if (pairRequired) openPairingGuide else {{ errorToShow = 0 }}
+                                onDismiss = errorDismissAction
                             )
                         }
                     }
@@ -152,7 +154,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = if (pairRequired) openPairingGuide else {{ errorToShow = 0 }}
+                                onDismiss = errorDismissAction
                             )
                         }
                     }
@@ -191,7 +193,7 @@ class StarterActivity : AppActivity() {
                         if (errorToShow != 0) {
                             moe.shizuku.manager.home.HomeErrorDialog(
                                 message = stringResource(errorToShow),
-                                onDismiss = if (pairRequired) openPairingGuide else {{ errorToShow = 0 }}
+                                onDismiss = errorDismissAction
                             )
                         }
                     }
