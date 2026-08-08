@@ -2,7 +2,9 @@
 
 `DeusData/codebase-memory-mcp` se integra como **backend candidato y complementario**, no como un segundo índice obligatorio ejecutándose siempre junto a CodeGraph.
 
-Versión evaluada/fijada inicialmente: **0.8.1**. Licencia upstream: **MIT**.
+Versión fijada: **0.9.0**. Licencia upstream: **MIT**.
+
+La versión 0.9.0 es la release estable actual verificada al integrar esta capa. No se conserva 0.8.1: upstream declara las versiones `<0.9` fuera de soporte y 0.9.0 incluye correcciones relevantes de indexado, memoria, Kotlin/Java, CLI y `detect_changes`.
 
 ## Decisión de arquitectura
 
@@ -62,7 +64,7 @@ bash tools/code-intel.sh install-cbm
 
 La instalación:
 
-- descarga una **release fijada**, no `latest`;
+- descarga la release **v0.9.0**, no `latest`;
 - selecciona Linux ARM64/AMD64 portable;
 - descarga `checksums.txt` de la misma release;
 - verifica SHA-256 antes de extraer;
@@ -75,7 +77,7 @@ La instalación:
 Ubicación por defecto:
 
 ```text
-$HOME/.local/share/engineering-tools/codebase-memory-mcp/0.8.1/
+$HOME/.local/share/engineering-tools/codebase-memory-mcp/0.9.0/
 ```
 
 ## Estado y caché
@@ -95,9 +97,11 @@ CBM_ALLOWED_ROOT=<repository-root>
 CBM_CACHE_DIR=<repo-specific-cache>
 CBM_DIAGNOSTICS=0
 CBM_LOG_LEVEL=warn
+CBM_WORKERS=4
+CBM_MEM_BUDGET_MB=1024
 ```
 
-No se habilitan watchers ni daemon en el uso normal.
+El límite de workers/memoria es deliberado para no dejar que el PRoot tome la cantidad de CPU/RAM del host como permiso para consumirla completa.
 
 ## Uso CLI one-shot
 
@@ -136,7 +140,7 @@ Detectar impacto del diff:
 bash tools/code-intel.sh cbm detect_changes --project <project>
 ```
 
-El modo `cli` de Codebase Memory es deliberado: ejecuta una sola consulta y termina, sin daemon persistente.
+El modo `cli` es el preferido: ejecuta una consulta puntual y termina sin crear un daemon persistente. Los comandos gobernados se registran bajo `evidence/code-intel/cbm/runs/` de la orden activa.
 
 ## MCP experimental
 
@@ -146,13 +150,19 @@ Sólo si una tarea justifica probar el MCP candidato:
 bash tools/code-intel.sh cbm-mcp
 ```
 
-El wrapper conserva raíz y caché confinadas al repositorio. Esto sigue siendo un piloto: no reemplaza la configuración MCP de CodeGraph ni se registra globalmente.
+Antes de arrancarlo, el wrapper fija `auto_index=false` y `auto_watch=false`. Conserva raíz y caché confinadas al repositorio y no registra el servidor globalmente.
+
+### Red del MCP
+
+Indexado, consultas y búsqueda semántica son locales. Sin embargo, upstream documenta que, **después de `initialize` del MCP**, inicia un chequeo best-effort de nueva versión contra la metadata pública de releases de GitHub. No envía código, rutas, índices, consultas ni telemetría del proyecto, pero sí existe esa conexión HTTPS de actualización.
+
+Por esa razón, **CLI one-shot es el modo predeterminado** de nuestra integración. El MCP candidato es explícito y su arranque deja esta característica documentada en la evidencia.
 
 ## Regla de selección
 
 1. **CodeGraph primero** para trabajo diario.
-2. **Codebase Memory** sólo cuando se necesite una de sus capacidades diferenciales o para comparación controlada.
-3. Si Codebase Memory demuestra mejores resultados de forma repetida en Nightzuku/Vega, se puede promover y retirar CodeGraph en una migración separada.
+2. **Codebase Memory** sólo cuando se necesite una capacidad diferencial o para comparación controlada.
+3. Si demuestra mejores resultados de forma repetida en Nightzuku/Vega, se puede promover y retirar CodeGraph en una migración separada.
 4. No mantener dos índices obligatorios por inercia.
 
 ## Criterios para promoción
@@ -163,7 +173,8 @@ Antes de sustituir CodeGraph medir en repos reales:
 - resolución Kotlin/Java;
 - cobertura de símbolos;
 - calidad de impacto/detect_changes;
-- tiempo de indexado incremental;
+- calidad de búsqueda semántica;
+- tiempo de indexado inicial e incremental;
 - RAM pico;
 - tamaño en disco;
 - tokens/llamadas requeridos por agentes;
