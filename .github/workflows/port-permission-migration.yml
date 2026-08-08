@@ -1,0 +1,133 @@
+name: Port permission migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/port-permission-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  port:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Apply upstream permission migration safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          cfg = Path('server/src/main/java/rikka/shizuku/server/ShizukuConfigManager.java')
+          svc = Path('server/src/main/java/rikka/shizuku/server/ShizukuService.java')
+          c = cfg.read_text()
+          s = svc.read_text()
+
+          marker_cfg = '''    private void updateLocked(int uid, List<String> packages, int mask, int values) {'''
+          addition_cfg = '''    public List<Integer> getAllowedUids() {
+              synchronized (this) {
+                  List<Integer> result = new ArrayList<>();
+                  for (ShizukuConfig.PackageEntry entry : config.packages) {
+                      if ((entry.flags & ConfigManager.FLAG_ALLOWED) != 0) {
+                          result.add(entry.uid);
+                      }
+                  }
+                  return result;
+              }
+          }
+
+'''
+          if 'public List<Integer> getAllowedUids()' not in c:
+              if marker_cfg not in c:
+                  raise SystemExit('ABORT: ShizukuConfigManager marker missing')
+              c = c.replace(marker_cfg, addition_cfg + marker_cfg, 1)
+
+          marker_method = '''    private void onPermissionRevoked(String packageName) {'''
+          addition_method = '''    private void migratePermissionGrants() {
+              List<Integer> allowedUids = configManager.getAllowedUids();
+              if (allowedUids.isEmpty()) return;
+              LOGGER.i("migratePermissionGrants: checking %d authorized UIDs", allowedUids.size());
+              int migrated = 0;
+              for (int uid : allowedUids) {
+                  int userId = UserHandleCompat.getUserId(uid);
+                  for (String packageName : PackageManagerApis.getPackagesForUidNoThrow(uid)) {
+                      PackageInfo pi = Android17Compat.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS, userId);
+                      if (pi == null || pi.requestedPermissions == null) continue;
+
+                      String permToGrant = null;
+                      if (ArraysKt.contains(pi.requestedPermissions, PERMISSION)) {
+                          permToGrant = PERMISSION;
+                      } else if (ArraysKt.contains(pi.requestedPermissions, ServerConstants.PERMISSION_ORIGINAL)) {
+                          permToGrant = ServerConstants.PERMISSION_ORIGINAL;
+                      } else if (ArraysKt.contains(pi.requestedPermissions, ServerConstants.PERMISSION_LEGACY)) {
+                          permToGrant = ServerConstants.PERMISSION_LEGACY;
+                      }
+                      if (permToGrant == null) continue;
+
+                      try {
+                          Android17Compat.grantRuntimePermission(packageName, permToGrant, userId);
+                          migrated++;
+                      } catch (Throwable e) {
+                          LOGGER.w(e, "migratePermissionGrants: grant failed for %s (%s)", packageName, permToGrant);
+                      }
+                  }
+              }
+              LOGGER.i("migratePermissionGrants: granted/refreshed %d permission(s)", migrated);
+          }
+
+'''
+          if 'private void migratePermissionGrants()' not in s:
+              if marker_method not in s:
+                  raise SystemExit('ABORT: ShizukuService method marker missing')
+              s = s.replace(marker_method, addition_method + marker_method, 1)
+
+          marker_start = '''        mainHandler.post(() -> {
+              sendBinderToClient();'''
+          replacement_start = '''        mainHandler.post(() -> {
+              migratePermissionGrants();
+              sendBinderToClient();'''
+          if 'migratePermissionGrants();\n            sendBinderToClient();' not in s:
+              if marker_start not in s:
+                  raise SystemExit('ABORT: ShizukuService startup marker missing')
+              s = s.replace(marker_start, replacement_start, 1)
+
+          cfg.write_text(c)
+          svc.write_text(s)
+          PY
+
+          grep -nE 'getAllowedUids|migratePermissionGrants' \
+            server/src/main/java/rikka/shizuku/server/ShizukuConfigManager.java \
+            server/src/main/java/rikka/shizuku/server/ShizukuService.java
+
+      - name: Compile server
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x gradlew
+          ./gradlew :server:compileDebugJavaWithJavac --stacktrace
+
+      - name: Commit port
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'joselofarias-byte'
+          git config user.email '289238002+joselofarias-byte@users.noreply.github.com'
+          git add server/src/main/java/rikka/shizuku/server/ShizukuConfigManager.java \
+                  server/src/main/java/rikka/shizuku/server/ShizukuService.java
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No changes required'
+            exit 0
+          fi
+          git commit -m 'fix(server): restore persisted permission grants on startup'
+          git push origin HEAD:main
