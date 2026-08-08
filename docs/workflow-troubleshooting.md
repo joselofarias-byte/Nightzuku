@@ -38,6 +38,34 @@ Codebase Memory 0.9.0 soporta un artefacto compartible del grafo dentro del repo
 
 Para nuestros pilotos, el índice candidato no debe modificar el checkout. La validación debe comprobar que `index_repository --help` expone `--persistence` y ejecutar el indexado con `--persistence false`. Si esa capacidad no está disponible, se aborta antes de indexar; no se limpia silenciosamente el repositorio después.
 
+## `CBM index_repository does not expose --repo-path` durante la regresión sintética
+
+### Síntoma real
+
+La tercera validación de Codebase Memory abortó dentro de `tools/test-code-intel.sh` con:
+
+```text
+ERROR: CBM index_repository does not expose --repo-path
+```
+
+El error apareció **antes del indexado real**, aunque Codebase Memory 0.9.0 ya estaba instalado y `doctor` había pasado.
+
+### Causa
+
+No era una incompatibilidad de Codebase Memory 0.9.0. La fixture sintética usa un binario CBM falso para probar el gobierno del wrapper. Después de endurecer `tools/code-intel.sh` para consultar `cli index_repository --help` y exigir `--repo-path` + `--persistence`, el simulador seguía modelando el contrato anterior y respondía como si `--help` fuera un indexado normal.
+
+### Corrección
+
+El CBM falso de `tools/test-code-intel.sh` ahora:
+
+- responde a `cli index_repository --help`;
+- declara `--repo-path`;
+- declara `--persistence`;
+- conserva el comportamiento de indexado, listado y arquitectura;
+- verifica que el wrapper ejecute el indexado con `--persistence false`.
+
+Regla: **cuando una guarda de producción agrega un preflight de capacidades, las fixtures deben evolucionar para representar ese contrato; no se relaja la guarda real para hacer pasar un mock obsoleto**.
+
 ## `ERROR ... rc=127 ... tee -a "$log_file"` durante el test swarm
 
 ### Causa real
@@ -91,6 +119,7 @@ Los validadores deben:
 4. no hacer push ni merge;
 5. no borrar worktrees con cambios;
 6. convertir todo fallo reproducible en una prueba de regresión cuando sea razonable;
-7. no reparar automáticamente un checkout generado por una herramienta si puede desactivar esa escritura antes de ejecutarla.
+7. no reparar automáticamente un checkout generado por una herramienta si puede desactivar esa escritura antes de ejecutarla;
+8. mantener sincronizados los mocks/fixtures con cualquier nuevo contrato de preflight sin debilitar las guardas de producción.
 
-La validación del 7 de agosto de 2026 confirmó que el Nightzuku original permaneció intacto incluso cuando falló el test de autodocumentación. La validación de Codebase Memory del 8 de agosto volvió a confirmar el mismo comportamiento ante un falso negativo de PATH.
+La validación del 7 de agosto de 2026 confirmó que el Nightzuku original permaneció intacto incluso cuando falló el test de autodocumentación. Las validaciones de Codebase Memory del 8 de agosto volvieron a confirmar el mismo comportamiento ante un falso negativo de PATH y ante una fixture sintética desactualizada.
