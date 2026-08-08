@@ -143,6 +143,31 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     private final ShizukuConfigManager configManager;
     private final int managerAppId;
 
+    private void migratePermissionGrants() {
+        List<Integer> allowedUids = configManager.getAllowedUids();
+        if (allowedUids.isEmpty()) {
+            return;
+        }
+        LOGGER.i("migratePermissionGrants: checking %d authorized UIDs", allowedUids.size());
+        int migrated = 0;
+        for (int uid : allowedUids) {
+            int userId = UserHandleCompat.getUserId(uid);
+            for (String packageName : PackageManagerApis.getPackagesForUidNoThrow(uid)) {
+                PackageInfo pi = Android17Compat.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS, userId);
+                if (pi == null || pi.requestedPermissions == null || !ArraysKt.contains(pi.requestedPermissions, PERMISSION)) {
+                    continue;
+                }
+                try {
+                    Android17Compat.grantRuntimePermission(packageName, PERMISSION, userId);
+                    migrated++;
+                } catch (Throwable e) {
+                    LOGGER.w(e, "migratePermissionGrants: grant failed for %s", packageName);
+                }
+            }
+        }
+        LOGGER.i("migratePermissionGrants: granted/refreshed %d permission(s)", migrated);
+    }
+
     public ShizukuService() {
         super();
 
@@ -176,6 +201,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         BinderSender.register(this);
 
         mainHandler.post(() -> {
+            migratePermissionGrants();
             sendBinderToClient();
             sendBinderToManager();
         });
