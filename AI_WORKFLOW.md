@@ -56,16 +56,46 @@ Muse Code es un backend opcional documentado en [`MUSE.md`](MUSE.md). No es requ
 - `tools/swarm-workflow.sh`: motor de worktrees/handoff de dos roles.
 - `tools/swarm.sh`: front door swarm con autodocumentación.
 - `tools/system-docs.sh`: dashboard, snapshots, historial, doctor y publicación a Obsidian.
-- CodeGraph: índice principal de código y relaciones.
+- **CodeGraph: backend PRIMARY de inteligencia de código.**
+- `tools/code-intel.sh` / **Codebase Memory MCP: backend CANDIDATE/SHADOW**, no segundo índice obligatorio.
 - Repomix / `tools/context-pack.sh`: transporte opcional de contexto seleccionado a otros LLM.
 - Graphify: sólo para trabajo estructural cuando aporte una decisión.
 - Obsidian: espejo humano; no fuente de verdad.
 
 No agregar otro sistema paralelo para backups, órdenes, logs, constitución de agentes, handoffs o índice obligatorio sin documentar primero el reemplazo del sistema canónico.
 
-Decisiones ya tomadas: TBM queda histórico; SwarmForge aportó conceptos pero no se vende su runtime; Loop Engineering queda como referencia de patrones y no segundo runtime obligatorio; Repowise sigue como referencia/piloto; **Repomix sólo transporta contexto y no reemplaza CodeGraph, backups, handoffs ni documentación operativa**; Graphify no se ejecuta por defecto.
+Decisiones ya tomadas: TBM queda histórico; SwarmForge aportó conceptos pero no se vende su runtime; Loop Engineering queda como referencia de patrones y no segundo runtime obligatorio; Repowise sigue como referencia/piloto; **Codebase Memory se evalúa sin auto-watch, sin configuración global de agentes y sin reemplazar aún CodeGraph**; Repomix sólo transporta contexto y no reemplaza grafo, backups, handoffs ni documentación operativa; Graphify no se ejecuta por defecto.
 
 ## Investigación
+
+### Selección de backend
+
+Antes de una investigación amplia:
+
+```bash
+bash tools/code-intel.sh status
+```
+
+La regla normal es **CodeGraph primero**. Usar Codebase Memory únicamente cuando:
+
+- se necesite búsqueda semántica local;
+- Hybrid LSP pueda mejorar la resolución Kotlin/Java;
+- se necesite `detect_changes`, Cypher o análisis de clones/relaciones semánticas;
+- se esté ejecutando una comparación controlada entre backends.
+
+Codebase Memory no se indexa automáticamente en todas las órdenes. Su índice se crea sólo dentro de una orden activa:
+
+```bash
+bash tools/code-intel.sh cbm-index
+```
+
+Las consultas candidatas se registran como evidencia:
+
+```bash
+bash tools/code-intel.sh cbm <tool> [flags...]
+```
+
+Ver [`CODEBASE-MEMORY.md`](CODEBASE-MEMORY.md). No activar su `install` nativo, configuración automática de agentes, `auto_watch` ni daemon por rutina. El MCP candidato sólo se inicia explícitamente con `tools/code-intel.sh cbm-mcp`.
 
 Cuando CodeGraph esté disponible, usarlo antes de recorrer masivamente archivos. Registrar símbolos, callers, callees, rutas, dependencias e impacto:
 
@@ -73,11 +103,11 @@ Cuando CodeGraph esté disponible, usarlo antes de recorrer masivamente archivos
 bash tools/work.sh note "Hallazgo y decisión técnica."
 ```
 
-El índice orienta la investigación, pero no sustituye lectura de código, diff, pruebas ni compilación.
+Ningún índice sustituye lectura de código, diff, pruebas ni compilación. Una afirmación negativa o de impacto crítico debe verificarse contra fuente cuando corresponda.
 
 ### Contexto transportable con Repomix
 
-Usar Repomix **después de acotar el alcance con CodeGraph**, cuando otro LLM necesite una vista autocontenida del código o cuando un paquete reduzca lecturas repetidas.
+Usar Repomix **después de acotar el alcance con un backend de inteligencia**, cuando otro LLM necesite una vista autocontenida del código o cuando un paquete reduzca lecturas repetidas.
 
 Ejemplo recomendado:
 
@@ -142,7 +172,7 @@ Swarm:
 bash tools/swarm.sh finish "resumen del resultado"
 ```
 
-Si se cancela, usar `abort` en el mismo front door. El cierre registra automáticamente el historial persistente y publica `System Status`, `START HERE`, `Repomix Context Packs` y `Work History` en Obsidian cuando el vault esté disponible.
+Si se cancela, usar `abort` en el mismo front door. El cierre registra automáticamente el historial persistente y publica `System Status`, `START HERE`, `Repomix Context Packs`, `Codebase Memory Candidate` y `Work History` en Obsidian cuando el vault esté disponible.
 
 Nunca dejar una orden activa sin cerrar o abortar.
 
@@ -160,4 +190,4 @@ Por defecto, órdenes, respaldos e historial viven fuera del checkout bajo:
 $HOME/.local/state/llm-work/<repositorio>/
 ```
 
-Los worktrees del swarm, `.codegraph/`, SQLite, WAL, Graphify, paquetes Repomix y cachés no son fuentes de verdad. Los paquetes Repomix se conservan como evidencia de contexto sólo cuando una orden los genera.
+Los worktrees del swarm, `.codegraph/`, cachés Codebase Memory, SQLite/WAL, Graphify, paquetes Repomix y otros índices regenerables no son fuentes de verdad. Los paquetes Repomix y logs CBM se conservan como evidencia sólo cuando una orden los genera.
