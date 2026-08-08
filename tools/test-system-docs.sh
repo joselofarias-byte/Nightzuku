@@ -9,7 +9,18 @@ trap 'rm -rf "$TMP"' EXIT
 REPO="$TMP/repo"
 STATE="$TMP/state"
 NO_VAULT="$TMP/no-vault"
-mkdir -p "$REPO/tools" "$REPO/.githooks" "$REPO/.github" "$REPO/.cursor/rules"
+TEST_HOME="$TMP/home"
+mkdir -p "$REPO/tools" "$REPO/.githooks" "$REPO/.github" "$REPO/.cursor/rules" "$TEST_HOME/.local/bin"
+
+cat > "$TEST_HOME/.local/bin/codegraph" <<'CODEGRAPH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf '0.0.0-test\n' ;;
+  status) printf 'test index available\n' ;;
+  *) exit 0 ;;
+esac
+CODEGRAPH
+chmod +x "$TEST_HOME/.local/bin/codegraph"
 
 for file in \
   llm-workflow.sh \
@@ -104,10 +115,10 @@ printf 'base\n' > "$REPO/README.md"
   out="$(bash tools/system-docs.sh record closed 'duplicate record must be ignored')"
   grep -q 'HISTORY_ALREADY_RECORDED=' <<< "$out"
 
-  summary_out="$(bash tools/system-docs.sh summary)"
+  summary_out="$(HOME="$TEST_HOME" PATH="/usr/bin:/bin" bash tools/system-docs.sh summary)"
   grep -q '^WORK_ORDER=NONE$' <<< "$summary_out"
   grep -q '^REPOMIX=' <<< "$summary_out"
-  grep -q '^CODE_INTEL_PRIMARY=CodeGraph:' <<< "$summary_out"
+  grep -q '^CODE_INTEL_PRIMARY=CodeGraph:AVAILABLE$' <<< "$summary_out"
   grep -q '^CODE_INTEL_CANDIDATE=CodebaseMemory:' <<< "$summary_out"
 
   history_out="$(bash tools/system-docs.sh history)"
