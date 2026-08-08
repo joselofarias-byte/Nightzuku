@@ -6,6 +6,8 @@ PINNED_VERSION='1.18.0'
 INSTALL_BASE="${ENGINEERING_TOOLS_HOME:-$HOME/.local/share/engineering-tools}"
 INSTALL_ROOT="${REPOMIX_HOME:-$INSTALL_BASE/repomix/$PINNED_VERSION}"
 PINNED_BIN="$INSTALL_ROOT/node_modules/.bin/repomix"
+NODE22_HOME="${ENGINEERING_NODE22_HOME:-$INSTALL_BASE/node-v22}"
+NODE22_BASE_URL='https://nodejs.org/dist/latest-v22.x'
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -27,7 +29,8 @@ Usage: bash tools/context-pack.sh <command> [args]
 
 Commands:
   status [--brief]
-  install
+  install             install/verify isolated runtime and Repomix 1.18.0
+  install-runtime     install verified isolated Node 22 only when needed
   doctor
   pack [--mode compact|full|metadata] [--style markdown|xml|json|plain]
        [--include GLOBS] [--ignore GLOBS] [--token-budget N] [--name NAME]
@@ -35,6 +38,7 @@ Commands:
 
 Policy:
 - Repomix is pinned and installed outside application checkouts.
+- if the host lacks Node >=22, Node 22 is downloaded from nodejs.org and SHA-256 verified into an isolated tool directory.
 - pack and mcp require an active work order.
 - output is stored under the active order's evidence/context directory.
 - Secretlint/security checking remains enabled; --no-security-check is never used.
@@ -44,12 +48,109 @@ Policy:
 USAGE
 }
 
+node_major_for() {
+  local bin="$1"
+  "$bin" -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null
+}
+
+activate_node_runtime() {
+  local current major
+  current="$(command -v node 2>/dev/null || true)"
+  if [[ -n "$current" ]]; then
+    major="$(node_major_for "$current" || true)"
+    if [[ "$major" =~ ^[0-9]+$ && "$major" -ge 22 ]]; then
+      return 0
+    fi
+  fi
+  if [[ -x "$NODE22_HOME/bin/node" ]]; then
+    major="$(node_major_for "$NODE22_HOME/bin/node" || true)"
+    if [[ "$major" =~ ^[0-9]+$ && "$major" -ge 22 ]]; then
+      export PATH="$NODE22_HOME/bin:$PATH"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 node_major() {
-  command -v node >/dev/null 2>&1 || return 1
-  node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null
+  activate_node_runtime >/dev/null 2>&1 || return 1
+  node_major_for "$(command -v node)"
+}
+
+node_archive_arch() {
+  case "$(uname -m)" in
+    aarch64|arm64) printf 'arm64' ;;
+    x86_64|amd64) printf 'x64' ;;
+    *) return 1 ;;
+  esac
+}
+
+install_node22() {
+  if activate_node_runtime; then
+    printf 'NODE_RUNTIME_ALREADY_OK=%s\n' "$(node --version)"
+    return 0
+  fi
+  command -v curl >/dev/null 2>&1 || fail "curl is required to bootstrap Node 22"
+  command -v tar >/dev/null 2>&1 || fail "tar is required to bootstrap Node 22"
+  command -v xz >/dev/null 2>&1 || fail "xz is required to bootstrap Node 22"
+  command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+
+  local arch sums tmp archive line filename expected actual extracted old cleanup
+  arch="$(node_archive_arch 2>/dev/null || true)"
+  [[ -n "$arch" ]] || fail "automatic Node 22 bootstrap supports only Linux arm64/aarch64 and x86_64"
+  [[ "$(uname -s)" == 'Linux' ]] || fail "automatic Node 22 bootstrap is Linux-only"
+
+  tmp="${NODE22_HOME}.tmp.$$"
+  old="${NODE22_HOME}.old.$$"
+  rm -rf "$tmp" "$old"
+  mkdir -p "$tmp/download" "$tmp/root"
+  printf -v cleanup 'rm -rf -- %q' "$tmp"
+  trap "$cleanup" EXIT
+
+  sums="$tmp/download/SHASUMS256.txt"
+  curl --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 \
+    "$NODE22_BASE_URL/SHASUMS256.txt" -o "$sums"
+
+  line="$(grep -E "^[0-9a-f]{64}  node-v22[^ ]*-linux-${arch}\\.tar\\.xz$" "$sums" | tail -n1)"
+  [[ -n "$line" ]] || fail "official Node 22 checksum list has no linux-$arch archive"
+  expected="${line%%  *}"
+  filename="${line#*  }"
+  archive="$tmp/download/$filename"
+
+  curl --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 \
+    "$NODE22_BASE_URL/$filename" -o "$archive"
+  actual="$(sha256sum "$archive" | awk '{print $1}')"
+  [[ "$actual" == "$expected" ]] || fail "Node archive SHA-256 mismatch"
+
+  tar -xJf "$archive" -C "$tmp/root" --strip-components=1
+  [[ -x "$tmp/root/bin/node" && -x "$tmp/root/bin/npm" ]] || fail "extracted Node runtime is incomplete"
+  local major
+  major="$(node_major_for "$tmp/root/bin/node" || true)"
+  [[ "$major" =~ ^[0-9]+$ && "$major" -ge 22 ]] || fail "downloaded runtime is not Node >=22"
+
+  mkdir -p "$INSTALL_BASE"
+  chmod 700 "$INSTALL_BASE" 2>/dev/null || true
+  if [[ -e "$NODE22_HOME" ]]; then
+    mv "$NODE22_HOME" "$old"
+  fi
+  mv "$tmp/root" "$NODE22_HOME"
+  {
+    printf 'source=%s/%s\n' "$NODE22_BASE_URL" "$filename"
+    printf 'sha256=%s\n' "$expected"
+    printf 'installed_at=%s\n' "$(date -Iseconds)"
+  } > "$NODE22_HOME/ENGINEERING-RUNTIME.txt"
+  rm -rf "$old" "$tmp/download" "$tmp"
+  trap - EXIT
+  export PATH="$NODE22_HOME/bin:$PATH"
+  printf 'NODE_RUNTIME_INSTALLED=%s\n' "$NODE22_HOME"
+  printf 'NODE_VERSION=%s\n' "$(node --version)"
+  printf 'NODE_ARCHIVE_SHA256=%s\n' "$expected"
 }
 
 resolve_bin() {
+  activate_node_runtime >/dev/null 2>&1 || true
   local candidate="${REPOMIX_BIN:-}"
   if [[ -n "$candidate" ]]; then
     if [[ "$candidate" != */* ]]; then
@@ -70,6 +171,7 @@ resolve_bin() {
 
 repomix_version() {
   local bin="$1" out
+  activate_node_runtime >/dev/null 2>&1 || true
   out="$("$bin" --version 2>/dev/null | head -n1 || true)"
   printf '%s' "$out" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1
 }
@@ -77,6 +179,7 @@ repomix_version() {
 status() {
   local brief=0
   [[ "${1:-}" == "--brief" ]] && brief=1
+  activate_node_runtime >/dev/null 2>&1 || true
   local major="" bin="" version=""
   major="$(node_major 2>/dev/null || true)"
   if bin="$(resolve_bin 2>/dev/null)"; then
@@ -92,6 +195,7 @@ status() {
   if [[ "$brief" == "0" ]]; then
     printf 'NODE=%s\n' "$(command -v node >/dev/null 2>&1 && node --version || printf 'NOT_INSTALLED')"
     printf 'NODE_MAJOR=%s\n' "${major:-UNKNOWN}"
+    printf 'NODE_ISOLATED_HOME=%s\n' "$NODE22_HOME"
     printf 'INSTALL_ROOT=%s\n' "$INSTALL_ROOT"
     printf 'LICENSE=MIT\n'
     printf 'SECURITY_CHECK=MANDATORY\n'
@@ -102,7 +206,7 @@ status() {
 }
 
 require_node22() {
-  command -v node >/dev/null 2>&1 || fail "Node.js is required"
+  activate_node_runtime || fail "Node.js >=22 is required; run: bash tools/context-pack.sh install-runtime"
   command -v npm >/dev/null 2>&1 || fail "npm is required"
   local major
   major="$(node_major)"
@@ -111,6 +215,7 @@ require_node22() {
 }
 
 install_repomix() {
+  activate_node_runtime >/dev/null 2>&1 || install_node22
   require_node22
   local tmp old bin version cleanup
   mkdir -p "$(dirname "$INSTALL_ROOT")"
@@ -158,6 +263,7 @@ install_repomix() {
 }
 
 require_pinned_bin() {
+  require_node22
   local bin version
   bin="$(resolve_bin 2>/dev/null || true)"
   [[ -n "$bin" ]] || fail "Repomix $PINNED_VERSION is not installed; run: bash tools/context-pack.sh install"
@@ -276,6 +382,7 @@ pack_context() {
     printf -- '- HEAD: `%s`\n' "$(git -C "$REPO_ROOT" rev-parse HEAD)"
     printf -- '- Worktree changes: %s\n' "$(git -C "$REPO_ROOT" status --porcelain=v1 | wc -l | tr -d ' ')"
     printf -- '- Repomix: `%s`\n' "$PINNED_VERSION"
+    printf -- '- Node: `%s`\n' "$(node --version)"
     printf -- '- Mode: `%s`\n' "$mode"
     printf -- '- Style: `%s`\n' "$style"
     printf -- '- Token budget: `%s`\n' "$token_budget"
@@ -342,6 +449,7 @@ doctor() {
 case "${1:-}" in
   status) shift; status "$@" ;;
   install) shift; install_repomix "$@" ;;
+  install-runtime) shift; install_node22 "$@" ;;
   doctor) shift; doctor "$@" ;;
   pack) shift; pack_context "$@" ;;
   mcp) shift; run_mcp "$@" ;;
