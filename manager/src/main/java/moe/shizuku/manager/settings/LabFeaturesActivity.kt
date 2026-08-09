@@ -30,6 +30,7 @@ import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButto
 import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
 import androidx.wear.compose.material3.Text as WearText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
@@ -39,11 +40,11 @@ import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.module.ModuleSettings
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.GroupDivider
+import moe.shizuku.manager.ui.compose.NightzukuSwitchSettingsRow
 import moe.shizuku.manager.ui.compose.SettingsGroup
 import moe.shizuku.manager.ui.compose.SettingsRow
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
-import moe.shizuku.manager.ui.compose.SwitchSettingsRow
 import rikka.shizuku.Shizuku
 
 class LabFeaturesActivity : AppActivity() {
@@ -134,7 +135,7 @@ class LabFeaturesActivity : AppActivity() {
                     ) {
                         item {
                             SettingsGroup(title = stringResource(R.string.lab_features_summary)) {
-                                SwitchSettingsRow(
+                                NightzukuSwitchSettingsRow(
                                     icon = R.drawable.ic_baseline_link_24,
                                     title = stringResource(R.string.shizuku_connectors_title),
                                     summary = stringResource(R.string.shizuku_connectors_summary),
@@ -152,24 +153,26 @@ class LabFeaturesActivity : AppActivity() {
 
                         item {
                             SettingsGroup(title = "ADB TCP/IP") {
-                                SwitchSettingsRow(
+                                NightzukuSwitchSettingsRow(
                                     icon = R.drawable.ic_adb_24dp,
                                     title = "Transporte TCP persistente",
                                     summary = tcpStatus ?: if (tcpEnabled) "$tcpHost:$tcpPort" else "Desactivado; mDNS inalámbrico sigue siendo preferido",
                                     checked = tcpEnabled,
+                                    enabled = !tcpBusy,
                                     onCheckedChange = { enabled ->
-                                        if (tcpBusy) return@SwitchSettingsRow
-                                        tcpStatus = null
-                                        if (enabled) {
-                                            tcpError = null
-                                            showTcpDialog = true
-                                        } else {
-                                            tcpBusy = true
-                                            scope.launch {
-                                                val result = AdbTcpController.disable()
-                                                tcpBusy = false
-                                                tcpStatus = result.message
-                                                if (result.success) tcpEnabled = false
+                                        if (!tcpBusy) {
+                                            tcpStatus = null
+                                            if (enabled) {
+                                                tcpError = null
+                                                showTcpDialog = true
+                                            } else {
+                                                tcpBusy = true
+                                                scope.launch {
+                                                    val result = AdbTcpController.disable()
+                                                    tcpBusy = false
+                                                    tcpStatus = result.message
+                                                    if (result.success) tcpEnabled = false
+                                                }
                                             }
                                         }
                                     }
@@ -177,7 +180,7 @@ class LabFeaturesActivity : AppActivity() {
                                 GroupDivider()
                                 SettingsRow(
                                     icon = R.drawable.ic_settings_outline_24dp,
-                                    title = "Endpoint TCP",
+                                    title = "Dirección TCP",
                                     summary = "$tcpHost:$tcpPort",
                                     onClick = {
                                         if (tcpBusy) return@SettingsRow
@@ -190,14 +193,14 @@ class LabFeaturesActivity : AppActivity() {
                         }
 
                         item {
-                            SettingsGroup(title = "NightDog · pruebas de recuperación") {
+                            SettingsGroup(title = "NightDog · recuperación") {
                                 SettingsRow(
                                     icon = R.drawable.ic_warning_24,
-                                    title = "Matar proceso del servidor",
+                                    title = "Probar recuperación automática",
                                     summary = killStatus ?: if (killBusy) {
-                                        "Programando SIGKILL…"
+                                        "Prueba en curso…"
                                     } else {
-                                        "Fuerza una caída real de shizuku_server sin desactivar la recuperación automática."
+                                        "Detiene el servidor y comprueba que NightDog lo restaure."
                                     },
                                     onClick = {
                                         if (!killBusy) showKillDialog = true
@@ -230,29 +233,56 @@ class LabFeaturesActivity : AppActivity() {
                     if (showKillDialog) {
                         AlertDialog(
                             onDismissRequest = { if (!killBusy) showKillDialog = false },
-                            title = { Text("Prueba de recuperación NightDog") },
+                            title = { Text("Probar recuperación automática") },
                             text = {
-                                Text(
-                                    "Se enviará SIGKILL al proceso shizuku_server mediante el transporte ADB autenticado. El estado deseado se fuerza a ACTIVO antes de la prueba y no se usa la ruta de detención manual. NightDog deberá detectar la pérdida del Binder y levantar el servicio otra vez."
-                                )
+                                Text("Nightzuku detendrá el servidor una vez. NightDog debería iniciarlo de nuevo automáticamente.")
                             },
                             confirmButton = {
                                 TextButton(
                                     enabled = !killBusy,
                                     onClick = {
                                         killBusy = true
-                                        killStatus = null
+                                        killStatus = "Preparando prueba…"
                                         showKillDialog = false
                                         scope.launch {
-                                            val result = killServerProcessForRecoveryTest()
+                                            val result = runCatching { killServerProcessForRecoveryTest() }
+                                            val killed = result.getOrElse { error ->
+                                                killBusy = false
+                                                killStatus = "Error: ${error.message ?: error.javaClass.simpleName}"
+                                                return@launch
+                                            }
+
+                                            val killedPid = killed.pid
+                                            killStatus = if (killedPid != null) {
+                                                "Servidor detenido · PID $killedPid · esperando a NightDog…"
+                                            } else {
+                                                "Servidor detenido · esperando a NightDog…"
+                                            }
+
+                                            for (second in 1..30) {
+                                                delay(1_000L)
+                                                val snapshot = NightDogRecovery.snapshot.value
+                                                val binderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+                                                val newPid = snapshot.serverPid
+                                                val pidChanged = killedPid == null || (newPid != null && newPid != killedPid)
+
+                                                if (binderAlive && pidChanged) {
+                                                    killBusy = false
+                                                    killStatus = buildString {
+                                                        append("Recuperado en ${second}s")
+                                                        if (newPid != null) append(" · PID $newPid")
+                                                    }
+                                                    return@launch
+                                                }
+
+                                                killStatus = "${recoveryStageLabel(snapshot.stage)} · ${second}s"
+                                            }
+
                                             killBusy = false
-                                            killStatus = result.fold(
-                                                onSuccess = { it },
-                                                onFailure = { "Error: ${it.message ?: it.javaClass.simpleName}" }
-                                            )
+                                            killStatus = "No se confirmó la recuperación en 30 s."
                                         }
                                     }
-                                ) { Text("Matar proceso") }
+                                ) { Text("Iniciar prueba") }
                             },
                             dismissButton = {
                                 TextButton(
@@ -269,7 +299,7 @@ class LabFeaturesActivity : AppActivity() {
                             title = { Text("Activar ADB TCP persistente") },
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Nightzuku usará la sesión autenticada de depuración inalámbrica para reiniciar adbd en este puerto TCP y solo guardará el endpoint después de verificarlo.")
+                                    Text("Nightzuku usará la sesión autenticada de depuración inalámbrica para reiniciar adbd en este puerto TCP y solo guardará la dirección después de verificarla.")
                                     OutlinedTextField(
                                         value = tcpHost,
                                         onValueChange = {
@@ -338,21 +368,27 @@ class LabFeaturesActivity : AppActivity() {
         }
     }
 
-    private suspend fun killServerProcessForRecoveryTest(): Result<String> = runCatching {
+    private suspend fun killServerProcessForRecoveryTest(): AdbRecoveryTestController.Result {
         check(Shizuku.pingBinder()) {
-            "Nightzuku no está en ejecución; no hay un proceso activo para matar."
+            "Nightzuku no está en ejecución."
         }
 
-        // This is deliberately the opposite of prepareForManualStop(): a recovery test
-        // must keep the persisted desired state active even if it was stale from an
-        // earlier manual stop.
         NightDogRecovery.requestManualStart(applicationContext)
         check(NightDogRecovery.snapshot.value.desiredRunning) {
-            "No se pudo activar el estado deseado de NightDog."
+            "No se pudo activar NightDog."
         }
 
         val result = AdbRecoveryTestController.killServerProcess()
         check(result.success) { result.message }
-        result.message
+        return result
+    }
+
+    private fun recoveryStageLabel(stage: NightDogRecovery.Stage): String = when (stage) {
+        NightDogRecovery.Stage.CHECKING_BINDER -> "Comprobando servicio"
+        NightDogRecovery.Stage.DISCOVERING_ADB -> "Buscando conexión ADB"
+        NightDogRecovery.Stage.WAITING_FOR_ADB -> "Esperando conexión ADB"
+        NightDogRecovery.Stage.STARTING_SERVICE -> "Iniciando Nightzuku"
+        NightDogRecovery.Stage.ERROR -> "Error durante la recuperación"
+        else -> "Esperando a NightDog"
     }
 }
