@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="notification">#3F51B5</color>
+    <!-- Nightzuku / JoseloFarias brand palette. Kept independent from semantic
+         service-state colors (green/amber/red/grey) used by NightDog. -->
+    <color name="notification">#2E7D32</color>
 
-    <color name="app_color_light">#3F51B5</color>
-    <color name="app_color_dark">#B1B8DF</color>
+    <color name="app_color_light">#1B5E20</color>
+    <color name="app_color_dark">#81C784</color>
 </resources>
