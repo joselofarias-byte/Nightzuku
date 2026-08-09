@@ -117,6 +117,8 @@ class SettingsActivity : AppActivity() {
             var showModuleModeDialog by remember { mutableStateOf(false) }
             var showCustomPermissionsDialog by remember { mutableStateOf(false) }
             var showStopDialog by remember { mutableStateOf(false) }
+            var showCreditsDialog by remember { mutableStateOf(false) }
+            var showSupportDialog by remember { mutableStateOf(false) }
 
             var moduleAccessMode by remember {
                 mutableStateOf(ModuleSettings.getAccessMode())
@@ -339,6 +341,24 @@ class SettingsActivity : AppActivity() {
                         }
 
                         item {
+                            SettingsGroup(title = "Créditos y apoyo") {
+                                SettingsRow(
+                                    icon = R.drawable.ic_outline_info_24,
+                                    title = "Créditos",
+                                    summary = "JoseloFarias · Nightzuku · Shizuku",
+                                    onClick = { showCreditsDialog = true }
+                                )
+                                GroupDivider()
+                                SettingsRow(
+                                    icon = R.drawable.ic_baseline_link_24,
+                                    title = "Apoyar Nightzuku",
+                                    summary = "USDT · Arbitrum One · Binance Pay",
+                                    onClick = { showSupportDialog = true }
+                                )
+                            }
+                        }
+
+                        item {
                             SettingsGroup(title = stringResource(R.string.diagnostic_service)) {
                                 SettingsRow(
                                     icon = R.drawable.ic_close_24,
@@ -397,6 +417,17 @@ class SettingsActivity : AppActivity() {
                 }
             }
 
+            if (showCreditsDialog && !isWatch && !isTv) {
+                ShizukuExpressiveTheme {
+                    CreditsDialog(onDismiss = { showCreditsDialog = false })
+                }
+            }
+
+            if (showSupportDialog && !isWatch && !isTv) {
+                ShizukuExpressiveTheme {
+                    SupportDialog(onDismiss = { showSupportDialog = false })
+                }
+            }
 
             if (showStopDialog) {
                 ShizukuExpressiveTheme {
