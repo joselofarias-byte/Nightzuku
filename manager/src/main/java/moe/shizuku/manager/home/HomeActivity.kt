@@ -14,6 +14,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Menu
 import android.widget.Toast
 import androidx.activity.compose.setContent
@@ -63,6 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,38 +79,39 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.delay
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.management.ApplicationManagementActivity
-import moe.shizuku.manager.module.AdbModuleManager
-import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.model.ServiceStatus
+import moe.shizuku.manager.module.AdbModuleManager
+import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.settings.SettingsActivity
-import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.shell.ShellTutorialActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.starter.StarterActivity
-import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
+import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.utils.CustomTabsHelper
 import moe.shizuku.manager.utils.EnvironmentUtils
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.core.util.ClipboardUtils
+import rikka.html.text.HtmlCompat as RikkaHtmlCompat
 import rikka.lifecycle.Resource
 import rikka.lifecycle.Status
 import rikka.lifecycle.viewModels
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
-import rikka.html.text.HtmlCompat as RikkaHtmlCompat
 
 private const val NIGHTZUKU_BRAND = "JoseloFarias"
-private const val NIGHTZUKU_UPSTREAM = "Shizuku / RikkaApps"
+private const val NIGHTZUKU_UPSTREAM = "kerneldroid/Nightzuku · RikkaApps/Shizuku"
 
 abstract class HomeActivity : AppActivity() {
 
@@ -619,14 +622,32 @@ private fun PhoneHomeScreen(
     val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
     var moreOpen by remember { mutableStateOf(false) }
-    val diagnostics = remember(status, grantedCount, localNetworkPermissionState, lastChecked, recoverySnapshot) {
+    var elapsedNow by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+
+    LaunchedEffect(running, recoverySnapshot.runningSinceElapsedRealtime) {
+        elapsedNow = SystemClock.elapsedRealtime()
+        while (running) {
+            delay(1_000L)
+            elapsedNow = SystemClock.elapsedRealtime()
+        }
+    }
+
+    val diagnostics = remember(
+        status,
+        grantedCount,
+        localNetworkPermissionState,
+        lastChecked,
+        recoverySnapshot,
+        elapsedNow
+    ) {
         buildDiagnostics(
             context,
             status,
             grantedCount,
             localNetworkPermissionState,
             lastChecked,
-            recoverySnapshot
+            recoverySnapshot,
+            elapsedNow
         )
     }
 
@@ -1386,7 +1407,8 @@ private fun buildDiagnostics(
     grantedCount: Int,
     localNetworkPermissionState: LocalNetworkPermissionState,
     lastChecked: Long,
-    recoverySnapshot: NightDogRecovery.Snapshot
+    recoverySnapshot: NightDogRecovery.Snapshot,
+    nowElapsedRealtime: Long
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
@@ -1415,47 +1437,73 @@ private fun buildDiagnostics(
     } else {
         context.getString(R.string.diagnostic_limited)
     }
-    val lastCheckedLabel = if (lastChecked > 0L) {
-        formatRelativeTime(context, lastChecked)
-    } else {
-        null
-    }
+    val lastCheckedLabel = if (lastChecked > 0L) formatRelativeTime(context, lastChecked) else "—"
     val serverMode = when {
-        status.uid == 0 -> "root"
-        status.uid > 0 -> "shell / ADB"
-        else -> "no disponible"
+        status.uid == 0 -> "Root"
+        status.uid > 0 -> "Shell / ADB"
+        else -> "No disponible"
     }
     val securityPatch = Build.VERSION.SECURITY_PATCH.takeIf { it.isNotBlank() } ?: "no disponible"
-    val desiredState = if (recoverySnapshot.desiredRunning) "activo" else "detenido manualmente"
-    val binderState = if (recoverySnapshot.binderAlive || status.isRunning) "OK" else "sin respuesta"
+    val desiredState = if (recoverySnapshot.desiredRunning) "ACTIVO" else "DETENIDO MANUALMENTE"
+    val binderState = if (recoverySnapshot.binderAlive || status.isRunning) "OK" else "SIN RESPUESTA"
+    val uptime = if (status.isRunning && recoverySnapshot.runningSinceElapsedRealtime > 0L) {
+        formatElapsedDuration(nowElapsedRealtime - recoverySnapshot.runningSinceElapsedRealtime)
+    } else {
+        "—"
+    }
+    val lastLoss = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastBinderLostElapsedRealtime)
+    val lastRecovery = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastRecoveryElapsedRealtime)
+    val pid = recoverySnapshot.serverPid?.toString() ?: "resolviendo…"
 
     return buildString {
-        appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
-        appendLine("Marca: $NIGHTZUKU_BRAND")
-        appendLine("Base: $NIGHTZUKU_UPSTREAM")
-        appendLine("Paquete: ${context.packageName}")
-        appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
-        appendLine("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}")
-        appendLine("ABI: ${Build.SUPPORTED_ABIS.joinToString()}")
-        appendLine("Parche de seguridad: $securityPatch")
-        appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
-        appendLine("Modo del servidor: $serverMode")
-        appendLine("${context.getString(R.string.diagnostic_server_uid)}: ${status.uid}")
-        appendLine("${context.getString(R.string.diagnostic_server_api)}: ${status.apiVersion}.${status.patchVersion}")
-        appendLine("SELinux: ${status.seContext ?: "unknown"}")
-        appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
-        appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
-        appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
-        appendLine("NightDog deseado: $desiredState")
-        appendLine("Chequeo: ${recoverySnapshot.stage.name} · Binder: $binderState")
-        appendLine("Transporte: ${recoverySnapshot.transport ?: "buscando"}")
-        appendLine("Endpoint: ${recoverySnapshot.endpoint ?: "no resuelto"}")
-        appendLine("Intentos fallidos: ${recoverySnapshot.failedAttempts}")
-        appendLine("Resultado: ${recoverySnapshot.lastResult}")
-        if (lastCheckedLabel != null) {
-            appendLine("${context.getString(R.string.diagnostic_last_checked)}: $lastCheckedLabel")
-        }
+        appendLine("$serviceStatusLabel · $serverMode")
+        appendLine("T+$uptime  ·  PID $pid")
+        appendLine("Versión $versionName (${BuildConfig.VERSION_CODE})  ·  API ${status.apiVersion}.${status.patchVersion}")
+        appendLine()
+        appendLine("SERVIDOR")
+        appendLine("UID              ${status.uid}")
+        appendLine("SELinux          ${status.seContext ?: "unknown"}")
+        appendLine("Permiso ADB      $adbPermissionLabel")
+        appendLine("Binder           $binderState")
+        appendLine("Transporte       ${recoverySnapshot.transport ?: "buscando"}")
+        appendLine("Endpoint         ${recoverySnapshot.endpoint ?: "no resuelto"}")
+        appendLine()
+        appendLine("NIGHTDOG")
+        appendLine("Deseado          $desiredState")
+        appendLine("Estado           ${recoverySnapshot.stage.name}")
+        appendLine("Recuperaciones   ${recoverySnapshot.recoveryCount}")
+        appendLine("Última caída     $lastLoss")
+        appendLine("Última recuperación  $lastRecovery")
+        appendLine("Intentos fallidos    ${recoverySnapshot.failedAttempts}")
+        appendLine("Resultado        ${recoverySnapshot.lastResult}")
+        appendLine()
+        appendLine("DISPOSITIVO")
+        appendLine("Android          ${Build.VERSION.RELEASE} · SDK ${Build.VERSION.SDK_INT}")
+        appendLine("Modelo           ${Build.MANUFACTURER} ${Build.MODEL}")
+        appendLine("ABI              ${Build.SUPPORTED_ABIS.joinToString()}")
+        appendLine("Parche           $securityPatch")
+        appendLine("Red local        $localNetwork")
+        appendLine("Apps autorizadas $grantedCount")
+        appendLine()
+        appendLine("EDICIÓN")
+        appendLine("Marca            $NIGHTZUKU_BRAND")
+        appendLine("Upstream         $NIGHTZUKU_UPSTREAM")
+        appendLine("Paquete          ${context.packageName}")
+        appendLine("Comprobación     $lastCheckedLabel")
     }.trim()
+}
+
+private fun formatElapsedDuration(durationMillis: Long): String {
+    val totalSeconds = (durationMillis.coerceAtLeast(0L) / 1_000L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
+
+private fun formatElapsedAgo(nowElapsedRealtime: Long, eventElapsedRealtime: Long): String {
+    if (eventElapsedRealtime <= 0L) return "—"
+    return "hace ${formatElapsedDuration(nowElapsedRealtime - eventElapsedRealtime)}"
 }
 
 private fun formatRelativeTime(context: android.content.Context, timeMillis: Long): String {
