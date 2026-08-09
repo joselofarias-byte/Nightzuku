@@ -30,18 +30,22 @@ import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButto
 import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
 import androidx.wear.compose.material3.Text as WearText
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbTcpController
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.module.ModuleSettings
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.GroupDivider
 import moe.shizuku.manager.ui.compose.SettingsGroup
 import moe.shizuku.manager.ui.compose.SettingsRow
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
 import moe.shizuku.manager.ui.compose.SwitchSettingsRow
+import rikka.shizuku.Shizuku
 
 class LabFeaturesActivity : AppActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,8 +60,11 @@ class LabFeaturesActivity : AppActivity() {
             var tcpError by remember { mutableStateOf<String?>(null) }
             var tcpBusy by remember { mutableStateOf(false) }
             var tcpStatus by remember { mutableStateOf<String?>(null) }
+            var killBusy by remember { mutableStateOf(false) }
+            var killStatus by remember { mutableStateOf<String?>(null) }
             var showUnsafeDialog by remember { mutableStateOf(false) }
             var showTcpDialog by remember { mutableStateOf(false) }
+            var showKillDialog by remember { mutableStateOf(false) }
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@LabFeaturesActivity)
             if (isWatch) {
@@ -182,6 +189,23 @@ class LabFeaturesActivity : AppActivity() {
                                 )
                             }
                         }
+
+                        item {
+                            SettingsGroup(title = "NightDog · pruebas de recuperación") {
+                                SettingsRow(
+                                    icon = R.drawable.ic_warning_24,
+                                    title = "Matar proceso del servidor",
+                                    summary = killStatus ?: if (killBusy) {
+                                        "Programando SIGKILL…"
+                                    } else {
+                                        "Fuerza una caída real de shizuku_server sin desactivar la recuperación automática."
+                                    },
+                                    onClick = {
+                                        if (!killBusy) showKillDialog = true
+                                    }
+                                )
+                            }
+                        }
                     }
 
                     if (showUnsafeDialog) {
@@ -200,6 +224,42 @@ class LabFeaturesActivity : AppActivity() {
                                 TextButton(onClick = { showUnsafeDialog = false }) {
                                     Text(stringResource(android.R.string.cancel))
                                 }
+                            }
+                        )
+                    }
+
+                    if (showKillDialog) {
+                        AlertDialog(
+                            onDismissRequest = { if (!killBusy) showKillDialog = false },
+                            title = { Text("Prueba de recuperación NightDog") },
+                            text = {
+                                Text(
+                                    "Se enviará SIGKILL al proceso shizuku_server. El estado deseado seguirá siendo ACTIVO, por lo que NightDog deberá detectar la pérdida del Binder y levantar el servicio otra vez. Las apps autorizadas pueden perder el Binder durante unos segundos."
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    enabled = !killBusy,
+                                    onClick = {
+                                        killBusy = true
+                                        killStatus = null
+                                        showKillDialog = false
+                                        scope.launch {
+                                            val result = killServerProcessForRecoveryTest()
+                                            killBusy = false
+                                            killStatus = result.fold(
+                                                onSuccess = { it },
+                                                onFailure = { "Error: ${it.message ?: it.javaClass.simpleName}" }
+                                            )
+                                        }
+                                    }
+                                ) { Text("Matar proceso") }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    enabled = !killBusy,
+                                    onClick = { showKillDialog = false }
+                                ) { Text(stringResource(android.R.string.cancel)) }
                             }
                         )
                     }
@@ -276,6 +336,39 @@ class LabFeaturesActivity : AppActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private suspend fun killServerProcessForRecoveryTest(): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            check(Shizuku.pingBinder()) {
+                "Nightzuku no está en ejecución; no hay un proceso activo para matar."
+            }
+            check(NightDogRecovery.snapshot.value.desiredRunning) {
+                "NightDog está detenido manualmente. Inicia Nightzuku antes de ejecutar esta prueba."
+            }
+
+            val newProcessMethod = Shizuku::class.java.methods.firstOrNull { method ->
+                method.name == "newProcess" && method.parameterTypes.size == 3
+            } ?: error("Esta versión de la API Shizuku no expone el ejecutor remoto necesario para SIGKILL.")
+
+            val shellCommand =
+                "pid=\"${'$'}(pidof shizuku_server 2>/dev/null | cut -d' ' -f1)\"; " +
+                    "[ -n \"${'$'}pid\" ] || exit 44; " +
+                    "(sleep 1; kill -9 \"${'$'}pid\") >/dev/null 2>&1 &"
+            val command = arrayOf("sh", "-c", shellCommand)
+            val remoteProcess = newProcessMethod.invoke(null, command, null, null) as? Process
+                ?: error("No se pudo crear el proceso remoto de prueba.")
+            val exitCode = remoteProcess.waitFor()
+            check(exitCode == 0) {
+                if (exitCode == 44) {
+                    "No se encontró shizuku_server."
+                } else {
+                    "El comando remoto terminó con código $exitCode."
+                }
+            }
+
+            "SIGKILL programado. Observa Inicio: el estado debe pasar por recuperación y volver a ejecución automáticamente."
         }
     }
 }
