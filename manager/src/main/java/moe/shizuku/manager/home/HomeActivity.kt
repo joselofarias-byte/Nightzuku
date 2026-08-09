@@ -67,6 +67,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -802,7 +803,9 @@ private fun PhoneHomeScreen(
                     HomeCard(
                         icon = R.drawable.ic_warning_24,
                         title = stringResource(R.string.home_adb_is_limited_title),
-                        body = stringResource(R.string.home_adb_is_limited_description)
+                        body = stringResource(R.string.home_adb_is_limited_description),
+                        collapsedBody = "Permiso ADB limitado. Toca para ver detalles.",
+                        expandable = true
                     ) {
                         HomeButtons(
                             listOf(
@@ -1049,7 +1052,9 @@ private fun RootCard(
         body = htmlStringResource(
             R.string.home_root_description,
             "Don't kill my app!"
-        )
+        ),
+        collapsedBody = if (restart) "Reiniciar mediante root." else "Iniciar mediante root.",
+        expandable = true
     ) {
         HomeButtons(
             listOf(
@@ -1098,7 +1103,13 @@ private fun WirelessAdbCard(
     HomeCard(
         icon = R.drawable.ic_wadb_24,
         title = htmlStringResource(R.string.home_wireless_adb_title),
-        body = listOfNotNull(body, permissionLine).joinToString("\n\n")
+        body = listOfNotNull(body, permissionLine).joinToString("\n\n"),
+        collapsedBody = if (running) {
+            "Depuración inalámbrica disponible."
+        } else {
+            "Iniciar sin computadora mediante depuración inalámbrica."
+        },
+        expandable = true
     ) {
         val buttons = mutableListOf<HomeButtonSpec>()
         if (!running) {
@@ -1133,7 +1144,9 @@ private fun AdbCommandCard(
     HomeCard(
         icon = R.drawable.ic_adb_24dp,
         title = htmlStringResource(R.string.home_adb_title),
-        body = htmlStringResource(R.string.home_adb_description, Helps.ADB.get())
+        body = htmlStringResource(R.string.home_adb_description, Helps.ADB.get()),
+        collapsedBody = "Iniciar mediante ADB desde una computadora.",
+        expandable = true
     ) {
         HomeButtons(
             listOf(
@@ -1190,10 +1203,15 @@ private fun DiagnosticsCard(
     onCopyDiagnostics: (String) -> Unit,
     onShareDiagnostics: (String) -> Unit
 ) {
+    val compactSummary = remember(diagnostics) {
+        diagnostics.lineSequence().take(3).joinToString("\n")
+    }
     HomeCard(
         icon = R.drawable.ic_outline_info_24,
         title = stringResource(R.string.home_diagnostics_title),
-        body = diagnostics
+        body = diagnostics,
+        collapsedBody = compactSummary,
+        expandable = true
     ) {
         HomeButtons(
             listOf(
@@ -1243,11 +1261,24 @@ private fun HomeCard(
     iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     bodyColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    collapsedBody: String? = null,
+    expandable: Boolean = false,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit = {}
 ) {
-    val clickableModifier = if (onClick != null) {
-        Modifier.clickable(enabled = enabled, onClick = onClick)
+    var expanded by rememberSaveable(title) { mutableStateOf(false) }
+    val effectiveClick: (() -> Unit)? = when {
+        onClick != null -> onClick
+        expandable -> ({ expanded = !expanded })
+        else -> null
+    }
+    val visibleBody = if (expandable && !expanded) {
+        collapsedBody ?: body.lineSequence().firstOrNull().orEmpty()
+    } else {
+        body
+    }
+    val clickableModifier = if (effectiveClick != null) {
+        Modifier.clickable(enabled = enabled, onClick = effectiveClick)
     } else {
         Modifier
     }
@@ -1297,11 +1328,18 @@ private fun HomeCard(
                     fontWeight = FontWeight.Bold,
                     color = titleColor
                 )
-                if (body.isNotBlank()) {
+                if (visibleBody.isNotBlank()) {
                     Text(
-                        text = body,
+                        text = visibleBody,
                         style = MaterialTheme.typography.bodyMedium,
                         color = bodyColor
+                    )
+                }
+                if (expandable) {
+                    Text(
+                        text = if (expanded) "Tocar para contraer" else "Tocar para ver detalles",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 content()
