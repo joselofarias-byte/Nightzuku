@@ -18,9 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-private const val USDT_ARBITRUM_ADDRESS = "0x5d580ac4f1eabff84379fa8e217df4684ad30934"
-private const val OKX_WALLET_LINK = "https://web3.okx.com/ul/N747zv"
-private const val BINANCE_PAY_LINK = "https://app.binance.com/uni-qr/Dhzk73AN"
+private const val EVM_ADDRESS = "0x5d580ac4f1eabff84379fa8e217df4684ad30934"
+private const val BINANCE_PAY_ID = "282919237"
+private const val FORK_REPOSITORY = "https://github.com/joselofarias-byte/Nightzuku"
 private const val NIGHTZUKU_UPSTREAM = "https://github.com/kerneldroid/Nightzuku"
 private const val SHIZUKU_UPSTREAM = "https://github.com/RikkaApps/Shizuku"
 
@@ -29,25 +29,30 @@ internal fun CreditsDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Créditos y origen") },
+        title = { Text("Nightzuku · Fork JoseloFarias") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Fork mantenido por JoseloFarias")
-                Text("Derivado de kerneldroid/Nightzuku")
-                Text("Basado originalmente en RikkaApps/Shizuku")
+                TextButton(
+                    onClick = { openUrl(context, FORK_REPOSITORY) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Repositorio de este fork") }
+
                 Text(
-                    "La autoría y las licencias originales se mantienen. Puedes agradecer o apoyar a los autores desde sus proyectos oficiales.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "Proyectos originales",
+                    style = MaterialTheme.typography.titleSmall
                 )
+                Text("kerneldroid/Nightzuku")
                 TextButton(
                     onClick = { openUrl(context, NIGHTZUKU_UPSTREAM) },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Abrir Nightzuku original") }
+                ) { Text("Repositorio de Nightzuku original") }
+
+                Text("RikkaApps/Shizuku")
                 TextButton(
                     onClick = { openUrl(context, SHIZUKU_UPSTREAM) },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Abrir Shizuku original") }
+                ) { Text("Repositorio de Shizuku") }
             }
         },
         confirmButton = {
@@ -66,31 +71,36 @@ internal fun SupportDialog(onDismiss: () -> Unit) {
         title = { Text("Apoyar este fork") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("USDT · Arbitrum One", style = MaterialTheme.typography.titleSmall)
+                Text("Dirección EVM", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    USDT_ARBITRUM_ADDRESS,
+                    EVM_ADDRESS,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text("Enviar únicamente activos compatibles con Arbitrum One.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Para cualquier red EVM y token compatible. Verifica siempre la red y el token antes de enviar.",
+                    style = MaterialTheme.typography.bodySmall
+                )
                 TextButton(
                     onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("USDT Arbitrum One", USDT_ARBITRUM_ADDRESS))
-                        Toast.makeText(context, "Dirección copiada", Toast.LENGTH_SHORT).show()
+                        copyText(context, "Dirección EVM", EVM_ADDRESS)
+                        Toast.makeText(context, "Dirección EVM copiada", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Copiar dirección USDT") }
-                TextButton(
-                    onClick = { openUrl(context, OKX_WALLET_LINK) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Abrir wallet / QR USDT") }
+                ) { Text("Copiar dirección EVM") }
 
                 Text("Binance Pay", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "ID: $BINANCE_PAY_ID",
+                    style = MaterialTheme.typography.bodyMedium
+                )
                 TextButton(
-                    onClick = { openUrl(context, BINANCE_PAY_LINK) },
+                    onClick = {
+                        copyText(context, "Binance Pay ID", BINANCE_PAY_ID)
+                        Toast.makeText(context, "Binance Pay ID copiado", Toast.LENGTH_SHORT).show()
+                    },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Abrir Binance Pay") }
+                ) { Text("Copiar Binance Pay ID") }
             }
         },
         confirmButton = {
@@ -101,10 +111,15 @@ internal fun SupportDialog(onDismiss: () -> Unit) {
     )
 }
 
+private fun copyText(context: Context, label: String, value: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
+}
+
 private fun openUrl(context: Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }.onFailure {
-        Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "No se pudo abrir el repositorio", Toast.LENGTH_SHORT).show()
     }
 }
