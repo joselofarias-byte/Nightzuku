@@ -927,7 +927,6 @@ private fun StatusCard(
         title = title,
         body = summary,
         artwork = statusArtwork,
-        artworkBadgeColor = semanticColor,
         iconContainerColor = iconContainerColor,
         iconContentColor = iconContentColor,
         titleColor = semanticColor,
@@ -1219,7 +1218,6 @@ private fun HomeCard(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     @DrawableRes artwork: Int? = null,
-    artworkBadgeColor: Color? = null,
     iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
@@ -1246,24 +1244,12 @@ private fun HomeCard(
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             if (artwork != null) {
-                Box(modifier = Modifier.size(88.dp)) {
-                    Image(
-                        painter = painterResource(artwork),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
-                    if (artworkBadgeColor != null) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(20.dp),
-                            shape = CircleShape,
-                            color = artworkBadgeColor,
-                            shadowElevation = 4.dp
-                        ) {}
-                    }
-                }
+                Image(
+                    painter = painterResource(artwork),
+                    contentDescription = null,
+                    modifier = Modifier.size(88.dp),
+                    contentScale = ContentScale.Fit
+                )
             } else {
                 Surface(
                     modifier = Modifier.size(44.dp),
