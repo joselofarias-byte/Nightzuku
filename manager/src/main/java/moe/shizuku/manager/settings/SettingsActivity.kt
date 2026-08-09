@@ -78,7 +78,6 @@ import rikka.core.util.ResourceUtils
 import rikka.material.app.LocaleDelegate
 import rikka.shizuku.manager.ShizukuLocales
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.wear.compose.material3.Button as WearButton
 import androidx.wear.compose.material3.CheckboxButton as WearCheckboxButton
@@ -97,7 +96,6 @@ class SettingsActivity : AppActivity() {
 
         setContent {
             val prefs = ShizukuSettings.getPreferences()
-            val scope = rememberCoroutineScope()
             var startOnBoot by remember {
                 mutableStateOf(packageManager.isComponentEnabled(componentName))
             }
@@ -135,9 +133,7 @@ class SettingsActivity : AppActivity() {
             }
             var recreateTick by remember { mutableIntStateOf(0) }
 
-            val localeOptions = remember(languageTag) {
-                buildLocaleOptions(languageTag)
-            }
+            val localeOptions = remember(languageTag) { buildLocaleOptions(languageTag) }
             val languageSummary = localeOptions.firstOrNull { it.tag == languageTag }?.title
                 ?: stringResource(rikka.core.R.string.follow_system)
             val nightValues = resources.getIntArray(R.array.night_mode_value).toList()
@@ -155,549 +151,406 @@ class SettingsActivity : AppActivity() {
                 }
             }
 
-            LaunchedEffect(isRooted) {
-                if (!isRooted && startOnBoot) {
-                    packageManager.setComponentEnabled(componentName, false)
-                    startOnBoot = false
-                }
-            }
-
-            val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@SettingsActivity)
-            val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@SettingsActivity)
+            val isWatch = EnvironmentUtils.isWatch(this@SettingsActivity)
+            val isTv = EnvironmentUtils.isTV(this@SettingsActivity)
 
             androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                 if (isWatch) {
                     moe.shizuku.manager.ui.compose.WearShizukuTheme {
                         WearSettingsScreen(
-                        startOnBoot = startOnBoot,
-                        onStartOnBootChange = { enabled ->
-                            packageManager.setComponentEnabled(componentName, enabled)
-                            startOnBoot = packageManager.isComponentEnabled(componentName)
-                        },
-                        nightModeSummary = nightSummary,
-                        onNightModeClick = { showNightDialog = true },
-                        blackNightTheme = blackNightTheme,
-                        onBlackNightThemeChange = { enabled ->
-                            prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
-                            blackNightTheme = enabled
-                            if (rikka.core.util.ResourceUtils.isNightMode(resources.configuration)) {
+                            startOnBoot = startOnBoot,
+                            onStartOnBootChange = { enabled ->
+                                packageManager.setComponentEnabled(componentName, enabled)
+                                startOnBoot = packageManager.isComponentEnabled(componentName)
+                            },
+                            nightModeSummary = nightSummary,
+                            onNightModeClick = { showNightDialog = true },
+                            blackNightTheme = blackNightTheme,
+                            onBlackNightThemeChange = { enabled ->
+                                prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
+                                blackNightTheme = enabled
+                                if (ResourceUtils.isNightMode(resources.configuration)) recreateTick++
+                            },
+                            useSystemColor = useSystemColor,
+                            onUseSystemColorChange = { enabled ->
+                                prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
+                                useSystemColor = enabled
                                 recreateTick++
-                            }
-                        },
-                        useSystemColor = useSystemColor,
-                        onUseSystemColorChange = { enabled ->
-                            prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
-                            useSystemColor = enabled
-                            recreateTick++
-                        },
-                        onLabFeaturesClick = {
-                            startActivity(android.content.Intent(this@SettingsActivity, LabFeaturesActivity::class.java))
-                        },
-                        moduleAccessMode = moduleAccessMode,
-                        onModuleAccessModeClick = { showModuleModeDialog = true },
-                        onCustomPermissionsClick = { showCustomPermissionsDialog = true },
-                        showNightDialog = false,
-                        nightLabels = nightLabels,
-                        nightValues = nightValues,
-                        currentNightMode = nightMode,
-                        onNightModeSelect = { },
-                        onNightDialogDismiss = { }
-                    )
-                }
-            } else if (isTv) {
-                moe.shizuku.manager.ui.compose.TvShizukuTheme {
-                    TvSettingsScreen(
-                        onNavigateUp = { finish() },
-                        startOnBoot = startOnBoot,
-                        onStartOnBootChange = { enabled ->
-                            packageManager.setComponentEnabled(componentName, enabled)
-                            startOnBoot = packageManager.isComponentEnabled(componentName)
-                        },
-                        languageSummary = languageSummary,
-                        onLanguageClick = { showLanguageDialog = true },
-                        nightSummary = nightSummary,
-                        onNightModeClick = { showNightDialog = true },
-                        blackNightTheme = blackNightTheme,
-                        onBlackNightThemeChange = { enabled ->
-                            prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
-                            blackNightTheme = enabled
-                            if (rikka.core.util.ResourceUtils.isNightMode(resources.configuration)) {
+                            },
+                            onLabFeaturesClick = {
+                                startActivity(android.content.Intent(this@SettingsActivity, LabFeaturesActivity::class.java))
+                            },
+                            moduleAccessMode = moduleAccessMode,
+                            onModuleAccessModeClick = { showModuleModeDialog = true },
+                            onCustomPermissionsClick = { showCustomPermissionsDialog = true },
+                            showNightDialog = false,
+                            nightLabels = nightLabels,
+                            nightValues = nightValues,
+                            currentNightMode = nightMode,
+                            onNightModeSelect = { },
+                            onNightDialogDismiss = { }
+                        )
+                    }
+                } else if (isTv) {
+                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                        TvSettingsScreen(
+                            onNavigateUp = { finish() },
+                            startOnBoot = startOnBoot,
+                            onStartOnBootChange = { enabled ->
+                                packageManager.setComponentEnabled(componentName, enabled)
+                                startOnBoot = packageManager.isComponentEnabled(componentName)
+                            },
+                            languageSummary = languageSummary,
+                            onLanguageClick = { showLanguageDialog = true },
+                            nightSummary = nightSummary,
+                            onNightModeClick = { showNightDialog = true },
+                            blackNightTheme = blackNightTheme,
+                            onBlackNightThemeChange = { enabled ->
+                                prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
+                                blackNightTheme = enabled
+                                if (ResourceUtils.isNightMode(resources.configuration)) recreateTick++
+                            },
+                            useSystemColor = useSystemColor,
+                            onUseSystemColorChange = { enabled ->
+                                prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
+                                useSystemColor = enabled
                                 recreateTick++
+                            },
+                            moduleAccessMode = moduleAccessMode,
+                            onModuleAccessModeClick = { showModuleModeDialog = true },
+                            recommandWebUi = recommandWebUi,
+                            onRecommandWebUiChange = { enabled ->
+                                ModuleSettings.setRecommandForWebUi(enabled)
+                                recommandWebUi = enabled
+                            },
+                            recommandAction = recommandAction,
+                            onRecommandActionChange = { enabled ->
+                                ModuleSettings.setRecommandForAction(enabled)
+                                recommandAction = enabled
                             }
-                        },
-                        useSystemColor = useSystemColor,
-                        onUseSystemColorChange = { enabled ->
-                            prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
-                            useSystemColor = enabled
-                            recreateTick++
-                        },
-                        moduleAccessMode = moduleAccessMode,
-                        onModuleAccessModeClick = { showModuleModeDialog = true },
-                        recommandWebUi = recommandWebUi,
-                        onRecommandWebUiChange = { enabled ->
-                            ModuleSettings.setRecommandForWebUi(enabled)
-                            recommandWebUi = enabled
-                        },
-                        recommandAction = recommandAction,
-                        onRecommandActionChange = { enabled ->
-                            ModuleSettings.setRecommandForAction(enabled)
-                            recommandAction = enabled
-                        }
-                    )
-                }
-            } else {
-                ShizukuExpressiveTheme {
-                    ShizukuLazyScaffold(
-                        title = stringResource(R.string.settings_title),
-                        onNavigateUp = { finish() }
-                    ) {
-                        if (isRooted) {
+                        )
+                    }
+                } else {
+                    ShizukuExpressiveTheme {
+                        ShizukuLazyScaffold(
+                            title = stringResource(R.string.settings_title),
+                            onNavigateUp = { finish() }
+                        ) {
+                            if (isRooted) {
+                                item {
+                                    SettingsGroup(title = stringResource(R.string.settings_startup)) {
+                                        SwitchSettingsRow(
+                                            icon = R.drawable.ic_server_restart,
+                                            title = stringResource(R.string.settings_start_on_boot),
+                                            summary = stringResource(R.string.settings_start_on_boot_summary),
+                                            checked = startOnBoot,
+                                            onCheckedChange = { enabled ->
+                                                packageManager.setComponentEnabled(componentName, enabled)
+                                                startOnBoot = packageManager.isComponentEnabled(componentName)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
                             item {
-                                SettingsGroup(title = stringResource(R.string.settings_startup)) {
-                                    SwitchSettingsRow(
-                                        icon = R.drawable.ic_server_restart,
-                                        title = stringResource(R.string.settings_start_on_boot),
-                                        summary = stringResource(R.string.settings_start_on_boot_summary),
-                                        checked = startOnBoot,
-                                        onCheckedChange = { enabled ->
-                                            packageManager.setComponentEnabled(componentName, enabled)
-                                            startOnBoot = packageManager.isComponentEnabled(componentName)
+                                SettingsGroup(title = stringResource(R.string.settings_language)) {
+                                    SettingsRow(
+                                        icon = R.drawable.ic_outline_translate_24,
+                                        title = stringResource(R.string.settings_language),
+                                        summary = languageSummary,
+                                        onClick = { showLanguageDialog = true }
+                                    )
+                                    GroupDivider()
+                                    if (contributors.isNotBlank()) {
+                                        SettingsRow(
+                                            icon = R.drawable.ic_outline_info_24,
+                                            title = stringResource(R.string.settings_translation_contributors),
+                                            summary = contributors,
+                                            onClick = { }
+                                        )
+                                        GroupDivider()
+                                    }
+                                    SettingsRow(
+                                        icon = R.drawable.ic_baseline_link_24,
+                                        title = stringResource(R.string.settings_translation),
+                                        summary = stringResource(
+                                            R.string.settings_translation_summary,
+                                            stringResource(R.string.app_name)
+                                        ),
+                                        onClick = {
+                                            CustomTabsHelper.launchUrlOrCopy(this@SettingsActivity, getString(R.string.translation_url))
                                         }
                                     )
                                 }
                             }
-                        }
 
-                        item {
-                            SettingsGroup(title = stringResource(R.string.settings_language)) {
-                                SettingsRow(
-                                    icon = R.drawable.ic_outline_translate_24,
-                                    title = stringResource(R.string.settings_language),
-                                    summary = languageSummary,
-                                    onClick = { showLanguageDialog = true }
-                                )
-                                GroupDivider()
-                                if (contributors.isNotBlank()) {
+                            item {
+                                SettingsGroup(title = stringResource(R.string.settings_user_interface)) {
                                     SettingsRow(
-                                        icon = R.drawable.ic_outline_info_24,
-                                        title = stringResource(R.string.settings_translation_contributors),
-                                        summary = contributors,
-                                        onClick = { }
-                                    )
-                                    GroupDivider()
-                                }
-                                SettingsRow(
-                                    icon = R.drawable.ic_baseline_link_24,
-                                    title = stringResource(R.string.settings_translation),
-                                    summary = stringResource(
-                                        R.string.settings_translation_summary,
-                                        stringResource(R.string.app_name)
-                                    ),
-                                    onClick = {
-                                        CustomTabsHelper.launchUrlOrCopy(this@SettingsActivity, getString(R.string.translation_url))
-                                    }
-                                )
-                            }
-                        }
-
-                        item {
-                            SettingsGroup(title = stringResource(R.string.settings_user_interface)) {
-                                SettingsRow(
-                                    icon = R.drawable.ic_outline_dark_mode_24,
-                                    title = stringResource(rikka.core.R.string.dark_theme),
-                                    summary = nightSummary,
-                                    onClick = { showNightDialog = true }
-                                )
-                                if (nightMode != AppCompatDelegate.MODE_NIGHT_NO) {
-                                    GroupDivider()
-                                    SwitchSettingsRow(
                                         icon = R.drawable.ic_outline_dark_mode_24,
-                                        title = stringResource(R.string.settings_black_night_theme),
-                                        summary = stringResource(R.string.settings_black_night_theme_summary),
-                                        checked = blackNightTheme,
-                                        onCheckedChange = { enabled ->
-                                            prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
-                                            blackNightTheme = enabled
-                                            if (ResourceUtils.isNightMode(resources.configuration)) {
+                                        title = stringResource(rikka.core.R.string.dark_theme),
+                                        summary = nightSummary,
+                                        onClick = { showNightDialog = true }
+                                    )
+                                    if (nightMode != AppCompatDelegate.MODE_NIGHT_NO) {
+                                        GroupDivider()
+                                        SwitchSettingsRow(
+                                            icon = R.drawable.ic_outline_dark_mode_24,
+                                            title = stringResource(R.string.settings_black_night_theme),
+                                            summary = stringResource(R.string.settings_black_night_theme_summary),
+                                            checked = blackNightTheme,
+                                            onCheckedChange = { enabled ->
+                                                prefs.edit().putBoolean(KEY_BLACK_NIGHT_THEME, enabled).apply()
+                                                blackNightTheme = enabled
+                                                if (ResourceUtils.isNightMode(resources.configuration)) recreateTick++
+                                            }
+                                        )
+                                    }
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        GroupDivider()
+                                        SwitchSettingsRow(
+                                            icon = R.drawable.ic_settings_outline_24dp,
+                                            title = stringResource(R.string.settings_use_system_color),
+                                            checked = useSystemColor,
+                                            onCheckedChange = { enabled ->
+                                                prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
+                                                useSystemColor = enabled
                                                 recreateTick++
                                             }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    GroupDivider()
-                                    SwitchSettingsRow(
+                            }
+
+                            item {
+                                SettingsGroup(title = stringResource(R.string.lab_features_title)) {
+                                    SettingsRow(
                                         icon = R.drawable.ic_settings_outline_24dp,
-                                        title = stringResource(R.string.settings_use_system_color),
-                                        checked = useSystemColor,
-                                        onCheckedChange = { enabled ->
-                                            prefs.edit().putBoolean(KEY_USE_SYSTEM_COLOR, enabled).apply()
-                                            useSystemColor = enabled
-                                            recreateTick++
-                                        }
+                                        title = stringResource(R.string.lab_features_title),
+                                        summary = stringResource(R.string.lab_features_summary),
+                                        onClick = { startActivity(android.content.Intent(this@SettingsActivity, LabFeaturesActivity::class.java)) }
                                     )
                                 }
                             }
-                        }
 
-                        item {
-                            SettingsGroup(title = stringResource(R.string.lab_features_title)) {
-                                SettingsRow(
-                                    icon = R.drawable.ic_settings_outline_24dp,
-                                    title = stringResource(R.string.lab_features_title),
-                                    summary = stringResource(R.string.lab_features_summary),
-                                    onClick = { startActivity(android.content.Intent(this@SettingsActivity, LabFeaturesActivity::class.java)) }
-                                )
-                            }
-                        }
-
-                        item {
-                            SettingsGroup(title = "Créditos y apoyo") {
-                                SettingsRow(
-                                    icon = R.drawable.ic_outline_info_24,
-                                    title = "Créditos y origen",
-                                    summary = "JoseloFarias · fork Nightzuku · basado en Shizuku",
-                                    onClick = { showCreditsDialog = true }
-                                )
-                                GroupDivider()
-                                SettingsRow(
-                                    icon = R.drawable.ic_baseline_link_24,
-                                    title = "Apoyar este fork",
-                                    summary = "USDT · Arbitrum One · Binance Pay",
-                                    onClick = { showSupportDialog = true }
-                                )
-                            }
-                        }
-
-                        item {
-                            SettingsGroup(title = stringResource(R.string.diagnostic_service)) {
-                                SettingsRow(
-                                    icon = R.drawable.ic_close_24,
-                                    title = stringResource(R.string.action_stop),
-                                    summary = stringResource(
-                                        R.string.home_status_service_is_running,
-                                        stringResource(R.string.app_name)
-                                    ),
-                                    onClick = { showStopDialog = true }
-                                )
-                            }
-                        }
-
-                        item {
-                            SettingsGroup(title = stringResource(R.string.modules_settings_title)) {
-                                SettingsRow(
-                                    icon = R.drawable.ic_settings_outline_24dp,
-                                    title = stringResource(R.string.modules_access_mode),
-                                    summary = stringResource(moduleAccessMode.labelRes),
-                                    onClick = { showModuleModeDialog = true }
-                                )
-                                if (moduleAccessMode == ModuleSettings.AccessMode.CUSTOM) {
+                            item {
+                                SettingsGroup(title = "Créditos y apoyo") {
+                                    SettingsRow(
+                                        icon = R.drawable.ic_outline_info_24,
+                                        title = "Créditos y origen",
+                                        summary = "JoseloFarias · fork Nightzuku · basado en Shizuku",
+                                        onClick = { showCreditsDialog = true }
+                                    )
                                     GroupDivider()
                                     SettingsRow(
-                                        icon = R.drawable.ic_add_24,
-                                        title = stringResource(R.string.modules_custom_permissions),
-                                        summary = stringResource(R.string.modules_custom_permissions_summary),
-                                        onClick = { showCustomPermissionsDialog = true }
+                                        icon = R.drawable.ic_baseline_link_24,
+                                        title = "Apoyar este fork",
+                                        summary = "USDT · Arbitrum One · Binance Pay",
+                                        onClick = { showSupportDialog = true }
                                     )
                                 }
-                                GroupDivider()
-                                SwitchSettingsRow(
-                                    icon = R.drawable.ic_warning_24,
-                                    title = stringResource(R.string.modules_recommand_webui),
-                                    summary = stringResource(R.string.modules_recommand_webui_summary),
-                                    checked = recommandWebUi,
-                                    onCheckedChange = { enabled ->
-                                        ModuleSettings.setRecommandForWebUi(enabled)
-                                        recommandWebUi = enabled
+                            }
+
+                            item {
+                                SettingsGroup(title = stringResource(R.string.diagnostic_service)) {
+                                    SettingsRow(
+                                        icon = R.drawable.ic_close_24,
+                                        title = stringResource(R.string.action_stop),
+                                        summary = stringResource(
+                                            R.string.home_status_service_is_running,
+                                            stringResource(R.string.app_name)
+                                        ),
+                                        onClick = { showStopDialog = true }
+                                    )
+                                }
+                            }
+
+                            item {
+                                SettingsGroup(title = stringResource(R.string.modules_settings_title)) {
+                                    SettingsRow(
+                                        icon = R.drawable.ic_settings_outline_24dp,
+                                        title = stringResource(R.string.modules_access_mode),
+                                        summary = stringResource(moduleAccessMode.labelRes),
+                                        onClick = { showModuleModeDialog = true }
+                                    )
+                                    if (moduleAccessMode == ModuleSettings.AccessMode.CUSTOM) {
+                                        GroupDivider()
+                                        SettingsRow(
+                                            icon = R.drawable.ic_add_24,
+                                            title = stringResource(R.string.modules_custom_permissions),
+                                            summary = stringResource(R.string.modules_custom_permissions_summary),
+                                            onClick = { showCustomPermissionsDialog = true }
+                                        )
                                     }
-                                )
-                                GroupDivider()
-                                SwitchSettingsRow(
-                                    icon = R.drawable.ic_warning_24,
-                                    title = stringResource(R.string.modules_recommand_action),
-                                    summary = stringResource(R.string.modules_recommand_action_summary),
-                                    checked = recommandAction,
-                                    onCheckedChange = { enabled ->
-                                        ModuleSettings.setRecommandForAction(enabled)
-                                        recommandAction = enabled
-                                    }
-                                )
+                                    GroupDivider()
+                                    SwitchSettingsRow(
+                                        icon = R.drawable.ic_warning_24,
+                                        title = stringResource(R.string.modules_recommand_webui),
+                                        summary = stringResource(R.string.modules_recommand_webui_summary),
+                                        checked = recommandWebUi,
+                                        onCheckedChange = { enabled ->
+                                            ModuleSettings.setRecommandForWebUi(enabled)
+                                            recommandWebUi = enabled
+                                        }
+                                    )
+                                    GroupDivider()
+                                    SwitchSettingsRow(
+                                        icon = R.drawable.ic_warning_24,
+                                        title = stringResource(R.string.modules_recommand_action),
+                                        summary = stringResource(R.string.modules_recommand_action_summary),
+                                        checked = recommandAction,
+                                        onCheckedChange = { enabled ->
+                                            ModuleSettings.setRecommandForAction(enabled)
+                                            recommandAction = enabled
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if (showCreditsDialog && !isWatch && !isTv) {
-                ShizukuExpressiveTheme {
-                    CreditsDialog(onDismiss = { showCreditsDialog = false })
+                if (showCreditsDialog && !isWatch && !isTv) {
+                    ShizukuExpressiveTheme { CreditsDialog(onDismiss = { showCreditsDialog = false }) }
                 }
-            }
-
-            if (showSupportDialog && !isWatch && !isTv) {
-                ShizukuExpressiveTheme {
-                    SupportDialog(onDismiss = { showSupportDialog = false })
+                if (showSupportDialog && !isWatch && !isTv) {
+                    ShizukuExpressiveTheme { SupportDialog(onDismiss = { showSupportDialog = false }) }
                 }
-            }
-
-            if (showStopDialog) {
-                ShizukuExpressiveTheme {
-                    AlertDialog(
-                        onDismissRequest = { showStopDialog = false },
-                        title = { Text(stringResource(R.string.action_stop)) },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
+                if (showStopDialog) {
+                    ShizukuExpressiveTheme {
+                        AlertDialog(
+                            onDismissRequest = { showStopDialog = false },
+                            title = { Text(stringResource(R.string.action_stop)) },
+                            confirmButton = {
+                                TextButton(onClick = {
                                     NightDogRecovery.prepareForManualStop()
                                     runCatching { Shizuku.exit() }
                                     showStopDialog = false
                                     finish()
+                                }) { Text(stringResource(R.string.action_stop)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showStopDialog = false }) { Text(stringResource(android.R.string.cancel)) }
+                            },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = MaterialTheme.shapes.extraLarge
+                        )
+                    }
+                }
+
+                if (showLanguageDialog) {
+                    val choices = remember {
+                        localeOptions.map { ChoiceOption(it.title, it.summary, R.drawable.ic_outline_translate_24) }
+                    }
+                    val selectedIndex = localeOptions.indexOfFirst { it.tag == languageTag }
+                    val onSelect: (Int) -> Unit = { index ->
+                        val tag = localeOptions[index].tag
+                        prefs.edit().putString(LANGUAGE, tag).apply()
+                        languageTag = tag
+                        LocaleDelegate.defaultLocale = if (tag == "SYSTEM") LocaleDelegate.systemLocale else Locale.forLanguageTag(tag)
+                        showLanguageDialog = false
+                        recreate()
+                    }
+                    if (isWatch) {
+                        moe.shizuku.manager.ui.compose.WearShizukuTheme {
+                            WearChoiceDialog(stringResource(R.string.settings_language), choices, selectedIndex, { showLanguageDialog = false }, onSelect)
+                        }
+                    } else if (isTv) {
+                        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                            TvChoiceDialog(stringResource(R.string.settings_language), choices, selectedIndex, { showLanguageDialog = false }, onSelect)
+                        }
+                    } else {
+                        ShizukuExpressiveTheme {
+                            ChoiceDialog(stringResource(R.string.settings_language), choices, selectedIndex, { showLanguageDialog = false }, onSelect)
+                        }
+                    }
+                }
+
+                if (showNightDialog) {
+                    val choices = remember {
+                        nightValues.mapIndexed { index, value ->
+                            ChoiceOption(
+                                title = nightLabels[index],
+                                icon = when (value) {
+                                    AppCompatDelegate.MODE_NIGHT_NO -> R.drawable.ic_outline_light_mode_24
+                                    AppCompatDelegate.MODE_NIGHT_YES -> R.drawable.ic_outline_dark_mode_24
+                                    else -> R.drawable.ic_settings_outline_24dp
                                 }
-                            ) {
-                                Text(stringResource(R.string.action_stop))
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showStopDialog = false }) {
-                                Text(stringResource(android.R.string.cancel))
-                            }
-                        },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shape = MaterialTheme.shapes.extraLarge
-                    )
+                            )
+                        }
+                    }
+                    val selectedIndex = nightValues.indexOf(nightMode)
+                    val onSelect: (Int) -> Unit = { index ->
+                        val value = nightValues[index]
+                        prefs.edit().putInt(NIGHT_MODE, value).apply()
+                        nightMode = value
+                        AppCompatDelegate.setDefaultNightMode(value)
+                        showNightDialog = false
+                        recreate()
+                    }
+                    if (isWatch) {
+                        moe.shizuku.manager.ui.compose.WearShizukuTheme {
+                            WearChoiceDialog(stringResource(rikka.core.R.string.dark_theme), choices, selectedIndex, { showNightDialog = false }, onSelect)
+                        }
+                    } else if (isTv) {
+                        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                            TvChoiceDialog(stringResource(rikka.core.R.string.dark_theme), choices, selectedIndex, { showNightDialog = false }, onSelect)
+                        }
+                    } else {
+                        ShizukuExpressiveTheme {
+                            ChoiceDialog(stringResource(rikka.core.R.string.dark_theme), choices, selectedIndex, { showNightDialog = false }, onSelect)
+                        }
+                    }
                 }
-            }
 
-            if (showLanguageDialog) {
-                val choices = remember {
-                    localeOptions.map {
-                        ChoiceOption(title = it.title, summary = it.summary, icon = R.drawable.ic_outline_translate_24)
+                if (showModuleModeDialog) {
+                    val moduleModes = remember { listOf(ModuleSettings.AccessMode.SAFE, ModuleSettings.AccessMode.CUSTOM, ModuleSettings.AccessMode.FULL) }
+                    val choices = remember {
+                        moduleModes.map { ChoiceOption(getString(it.labelRes), getString(it.summaryRes), R.drawable.ic_adb_24dp) }
+                    }
+                    val selectedIndex = moduleModes.indexOf(moduleAccessMode)
+                    val onSelect: (Int) -> Unit = { index ->
+                        val mode = moduleModes[index]
+                        ModuleSettings.setAccessMode(mode)
+                        moduleAccessMode = mode
+                        showModuleModeDialog = false
+                    }
+                    if (isWatch) {
+                        moe.shizuku.manager.ui.compose.WearShizukuTheme {
+                            WearChoiceDialog(stringResource(R.string.modules_access_mode), choices, selectedIndex, { showModuleModeDialog = false }, onSelect)
+                        }
+                    } else if (isTv) {
+                        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                            TvChoiceDialog(stringResource(R.string.modules_access_mode), choices, selectedIndex, { showModuleModeDialog = false }, onSelect)
+                        }
+                    } else {
+                        ShizukuExpressiveTheme {
+                            ChoiceDialog(stringResource(R.string.modules_access_mode), choices, selectedIndex, { showModuleModeDialog = false }, onSelect)
+                        }
                     }
                 }
-                val selectedIndex = localeOptions.indexOfFirst { it.tag == languageTag }
-                if (isWatch) {
-                    moe.shizuku.manager.ui.compose.WearShizukuTheme {
-                        WearChoiceDialog(
-                            title = stringResource(R.string.settings_language),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showLanguageDialog = false },
-                            onSelect = { index ->
-                                val tag = localeOptions[index].tag
-                                prefs.edit().putString(LANGUAGE, tag).apply()
-                                languageTag = tag
-                                LocaleDelegate.defaultLocale = if (tag == "SYSTEM") LocaleDelegate.systemLocale else Locale.forLanguageTag(tag)
-                                showLanguageDialog = false
-                                recreate()
-                            }
-                        )
-                    }
-                } else if (isTv) {
-                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
-                        TvChoiceDialog(
-                            title = stringResource(R.string.settings_language),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showLanguageDialog = false },
-                            onSelect = { index ->
-                                val tag = localeOptions[index].tag
-                                prefs.edit().putString(LANGUAGE, tag).apply()
-                                languageTag = tag
-                                LocaleDelegate.defaultLocale = if (tag == "SYSTEM") LocaleDelegate.systemLocale else Locale.forLanguageTag(tag)
-                                showLanguageDialog = false
-                                recreate()
-                            }
-                        )
-                    }
-                } else {
-                    ShizukuExpressiveTheme {
-                        ChoiceDialog(
-                            title = stringResource(R.string.settings_language),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showLanguageDialog = false },
-                            onSelect = { index ->
-                                val tag = localeOptions[index].tag
-                                prefs.edit().putString(LANGUAGE, tag).apply()
-                                languageTag = tag
-                                LocaleDelegate.defaultLocale = if (tag == "SYSTEM") LocaleDelegate.systemLocale else Locale.forLanguageTag(tag)
-                                showLanguageDialog = false
-                                recreate()
-                            }
-                        )
-                    }
-                }
-            }
 
-            if (showNightDialog) {
-                val choices = remember {
-                    nightValues.mapIndexed { index, _ ->
-                        ChoiceOption(
-                            title = nightLabels[index],
-                            icon = when (nightValues[index]) {
-                                AppCompatDelegate.MODE_NIGHT_NO -> R.drawable.ic_outline_light_mode_24
-                                AppCompatDelegate.MODE_NIGHT_YES -> R.drawable.ic_outline_dark_mode_24
-                                else -> R.drawable.ic_settings_outline_24dp
-                            }
-                        )
+                if (showCustomPermissionsDialog) {
+                    val onSave: (ModuleSettings.CustomPermissions) -> Unit = { value ->
+                        ModuleSettings.setCustomPermissions(value)
+                        customPermissions = value
+                        showCustomPermissionsDialog = false
+                    }
+                    if (isWatch) {
+                        moe.shizuku.manager.ui.compose.WearShizukuTheme {
+                            WearCustomPermissionsDialog(customPermissions, { showCustomPermissionsDialog = false }, onSave)
+                        }
+                    } else if (isTv) {
+                        moe.shizuku.manager.ui.compose.TvShizukuTheme {
+                            TvCustomPermissionsDialog(customPermissions, { showCustomPermissionsDialog = false }, onSave)
+                        }
+                    } else {
+                        ShizukuExpressiveTheme {
+                            CustomPermissionsDialog(customPermissions, { showCustomPermissionsDialog = false }, onSave)
+                        }
                     }
                 }
-                val selectedIndex = nightValues.indexOf(nightMode)
-                if (isWatch) {
-                    moe.shizuku.manager.ui.compose.WearShizukuTheme {
-                        WearChoiceDialog(
-                            title = stringResource(rikka.core.R.string.dark_theme),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showNightDialog = false },
-                            onSelect = { index ->
-                                val value = nightValues[index]
-                                prefs.edit().putInt(NIGHT_MODE, value).apply()
-                                nightMode = value
-                                AppCompatDelegate.setDefaultNightMode(value)
-                                showNightDialog = false
-                                recreate()
-                            }
-                        )
-                    }
-                } else if (isTv) {
-                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
-                        TvChoiceDialog(
-                            title = stringResource(rikka.core.R.string.dark_theme),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showNightDialog = false },
-                            onSelect = { index ->
-                                val value = nightValues[index]
-                                prefs.edit().putInt(NIGHT_MODE, value).apply()
-                                nightMode = value
-                                AppCompatDelegate.setDefaultNightMode(value)
-                                showNightDialog = false
-                                recreate()
-                            }
-                        )
-                    }
-                } else {
-                    ShizukuExpressiveTheme {
-                        ChoiceDialog(
-                            title = stringResource(rikka.core.R.string.dark_theme),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showNightDialog = false },
-                            onSelect = { index ->
-                                val value = nightValues[index]
-                                prefs.edit().putInt(NIGHT_MODE, value).apply()
-                                nightMode = value
-                                AppCompatDelegate.setDefaultNightMode(value)
-                                showNightDialog = false
-                                recreate()
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (showModuleModeDialog) {
-                val moduleModes = remember {
-                    listOf(
-                        ModuleSettings.AccessMode.SAFE,
-                        ModuleSettings.AccessMode.CUSTOM,
-                        ModuleSettings.AccessMode.FULL
-                    )
-                }
-                val choices = remember {
-                    moduleModes.map {
-                        ChoiceOption(title = getString(it.labelRes), summary = getString(it.summaryRes), icon = R.drawable.ic_adb_24dp)
-                    }
-                }
-                val selectedIndex = moduleModes.indexOf(moduleAccessMode)
-                if (isWatch) {
-                    moe.shizuku.manager.ui.compose.WearShizukuTheme {
-                        WearChoiceDialog(
-                            title = stringResource(R.string.modules_access_mode),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showModuleModeDialog = false },
-                            onSelect = { index ->
-                                val mode = moduleModes[index]
-                                ModuleSettings.setAccessMode(mode)
-                                moduleAccessMode = mode
-                                showModuleModeDialog = false
-                            }
-                        )
-                    }
-                } else if (isTv) {
-                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
-                        TvChoiceDialog(
-                            title = stringResource(R.string.modules_access_mode),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showModuleModeDialog = false },
-                            onSelect = { index ->
-                                val mode = moduleModes[index]
-                                ModuleSettings.setAccessMode(mode)
-                                moduleAccessMode = mode
-                                showModuleModeDialog = false
-                            }
-                        )
-                    }
-                } else {
-                    ShizukuExpressiveTheme {
-                        ChoiceDialog(
-                            title = stringResource(R.string.modules_access_mode),
-                            choices = choices,
-                            selectedIndex = selectedIndex,
-                            onDismiss = { showModuleModeDialog = false },
-                            onSelect = { index ->
-                                val mode = moduleModes[index]
-                                ModuleSettings.setAccessMode(mode)
-                                moduleAccessMode = mode
-                                showModuleModeDialog = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (showCustomPermissionsDialog) {
-                if (isWatch) {
-                    moe.shizuku.manager.ui.compose.WearShizukuTheme {
-                        WearCustomPermissionsDialog(
-                            value = customPermissions,
-                            onDismiss = { showCustomPermissionsDialog = false },
-                            onSave = { value ->
-                                ModuleSettings.setCustomPermissions(value)
-                                customPermissions = value
-                                showCustomPermissionsDialog = false
-                            }
-                        )
-                    }
-                } else if (isTv) {
-                    moe.shizuku.manager.ui.compose.TvShizukuTheme {
-                        TvCustomPermissionsDialog(
-                            value = customPermissions,
-                            onDismiss = { showCustomPermissionsDialog = false },
-                            onSave = { value ->
-                                ModuleSettings.setCustomPermissions(value)
-                                customPermissions = value
-                                showCustomPermissionsDialog = false
-                            }
-                        )
-                    }
-                } else {
-                    ShizukuExpressiveTheme {
-                        CustomPermissionsDialog(
-                            value = customPermissions,
-                            onDismiss = { showCustomPermissionsDialog = false },
-                            onSave = { value ->
-                                ModuleSettings.setCustomPermissions(value)
-                                customPermissions = value
-                                showCustomPermissionsDialog = false
-                            }
-                        )
-                    }
-                }
-            }
             }
         }
     }
@@ -706,20 +559,15 @@ class SettingsActivity : AppActivity() {
         val localeTags = ShizukuLocales.LOCALES
         val displayLocaleTags = ShizukuLocales.DISPLAY_LOCALES
         val currentLocale = ShizukuSettings.getLocale()
-
         return localeTags.mapIndexed { index, tag ->
             if (index == 0) {
                 LocaleOption(tag.toString(), getString(rikka.core.R.string.follow_system), null)
             } else {
                 val locale = Locale.forLanguageTag(displayLocaleTags[index].toString())
                 var localeName = if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(locale) else locale.getDisplayName(locale)
-                if (displayLocaleTags[index].toString() == "es") {
-                    localeName = "Español"
-                }
+                if (displayLocaleTags[index].toString() == "es") localeName = "Español"
                 var localizedLocaleName = if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(currentLocale) else locale.getDisplayName(currentLocale)
-                if (displayLocaleTags[index].toString() == "es" && currentLocale.language == "es") {
-                    localizedLocaleName = "Español"
-                }
+                if (displayLocaleTags[index].toString() == "es" && currentLocale.language == "es") localizedLocaleName = "Español"
                 LocaleOption(
                     tag = tag.toString(),
                     title = if (tag.toString() == currentTag) localizedLocaleName else localeName,
@@ -755,37 +603,33 @@ private fun WearChoiceDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                item {
-                    WearText(
-                        text = title,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                        color = WearMaterialTheme.colorScheme.primary,
-                        style = WearMaterialTheme.typography.titleMedium
-                    )
-                }
-                for (index in choices.indices) {
-                    val choiceTitle = choices[index].title
-                    val isSelected = index == selectedIndex
                     item {
-                        WearRadioButton(
-                            selected = isSelected,
-                            onSelect = { onSelect(index) },
+                        WearText(
+                            text = title,
+                            textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(),
-                            label = { WearText(choiceTitle) }
+                            color = WearMaterialTheme.colorScheme.primary,
+                            style = WearMaterialTheme.typography.titleMedium
                         )
                     }
-                }
-                item {
-                    WearFilledTonalButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        WearText(stringResource(android.R.string.cancel))
+                    for (index in choices.indices) {
+                        val choiceTitle = choices[index].title
+                        item {
+                            WearRadioButton(
+                                selected = index == selectedIndex,
+                                onSelect = { onSelect(index) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { WearText(choiceTitle) }
+                            )
+                        }
+                    }
+                    item {
+                        WearFilledTonalButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                            WearText(stringResource(android.R.string.cancel))
+                        }
                     }
                 }
             }
-        }
         }
     }
 }
@@ -815,67 +659,38 @@ private fun WearCustomPermissionsDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                item {
-                    WearText(
-                        text = title,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                        color = WearMaterialTheme.colorScheme.primary,
-                        style = WearMaterialTheme.typography.titleMedium
-                    )
-                }
-                item {
-                    WearCheckboxButton(
-                        checked = draft.action,
-                        onCheckedChange = { draft = draft.copy(action = it) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { WearText(actionText) }
-                    )
-                }
-                item {
-                    WearCheckboxButton(
-                        checked = draft.service,
-                        onCheckedChange = { draft = draft.copy(service = it) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { WearText(serviceText) }
-                    )
-                }
-                item {
-                    WearCheckboxButton(
-                        checked = draft.webBridge,
-                        onCheckedChange = { enabled -> draft = if (enabled) draft.copy(webBridge = true, webNetwork = false) else draft.copy(webBridge = false) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { WearText(webBridgeText) }
-                    )
-                }
-                item {
-                    WearCheckboxButton(
-                        checked = draft.webNetwork,
-                        onCheckedChange = { enabled -> draft = if (enabled) draft.copy(webNetwork = true, webBridge = false) else draft.copy(webNetwork = false) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { WearText(webNetworkText) }
-                    )
-                }
-                item {
-                    WearCheckboxButton(
-                        checked = draft.webDownload,
-                        onCheckedChange = { draft = draft.copy(webDownload = it) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { WearText(webDownloadText) }
-                    )
-                }
-                item {
-                    WearButton(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) {
-                        WearText(okText)
+                    item {
+                        WearText(
+                            text = title,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = WearMaterialTheme.colorScheme.primary,
+                            style = WearMaterialTheme.typography.titleMedium
+                        )
                     }
-                }
-                item {
-                    WearFilledTonalButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                        WearText(cancelText)
+                    item { WearCheckboxButton(checked = draft.action, onCheckedChange = { draft = draft.copy(action = it) }, modifier = Modifier.fillMaxWidth(), label = { WearText(actionText) }) }
+                    item { WearCheckboxButton(checked = draft.service, onCheckedChange = { draft = draft.copy(service = it) }, modifier = Modifier.fillMaxWidth(), label = { WearText(serviceText) }) }
+                    item {
+                        WearCheckboxButton(
+                            checked = draft.webBridge,
+                            onCheckedChange = { enabled -> draft = if (enabled) draft.copy(webBridge = true, webNetwork = false) else draft.copy(webBridge = false) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { WearText(webBridgeText) }
+                        )
                     }
+                    item {
+                        WearCheckboxButton(
+                            checked = draft.webNetwork,
+                            onCheckedChange = { enabled -> draft = if (enabled) draft.copy(webNetwork = true, webBridge = false) else draft.copy(webNetwork = false) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { WearText(webNetworkText) }
+                        )
+                    }
+                    item { WearCheckboxButton(checked = draft.webDownload, onCheckedChange = { draft = draft.copy(webDownload = it) }, modifier = Modifier.fillMaxWidth(), label = { WearText(webDownloadText) }) }
+                    item { WearButton(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { WearText(okText) } }
+                    item { WearFilledTonalButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { WearText(cancelText) } }
                 }
             }
-        }
         }
     }
 }
@@ -891,75 +706,24 @@ private fun CustomPermissionsDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.modules_custom_permissions)) },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                SwitchSettingsRow(
-                    icon = R.drawable.ic_outline_play_arrow_24,
-                    title = stringResource(R.string.modules_permission_action),
-                    summary = stringResource(R.string.modules_permission_action_summary),
-                    checked = draft.action,
-                    onCheckedChange = { draft = draft.copy(action = it) }
-                )
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                SwitchSettingsRow(R.drawable.ic_outline_play_arrow_24, stringResource(R.string.modules_permission_action), stringResource(R.string.modules_permission_action_summary), draft.action) { draft = draft.copy(action = it) }
                 GroupDivider()
-                SwitchSettingsRow(
-                    icon = R.drawable.ic_terminal_24,
-                    title = stringResource(R.string.modules_permission_service),
-                    summary = stringResource(R.string.modules_permission_service_summary),
-                    checked = draft.service,
-                    onCheckedChange = { draft = draft.copy(service = it) }
-                )
+                SwitchSettingsRow(R.drawable.ic_terminal_24, stringResource(R.string.modules_permission_service), stringResource(R.string.modules_permission_service_summary), draft.service) { draft = draft.copy(service = it) }
                 GroupDivider()
-                SwitchSettingsRow(
-                    icon = R.drawable.ic_code_24dp,
-                    title = stringResource(R.string.modules_permission_web_bridge),
-                    summary = stringResource(R.string.modules_permission_web_bridge_summary),
-                    checked = draft.webBridge,
-                    onCheckedChange = { enabled ->
-                        draft = if (enabled) {
-                            draft.copy(webBridge = true, webNetwork = false)
-                        } else {
-                            draft.copy(webBridge = false)
-                        }
-                    }
-                )
+                SwitchSettingsRow(R.drawable.ic_code_24dp, stringResource(R.string.modules_permission_web_bridge), stringResource(R.string.modules_permission_web_bridge_summary), draft.webBridge) { enabled ->
+                    draft = if (enabled) draft.copy(webBridge = true, webNetwork = false) else draft.copy(webBridge = false)
+                }
                 GroupDivider()
-                SwitchSettingsRow(
-                    icon = R.drawable.ic_baseline_link_24,
-                    title = stringResource(R.string.modules_permission_web_network),
-                    summary = stringResource(R.string.modules_permission_web_network_summary),
-                    checked = draft.webNetwork,
-                    onCheckedChange = { enabled ->
-                        draft = if (enabled) {
-                            draft.copy(webNetwork = true, webBridge = false)
-                        } else {
-                            draft.copy(webNetwork = false)
-                        }
-                    }
-                )
+                SwitchSettingsRow(R.drawable.ic_baseline_link_24, stringResource(R.string.modules_permission_web_network), stringResource(R.string.modules_permission_web_network_summary), draft.webNetwork) { enabled ->
+                    draft = if (enabled) draft.copy(webNetwork = true, webBridge = false) else draft.copy(webNetwork = false)
+                }
                 GroupDivider()
-                SwitchSettingsRow(
-                    icon = R.drawable.ic_outline_arrow_upward_24,
-                    title = stringResource(R.string.modules_permission_web_download),
-                    summary = stringResource(R.string.modules_permission_web_download_summary),
-                    checked = draft.webDownload,
-                    onCheckedChange = { draft = draft.copy(webDownload = it) }
-                )
+                SwitchSettingsRow(R.drawable.ic_outline_arrow_upward_24, stringResource(R.string.modules_permission_web_download), stringResource(R.string.modules_permission_web_download_summary), draft.webDownload) { draft = draft.copy(webDownload = it) }
             }
         },
-        confirmButton = {
-            TextButton(onClick = { onSave(draft) }) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
+        confirmButton = { TextButton(onClick = { onSave(draft) }) { Text(stringResource(android.R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = MaterialTheme.shapes.extraLarge
     )
@@ -977,12 +741,7 @@ private fun ChoiceDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 for ((index, choice) in choices.withIndex()) {
                     SettingsRow(
                         icon = choice.icon,
@@ -990,20 +749,13 @@ private fun ChoiceDialog(
                         summary = choice.summary,
                         onClick = { onSelect(index) },
                         trailing = {
-                            RadioButton(
-                                selected = index == selectedIndex,
-                                onClick = { onSelect(index) }
-                            )
+                            RadioButton(selected = index == selectedIndex, onClick = { onSelect(index) })
                         }
                     )
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = MaterialTheme.shapes.extraLarge
     )
@@ -1021,41 +773,20 @@ private fun TvChoiceDialog(
         onDismissRequest = onDismiss,
         title = { TvText(title) },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 for ((index, choice) in choices.withIndex()) {
-                    TvChoiceRow(
-                        icon = choice.icon,
-                        title = choice.title,
-                        summary = choice.summary,
-                        selected = index == selectedIndex,
-                        onClick = { onSelect(index) }
-                    )
+                    TvChoiceRow(choice.icon, choice.title, choice.summary, index == selectedIndex) { onSelect(index) }
                 }
             }
         },
-        confirmButton = {
-            TvOutlinedButton(onClick = onDismiss) {
-                TvText(stringResource(android.R.string.cancel))
-            }
-        },
+        confirmButton = { TvOutlinedButton(onClick = onDismiss) { TvText(stringResource(android.R.string.cancel)) } },
         containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
         shape = TvMaterialTheme.shapes.extraLarge
     )
 }
 
 @Composable
-private fun TvChoiceRow(
-    icon: Int?,
-    title: String,
-    summary: String?,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
+private fun TvChoiceRow(icon: Int?, title: String, summary: String?, selected: Boolean, onClick: () -> Unit) {
     val alpha = if (isSystemInDarkTheme()) 0.3f else 0.12f
     TvSurface(
         onClick = onClick,
@@ -1066,27 +797,13 @@ private fun TvChoiceRow(
             focusedContainerColor = if (selected) TvMaterialTheme.colorScheme.primaryContainer else TvMaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (icon != null) {
-                ShizukuIcon(icon = icon, modifier = Modifier.size(24.dp))
-            }
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (icon != null) ShizukuIcon(icon = icon, modifier = Modifier.size(24.dp))
             Column(modifier = Modifier.weight(1f)) {
                 TvText(text = title, style = TvMaterialTheme.typography.titleMedium)
-                if (summary != null) {
-                    TvText(
-                        text = summary,
-                        style = TvMaterialTheme.typography.bodySmall,
-                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                if (summary != null) TvText(text = summary, style = TvMaterialTheme.typography.bodySmall, color = TvMaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (selected) {
-                ShizukuIcon(imageVector = Icons.Rounded.Check, modifier = Modifier.size(24.dp), tint = TvMaterialTheme.colorScheme.primary)
-            }
+            if (selected) ShizukuIcon(imageVector = Icons.Rounded.Check, modifier = Modifier.size(24.dp), tint = TvMaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -1102,71 +819,20 @@ private fun TvCustomPermissionsDialog(
         onDismissRequest = onDismiss,
         title = { TvText(stringResource(R.string.modules_custom_permissions)) },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                TvSwitchSettingsRow(
-                    icon = R.drawable.ic_outline_play_arrow_24,
-                    title = stringResource(R.string.modules_permission_action),
-                    summary = stringResource(R.string.modules_permission_action_summary),
-                    checked = draft.action,
-                    onCheckedChange = { draft = draft.copy(action = it) }
-                )
-                TvSwitchSettingsRow(
-                    icon = R.drawable.ic_terminal_24,
-                    title = stringResource(R.string.modules_permission_service),
-                    summary = stringResource(R.string.modules_permission_service_summary),
-                    checked = draft.service,
-                    onCheckedChange = { draft = draft.copy(service = it) }
-                )
-                TvSwitchSettingsRow(
-                    icon = R.drawable.ic_code_24dp,
-                    title = stringResource(R.string.modules_permission_web_bridge),
-                    summary = stringResource(R.string.modules_permission_web_bridge_summary),
-                    checked = draft.webBridge,
-                    onCheckedChange = { enabled ->
-                        draft = if (enabled) {
-                            draft.copy(webBridge = true, webNetwork = false)
-                        } else {
-                            draft.copy(webBridge = false)
-                        }
-                    }
-                )
-                TvSwitchSettingsRow(
-                    icon = R.drawable.ic_baseline_link_24,
-                    title = stringResource(R.string.modules_permission_web_network),
-                    summary = stringResource(R.string.modules_permission_web_network_summary),
-                    checked = draft.webNetwork,
-                    onCheckedChange = { enabled ->
-                        draft = if (enabled) {
-                            draft.copy(webNetwork = true, webBridge = false)
-                        } else {
-                            draft.copy(webNetwork = false)
-                        }
-                    }
-                )
-                TvSwitchSettingsRow(
-                    icon = R.drawable.ic_outline_arrow_upward_24,
-                    title = stringResource(R.string.modules_permission_web_download),
-                    summary = stringResource(R.string.modules_permission_web_download_summary),
-                    checked = draft.webDownload,
-                    onCheckedChange = { draft = draft.copy(webDownload = it) }
-                )
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                TvSwitchSettingsRow(R.drawable.ic_outline_play_arrow_24, stringResource(R.string.modules_permission_action), stringResource(R.string.modules_permission_action_summary), draft.action) { draft = draft.copy(action = it) }
+                TvSwitchSettingsRow(R.drawable.ic_terminal_24, stringResource(R.string.modules_permission_service), stringResource(R.string.modules_permission_service_summary), draft.service) { draft = draft.copy(service = it) }
+                TvSwitchSettingsRow(R.drawable.ic_code_24dp, stringResource(R.string.modules_permission_web_bridge), stringResource(R.string.modules_permission_web_bridge_summary), draft.webBridge) { enabled ->
+                    draft = if (enabled) draft.copy(webBridge = true, webNetwork = false) else draft.copy(webBridge = false)
+                }
+                TvSwitchSettingsRow(R.drawable.ic_baseline_link_24, stringResource(R.string.modules_permission_web_network), stringResource(R.string.modules_permission_web_network_summary), draft.webNetwork) { enabled ->
+                    draft = if (enabled) draft.copy(webNetwork = true, webBridge = false) else draft.copy(webNetwork = false)
+                }
+                TvSwitchSettingsRow(R.drawable.ic_outline_arrow_upward_24, stringResource(R.string.modules_permission_web_download), stringResource(R.string.modules_permission_web_download_summary), draft.webDownload) { draft = draft.copy(webDownload = it) }
             }
         },
-        confirmButton = {
-            TvButton(onClick = { onSave(draft) }) {
-                TvText(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TvOutlinedButton(onClick = onDismiss) {
-                TvText(stringResource(android.R.string.cancel))
-            }
-        },
+        confirmButton = { TvButton(onClick = { onSave(draft) }) { TvText(stringResource(android.R.string.ok)) } },
+        dismissButton = { TvOutlinedButton(onClick = onDismiss) { TvText(stringResource(android.R.string.cancel)) } },
         containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
         shape = TvMaterialTheme.shapes.extraLarge
     )
@@ -1189,24 +855,13 @@ private fun TvSwitchSettingsRow(
             focusedContainerColor = if (checked) TvMaterialTheme.colorScheme.primaryContainer else TvMaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             ShizukuIcon(icon = icon, modifier = Modifier.size(24.dp))
             Column(modifier = Modifier.weight(1f)) {
                 TvText(text = title, style = TvMaterialTheme.typography.titleMedium)
-                TvText(
-                    text = summary,
-                    style = TvMaterialTheme.typography.bodySmall,
-                    color = TvMaterialTheme.colorScheme.onSurfaceVariant
-                )
+                TvText(text = summary, style = TvMaterialTheme.typography.bodySmall, color = TvMaterialTheme.colorScheme.onSurfaceVariant)
             }
-            moe.shizuku.manager.ui.compose.ExpressiveSwitch(
-                checked = checked,
-                onCheckedChange = onCheckedChange
-            )
+            moe.shizuku.manager.ui.compose.ExpressiveSwitch(checked = checked, onCheckedChange = onCheckedChange)
         }
     }
 }
