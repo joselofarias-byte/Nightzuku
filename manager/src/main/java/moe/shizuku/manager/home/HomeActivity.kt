@@ -107,6 +107,9 @@ import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
 import rikka.html.text.HtmlCompat as RikkaHtmlCompat
 
+private const val NIGHTZUKU_BRAND = "JoseloFarias"
+private const val NIGHTZUKU_UPSTREAM = "Shizuku / RikkaApps"
+
 abstract class HomeActivity : AppActivity() {
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
@@ -227,7 +230,10 @@ abstract class HomeActivity : AppActivity() {
                         HomeAboutDialog(
                             onDismiss = { showAboutDialog = false },
                             onSourceCode = {
-                                CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, "https://github.com/RikkaApps/Shizuku")
+                                CustomTabsHelper.launchUrlOrCopy(
+                                    this@HomeActivity,
+                                    "https://github.com/joselofarias-byte/Nightzuku"
+                                )
                             }
                         )
                     }
@@ -610,10 +616,18 @@ private fun PhoneHomeScreen(
     val grantedCount = grantedResource?.data ?: 0
     val running = status.isRunning
     val adbPermission = status.permission
+    val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
     var moreOpen by remember { mutableStateOf(false) }
-    val diagnostics = remember(status, grantedCount, localNetworkPermissionState, lastChecked) {
-        buildDiagnostics(context, status, grantedCount, localNetworkPermissionState, lastChecked)
+    val diagnostics = remember(status, grantedCount, localNetworkPermissionState, lastChecked, recoverySnapshot) {
+        buildDiagnostics(
+            context,
+            status,
+            grantedCount,
+            localNetworkPermissionState,
+            lastChecked,
+            recoverySnapshot
+        )
     }
 
     Scaffold(
@@ -621,11 +635,20 @@ private fun PhoneHomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = NIGHTZUKU_BRAND,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = onSettings) {
@@ -904,6 +927,7 @@ private fun StatusCard(
         title = title,
         body = summary,
         artwork = statusArtwork,
+        artworkBadgeColor = semanticColor,
         iconContainerColor = iconContainerColor,
         iconContentColor = iconContentColor,
         titleColor = semanticColor,
@@ -1195,6 +1219,7 @@ private fun HomeCard(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     @DrawableRes artwork: Int? = null,
+    artworkBadgeColor: Color? = null,
     iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
@@ -1221,12 +1246,24 @@ private fun HomeCard(
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             if (artwork != null) {
-                Image(
-                    painter = painterResource(artwork),
-                    contentDescription = null,
-                    modifier = Modifier.size(88.dp),
-                    contentScale = ContentScale.Fit
-                )
+                Box(modifier = Modifier.size(88.dp)) {
+                    Image(
+                        painter = painterResource(artwork),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                    if (artworkBadgeColor != null) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(20.dp),
+                            shape = CircleShape,
+                            color = artworkBadgeColor,
+                            shadowElevation = 4.dp
+                        ) {}
+                    }
+                }
             } else {
                 Surface(
                     modifier = Modifier.size(44.dp),
@@ -1362,7 +1399,8 @@ private fun buildDiagnostics(
     status: ServiceStatus,
     grantedCount: Int,
     localNetworkPermissionState: LocalNetworkPermissionState,
-    lastChecked: Long
+    lastChecked: Long,
+    recoverySnapshot: NightDogRecovery.Snapshot
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
@@ -1396,17 +1434,38 @@ private fun buildDiagnostics(
     } else {
         null
     }
+    val serverMode = when {
+        status.uid == 0 -> "root"
+        status.uid > 0 -> "shell / ADB"
+        else -> "no disponible"
+    }
+    val securityPatch = Build.VERSION.SECURITY_PATCH.takeIf { it.isNotBlank() } ?: "no disponible"
+    val desiredState = if (recoverySnapshot.desiredRunning) "activo" else "detenido manualmente"
+    val binderState = if (recoverySnapshot.binderAlive || status.isRunning) "OK" else "sin respuesta"
 
     return buildString {
         appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
+        appendLine("Marca: $NIGHTZUKU_BRAND")
+        appendLine("Base: $NIGHTZUKU_UPSTREAM")
+        appendLine("Paquete: ${context.packageName}")
         appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
+        appendLine("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL}")
+        appendLine("ABI: ${Build.SUPPORTED_ABIS.joinToString()}")
+        appendLine("Parche de seguridad: $securityPatch")
         appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
+        appendLine("Modo del servidor: $serverMode")
         appendLine("${context.getString(R.string.diagnostic_server_uid)}: ${status.uid}")
         appendLine("${context.getString(R.string.diagnostic_server_api)}: ${status.apiVersion}.${status.patchVersion}")
         appendLine("SELinux: ${status.seContext ?: "unknown"}")
         appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
         appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
         appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
+        appendLine("NightDog deseado: $desiredState")
+        appendLine("Chequeo: ${recoverySnapshot.stage.name} · Binder: $binderState")
+        appendLine("Transporte: ${recoverySnapshot.transport ?: "buscando"}")
+        appendLine("Endpoint: ${recoverySnapshot.endpoint ?: "no resuelto"}")
+        appendLine("Intentos fallidos: ${recoverySnapshot.failedAttempts}")
+        appendLine("Resultado: ${recoverySnapshot.lastResult}")
         if (lastCheckedLabel != null) {
             appendLine("${context.getString(R.string.diagnostic_last_checked)}: $lastCheckedLabel")
         }
