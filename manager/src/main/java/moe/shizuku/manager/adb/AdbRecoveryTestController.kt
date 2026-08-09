@@ -16,10 +16,11 @@ object AdbRecoveryTestController {
 
     suspend fun killServerProcess(): Result = withContext(Dispatchers.IO) {
         val endpoint = AdbTransportResolver.persistentTcpEndpoint()
+            ?: AdbTransportResolver.systemAdbTcpEndpoint()
             ?: AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
             ?: return@withContext Result(
                 false,
-                "No hay un endpoint ADB autenticado disponible para ejecutar la prueba."
+                "No hay un endpoint ADB disponible para ejecutar la prueba."
             )
 
         runCatching {
@@ -49,7 +50,11 @@ object AdbRecoveryTestController {
                 pid
             )
         }.getOrElse { error ->
-            Result(false, "No se pudo ejecutar la prueba por ADB: ${error.message ?: error.javaClass.simpleName}")
+            Result(
+                false,
+                "No se pudo ejecutar la prueba por ADB en ${endpoint.host}:${endpoint.port}: " +
+                    (error.message ?: error.javaClass.simpleName)
+            )
         }
     }
 }
