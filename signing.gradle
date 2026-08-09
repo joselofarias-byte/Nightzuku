@@ -1,15 +1,41 @@
-def ksFile = rootProject.file('signing.properties')
+def propsFile = rootProject.file('signing.properties')
 def props = new Properties()
-if (ksFile.canRead()) {
-    props.load(new FileInputStream(ksFile))
+if (propsFile.canRead()) {
+    props.load(new FileInputStream(propsFile))
+}
 
-    if (props != null) {
-        android.signingConfigs.sign.storeFile file(props['KEYSTORE_FILE'])
-        android.signingConfigs.sign.storePassword System.getenv('KEYSTORE_PASSWORD') ?: props['KEYSTORE_PASSWORD']
-        android.signingConfigs.sign.keyAlias props['KEYSTORE_ALIAS']
-        android.signingConfigs.sign.keyPassword System.getenv('KEYSTORE_ALIAS_PASSWORD') ?: props['KEYSTORE_ALIAS_PASSWORD']
+def envOrProp = { String envName, String propertyName ->
+    def envValue = System.getenv(envName)
+    if (envValue != null && !envValue.isBlank()) {
+        return envValue
     }
+    def propertyValue = props[propertyName]
+    return propertyValue != null ? propertyValue.toString() : null
+}
+
+def keystorePath = envOrProp('NIGHTZUKU_KEYSTORE_FILE', 'KEYSTORE_FILE')
+def keystorePassword = envOrProp('NIGHTZUKU_KEYSTORE_PASSWORD', 'KEYSTORE_PASSWORD')
+def keyAlias = envOrProp('NIGHTZUKU_KEY_ALIAS', 'KEYSTORE_ALIAS')
+def keyPassword = envOrProp('NIGHTZUKU_KEY_PASSWORD', 'KEYSTORE_ALIAS_PASSWORD')
+
+def suppliedValues = [keystorePath, keystorePassword, keyAlias, keyPassword].count { it != null && !it.isBlank() }
+if (suppliedValues > 0 && suppliedValues < 4) {
+    throw new GradleException('Nightzuku signing configuration is incomplete')
+}
+
+if (suppliedValues == 4) {
+    def resolvedKeystore = rootProject.file(keystorePath)
+    if (!resolvedKeystore.isFile()) {
+        throw new GradleException("Nightzuku keystore was not found: ${resolvedKeystore}")
+    }
+
+    android.signingConfigs.sign.storeFile resolvedKeystore
+    android.signingConfigs.sign.storePassword keystorePassword
+    android.signingConfigs.sign.keyAlias keyAlias
+    android.signingConfigs.sign.keyPassword keyPassword
 } else {
+    // Development fallback only. Release artifacts intended for installation must provide
+    // the permanent Nightzuku signing credentials through environment variables or properties.
     android.signingConfigs.sign.storeFile = android.signingConfigs.debug.storeFile
     android.signingConfigs.sign.storePassword = android.signingConfigs.debug.storePassword
     android.signingConfigs.sign.keyAlias = android.signingConfigs.debug.keyAlias

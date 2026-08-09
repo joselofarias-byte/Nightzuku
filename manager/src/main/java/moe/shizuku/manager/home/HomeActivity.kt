@@ -14,15 +14,18 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Menu
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -68,40 +72,46 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.delay
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.management.ApplicationManagementActivity
-import moe.shizuku.manager.module.AdbModuleManager
-import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.model.ServiceStatus
+import moe.shizuku.manager.module.AdbModuleManager
+import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.settings.SettingsActivity
 import moe.shizuku.manager.shell.ShellTutorialActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.starter.StarterActivity
-import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
+import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.utils.CustomTabsHelper
 import moe.shizuku.manager.utils.EnvironmentUtils
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.core.util.ClipboardUtils
+import rikka.html.text.HtmlCompat as RikkaHtmlCompat
 import rikka.lifecycle.Resource
 import rikka.lifecycle.Status
 import rikka.lifecycle.viewModels
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
-import rikka.html.text.HtmlCompat as RikkaHtmlCompat
+
+private const val NIGHTZUKU_BRAND = "JoseloFarias"
+private const val NIGHTZUKU_UPSTREAM = "kerneldroid/Nightzuku · RikkaApps/Shizuku"
 
 abstract class HomeActivity : AppActivity() {
 
@@ -194,18 +204,18 @@ abstract class HomeActivity : AppActivity() {
                         onManageApps = { startActivity(Intent(this@HomeActivity, ApplicationManagementActivity::class.java)) },
                         onTerminal = { startActivity(Intent(this@HomeActivity, ShellTutorialActivity::class.java)) },
                         onStartRoot = ::startRoot,
-                        onStartWirelessAdb = { 
-                            runWithLocalNetworkAccess { 
+                        onStartWirelessAdb = {
+                            runWithLocalNetworkAccess {
                                 startWirelessAdb(
                                     onShowDiscovery = { showAdbDiscoveryDialog = true },
                                     onShowNotEnabled = { showWadbNotEnabledDialog = true }
-                                ) 
-                            } 
+                                )
+                            }
                         },
-                        onPairWirelessAdb = { 
-                            runWithLocalNetworkAccess { 
-                                pairWirelessAdb(onShowPair = { showAdbPairDialog = true }) 
-                            } 
+                        onPairWirelessAdb = {
+                            runWithLocalNetworkAccess {
+                                pairWirelessAdb(onShowPair = { showAdbPairDialog = true })
+                            }
                         },
                         onOpenWirelessGuide = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.ADB_ANDROID11.get()) },
                         onShowAdbCommand = { showAdbCommandDialog = true },
@@ -223,7 +233,10 @@ abstract class HomeActivity : AppActivity() {
                         HomeAboutDialog(
                             onDismiss = { showAboutDialog = false },
                             onSourceCode = {
-                                CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, "https://github.com/RikkaApps/Shizuku")
+                                CustomTabsHelper.launchUrlOrCopy(
+                                    this@HomeActivity,
+                                    "https://github.com/joselofarias-byte/Nightzuku"
+                                )
                             }
                         )
                     }
@@ -455,7 +468,6 @@ private data class HomeButtonSpec(
 )
 
 @Composable
-
 private fun HomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
@@ -545,12 +557,12 @@ private fun HomeScreen(
         }
     } else {
         PhoneHomeScreen(
-                serviceResource = serviceResource,
-                grantedResource = grantedResource,
-                unauthorizedResource = unauthorizedResource,
-                localNetworkPermissionState = localNetworkPermissionState,
-                lastChecked = lastChecked,
-                isPrimaryUser = isPrimaryUser,
+            serviceResource = serviceResource,
+            grantedResource = grantedResource,
+            unauthorizedResource = unauthorizedResource,
+            localNetworkPermissionState = localNetworkPermissionState,
+            lastChecked = lastChecked,
+            isPrimaryUser = isPrimaryUser,
             isRooted = isRooted,
             onRefresh = onRefresh,
             onSettings = onSettings,
@@ -574,7 +586,8 @@ private fun HomeScreen(
     }
 }
 
-@Composable private fun PhoneHomeScreen(
+@Composable
+private fun PhoneHomeScreen(
     serviceResource: Resource<ServiceStatus>?,
     grantedResource: Resource<Int>?,
     unauthorizedResource: Resource<Int>?,
@@ -606,10 +619,36 @@ private fun HomeScreen(
     val grantedCount = grantedResource?.data ?: 0
     val running = status.isRunning
     val adbPermission = status.permission
+    val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
     var moreOpen by remember { mutableStateOf(false) }
-    val diagnostics = remember(status, grantedCount, localNetworkPermissionState, lastChecked) {
-        buildDiagnostics(context, status, grantedCount, localNetworkPermissionState, lastChecked)
+    var elapsedNow by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+
+    LaunchedEffect(running, recoverySnapshot.runningSinceElapsedRealtime) {
+        elapsedNow = SystemClock.elapsedRealtime()
+        while (running) {
+            delay(1_000L)
+            elapsedNow = SystemClock.elapsedRealtime()
+        }
+    }
+
+    val diagnostics = remember(
+        status,
+        grantedCount,
+        localNetworkPermissionState,
+        lastChecked,
+        recoverySnapshot,
+        elapsedNow
+    ) {
+        buildDiagnostics(
+            context,
+            status,
+            grantedCount,
+            localNetworkPermissionState,
+            lastChecked,
+            recoverySnapshot,
+            elapsedNow
+        )
     }
 
     Scaffold(
@@ -617,11 +656,20 @@ private fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = NIGHTZUKU_BRAND,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = onSettings) {
@@ -647,18 +695,7 @@ private fun HomeScreen(
                             expanded = moreOpen,
                             onDismissRequest = { moreOpen = false }
                         ) {
-                            if (running) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.action_stop)) },
-                                    leadingIcon = {
-                                        ShizukuIcon(R.drawable.ic_close_24, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        moreOpen = false
-                                        onStop()
-                                    }
-                                )
-                            } else {
+                            if (!running) {
                                 if (isRooted) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.home_root_button_start)) },
@@ -791,6 +828,7 @@ private fun HomeScreen(
                 if (canUseWirelessAdb) {
                     item {
                         WirelessAdbCard(
+                            running = running,
                             localNetworkPermissionState = localNetworkPermissionState,
                             onStartWirelessAdb = onStartWirelessAdb,
                             onPairWirelessAdb = onPairWirelessAdb,
@@ -851,46 +889,53 @@ private fun StatusCard(
     canUseWirelessAdb: Boolean
 ) {
     val context = LocalContext.current
+    val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
     val running = status.isRunning
+    val desiredRunning = recoverySnapshot.desiredRunning
     val isLoading = serviceResource == null || serviceResource.status == Status.LOADING
+    val isError = serviceResource?.status == Status.ERROR || recoverySnapshot.stage == NightDogRecovery.Stage.ERROR
+    val recovering = !running && desiredRunning && !isError
     val title = when {
-        isLoading -> stringResource(R.string.home_status_checking)
         running -> stringResource(R.string.home_status_service_is_running, stringResource(R.string.app_name))
-        else -> stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+        isError -> stringResource(R.string.notification_service_start_failed)
+        !desiredRunning || recoverySnapshot.stage == NightDogRecovery.Stage.MANUALLY_STOPPED ->
+            stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name))
+        else -> stringResource(R.string.home_status_checking)
     }
-    val summary = remember(status, running) {
-        buildServiceSummary(context, status)
+    val statusArtwork = when {
+        running -> R.drawable.nightdog_status_active
+        isError -> R.drawable.nightdog_status_error
+        recovering -> R.drawable.nightdog_status_recovering
+        else -> R.drawable.nightdog_status_stopped
+    }
+    val summary = remember(status, running, recoverySnapshot) {
+        if (running) {
+            buildServiceSummary(context, status)
+        } else {
+            buildRecoverySummary(recoverySnapshot)
+        }
     }
 
     val dark = isSystemInDarkTheme()
+    val semanticColor = when {
+        running -> if (dark) Color(0xFF81C784) else Color(0xFF1B5E20)
+        isError -> if (dark) Color(0xFFFF8A80) else MaterialTheme.colorScheme.error
+        recovering || isLoading -> if (dark) Color(0xFFFFD54F) else Color(0xFF8A5A00)
+        else -> if (dark) Color(0xFFBDBDBD) else Color(0xFF616161)
+    }
     val (iconContainerColor, iconContentColor) = when {
-        serviceResource == null || serviceResource.status == Status.LOADING -> {
-            // Starting / waiting / pending -> Amber
-            if (dark) {
-                Color(0xFF4D3800) to Color(0xFFFFD54F)
-            } else {
-                Color(0xFFFFF0C2) to Color(0xFF6B4B00)
-            }
-        }
-        serviceResource.status == Status.ERROR -> {
-            // Error / failed / denied -> Red (M3 Error colors)
-            MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-        }
         running -> {
-            // Connected / running / authorized / success -> Green
-            if (dark) {
-                Color(0xFF0F3816) to Color(0xFF8CE090)
-            } else {
-                Color(0xFFC7F3C9) to Color(0xFF0F521A)
-            }
+            if (dark) Color(0xFF0F3816) to Color(0xFF8CE090)
+            else Color(0xFFC7F3C9) to Color(0xFF0F521A)
+        }
+        isError -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        recovering || isLoading -> {
+            if (dark) Color(0xFF4D3800) to Color(0xFFFFD54F)
+            else Color(0xFFFFF0C2) to Color(0xFF6B4B00)
         }
         else -> {
-            // Disconnected / stopped / unavailable -> Neutral Gray
-            if (dark) {
-                Color(0xFF333333) to Color(0xFFB0B0B0)
-            } else {
-                Color(0xFFE0E0E0) to Color(0xFF555555)
-            }
+            if (dark) Color(0xFF333333) to Color(0xFFB0B0B0)
+            else Color(0xFFE0E0E0) to Color(0xFF555555)
         }
     }
 
@@ -902,22 +947,18 @@ private fun StatusCard(
         },
         title = title,
         body = summary,
+        artwork = statusArtwork,
         iconContainerColor = iconContainerColor,
-        iconContentColor = iconContentColor
+        iconContentColor = iconContentColor,
+        titleColor = semanticColor,
+        bodyColor = semanticColor.copy(alpha = 0.82f)
     ) {
-        if (serviceResource == null || serviceResource.status == Status.LOADING) {
+        if (isLoading && !recovering) {
             Spacer(Modifier.height(12.dp))
             LoadingIndicator(Modifier.size(32.dp))
         } else {
             val buttons = mutableListOf<HomeButtonSpec>()
-            if (running) {
-                buttons += HomeButtonSpec(
-                    label = R.string.action_stop,
-                    icon = R.drawable.ic_close_24,
-                    primary = true,
-                    onClick = onStop
-                )
-            } else {
+            if (!running && !desiredRunning) {
                 if (isRooted) {
                     buttons += HomeButtonSpec(
                         label = R.string.home_root_button_start,
@@ -1025,6 +1066,7 @@ private fun RootCard(
 
 @Composable
 private fun WirelessAdbCard(
+    running: Boolean,
     localNetworkPermissionState: LocalNetworkPermissionState,
     onStartWirelessAdb: () -> Unit,
     onPairWirelessAdb: () -> Unit,
@@ -1058,15 +1100,16 @@ private fun WirelessAdbCard(
         title = htmlStringResource(R.string.home_wireless_adb_title),
         body = listOfNotNull(body, permissionLine).joinToString("\n\n")
     ) {
-        val buttons = mutableListOf(
-            HomeButtonSpec(
+        val buttons = mutableListOf<HomeButtonSpec>()
+        if (!running) {
+            buttons += HomeButtonSpec(
                 label = R.string.home_root_button_start,
                 icon = R.drawable.ic_server_start_24dp,
                 primary = true,
                 onClick = onStartWirelessAdb
             )
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        }
+        if (!running && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             buttons += HomeButtonSpec(
                 label = R.string.adb_pairing,
                 icon = R.drawable.ic_numeric_1_circle_outline_24,
@@ -1195,8 +1238,11 @@ private fun HomeCard(
     body: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    @DrawableRes artwork: Int? = null,
     iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     iconContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    titleColor: Color = MaterialTheme.colorScheme.onSurface,
+    bodyColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit = {}
 ) {
@@ -1218,18 +1264,27 @@ private fun HomeCard(
             modifier = Modifier.padding(18.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                color = iconContainerColor
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    ShizukuIcon(
-                        icon = icon,
-                        contentDescription = null,
-                        tint = iconContentColor,
-                        modifier = Modifier.size(24.dp)
-                    )
+            if (artwork != null) {
+                Image(
+                    painter = painterResource(artwork),
+                    contentDescription = null,
+                    modifier = Modifier.size(88.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = iconContainerColor
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        ShizukuIcon(
+                            icon = icon,
+                            contentDescription = null,
+                            tint = iconContentColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
             Column(
@@ -1239,14 +1294,14 @@ private fun HomeCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor
                 )
                 if (body.isNotBlank()) {
                     Text(
                         text = body,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = bodyColor
                     )
                 }
                 content()
@@ -1334,12 +1389,26 @@ private fun buildServiceSummary(context: android.content.Context, status: Servic
     return htmlToPlainText(raw)
 }
 
+private fun buildRecoverySummary(snapshot: NightDogRecovery.Snapshot): String {
+    return when (snapshot.stage) {
+        NightDogRecovery.Stage.CHECKING_BINDER -> "Comprobando Binder y disponibilidad ADB."
+        NightDogRecovery.Stage.DISCOVERING_ADB -> "Buscando un endpoint ADB mediante mDNS/TLS."
+        NightDogRecovery.Stage.WAITING_FOR_ADB -> snapshot.lastResult
+        NightDogRecovery.Stage.STARTING_SERVICE -> "Endpoint ADB encontrado. Iniciando Nightzuku."
+        NightDogRecovery.Stage.ERROR -> snapshot.lastResult
+        NightDogRecovery.Stage.MANUALLY_STOPPED -> "Recuperación automática deshabilitada."
+        else -> snapshot.lastResult
+    }
+}
+
 private fun buildDiagnostics(
     context: android.content.Context,
     status: ServiceStatus,
     grantedCount: Int,
     localNetworkPermissionState: LocalNetworkPermissionState,
-    lastChecked: Long
+    lastChecked: Long,
+    recoverySnapshot: NightDogRecovery.Snapshot,
+    nowElapsedRealtime: Long
 ): String {
     val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
     val localNetwork = if (localNetworkPermissionState.required) {
@@ -1368,31 +1437,75 @@ private fun buildDiagnostics(
     } else {
         context.getString(R.string.diagnostic_limited)
     }
-    val lastCheckedLabel = if (lastChecked > 0L) {
-        formatRelativeTime(context, lastChecked)
-    } else {
-        null
+    val lastCheckedLabel = if (lastChecked > 0L) formatRelativeTime(context, lastChecked) else "—"
+    val serverMode = when {
+        status.uid == 0 -> "Root"
+        status.uid > 0 -> "Shell / ADB"
+        else -> "No disponible"
     }
+    val securityPatch = Build.VERSION.SECURITY_PATCH.takeIf { it.isNotBlank() } ?: "no disponible"
+    val desiredState = if (recoverySnapshot.desiredRunning) "ACTIVO" else "DETENIDO MANUALMENTE"
+    val binderState = if (recoverySnapshot.binderAlive || status.isRunning) "OK" else "SIN RESPUESTA"
+    val uptime = if (status.isRunning && recoverySnapshot.runningSinceElapsedRealtime > 0L) {
+        formatElapsedDuration(nowElapsedRealtime - recoverySnapshot.runningSinceElapsedRealtime)
+    } else {
+        "—"
+    }
+    val lastLoss = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastBinderLostElapsedRealtime)
+    val lastRecovery = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastRecoveryElapsedRealtime)
+    val pid = recoverySnapshot.serverPid?.toString() ?: "resolviendo…"
 
     return buildString {
-        appendLine("App: ${context.getString(R.string.app_name)} $versionName (${BuildConfig.VERSION_CODE})")
-        appendLine("Android: ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT} / ${Build.VERSION.CODENAME}")
-        appendLine("${context.getString(R.string.diagnostic_service)}: $serviceStatusLabel")
-        appendLine("${context.getString(R.string.diagnostic_server_uid)}: ${status.uid}")
-        appendLine("${context.getString(R.string.diagnostic_server_api)}: ${status.apiVersion}.${status.patchVersion}")
-        appendLine("SELinux: ${status.seContext ?: "unknown"}")
-        appendLine("${context.getString(R.string.diagnostic_adb_permission)}: $adbPermissionLabel")
-        appendLine("${context.getString(R.string.diagnostic_authorized_apps)}: $grantedCount")
-        appendLine("${context.getString(R.string.diagnostic_local_network)}: $localNetwork")
-        if (lastCheckedLabel != null) {
-            appendLine("${context.getString(R.string.diagnostic_last_checked)}: $lastCheckedLabel")
-        }
+        appendLine("$serviceStatusLabel · $serverMode")
+        appendLine("T+$uptime  ·  PID $pid")
+        appendLine("Versión $versionName (${BuildConfig.VERSION_CODE})  ·  API ${status.apiVersion}.${status.patchVersion}")
+        appendLine()
+        appendLine("SERVIDOR")
+        appendLine("UID              ${status.uid}")
+        appendLine("SELinux          ${status.seContext ?: "unknown"}")
+        appendLine("Permiso ADB      $adbPermissionLabel")
+        appendLine("Binder           $binderState")
+        appendLine("Transporte       ${recoverySnapshot.transport ?: "buscando"}")
+        appendLine("Endpoint         ${recoverySnapshot.endpoint ?: "no resuelto"}")
+        appendLine()
+        appendLine("NIGHTDOG")
+        appendLine("Deseado          $desiredState")
+        appendLine("Estado           ${recoverySnapshot.stage.name}")
+        appendLine("Recuperaciones   ${recoverySnapshot.recoveryCount}")
+        appendLine("Última caída     $lastLoss")
+        appendLine("Última recuperación  $lastRecovery")
+        appendLine("Intentos fallidos    ${recoverySnapshot.failedAttempts}")
+        appendLine("Resultado        ${recoverySnapshot.lastResult}")
+        appendLine()
+        appendLine("DISPOSITIVO")
+        appendLine("Android          ${Build.VERSION.RELEASE} · SDK ${Build.VERSION.SDK_INT}")
+        appendLine("Modelo           ${Build.MANUFACTURER} ${Build.MODEL}")
+        appendLine("ABI              ${Build.SUPPORTED_ABIS.joinToString()}")
+        appendLine("Parche           $securityPatch")
+        appendLine("Red local        $localNetwork")
+        appendLine("Apps autorizadas $grantedCount")
+        appendLine()
+        appendLine("EDICIÓN")
+        appendLine("Marca            $NIGHTZUKU_BRAND")
+        appendLine("Upstream         $NIGHTZUKU_UPSTREAM")
+        appendLine("Paquete          ${context.packageName}")
+        appendLine("Comprobación     $lastCheckedLabel")
     }.trim()
 }
 
-// ponytail: minimal relative time formatter for diagnostics.
-// uses DateUtils.getRelativeTimeSpanString so we get locale-aware "x seconds ago".
-// good enough for a diagnostic line; no need for a dedicated formatter dependency.
+private fun formatElapsedDuration(durationMillis: Long): String {
+    val totalSeconds = (durationMillis.coerceAtLeast(0L) / 1_000L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
+
+private fun formatElapsedAgo(nowElapsedRealtime: Long, eventElapsedRealtime: Long): String {
+    if (eventElapsedRealtime <= 0L) return "—"
+    return "hace ${formatElapsedDuration(nowElapsedRealtime - eventElapsedRealtime)}"
+}
+
 private fun formatRelativeTime(context: android.content.Context, timeMillis: Long): String {
     return android.text.format.DateUtils.getRelativeTimeSpanString(
         timeMillis,

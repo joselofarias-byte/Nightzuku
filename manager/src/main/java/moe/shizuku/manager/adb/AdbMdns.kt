@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.Observer
@@ -28,31 +30,69 @@ class AdbMdns(
     private var registered = false
     private var running = false
     private var serviceName: String? = null
+    private var restartScheduled = false
+    private var restartAttempts = 0
+    private val handler = Handler(Looper.getMainLooper())
     private val listener = DiscoveryListener(this)
     private val nsdManager: NsdManager = context.getSystemService(NsdManager::class.java)
 
     fun start() {
         if (running) return
         running = true
-        if (!registered) {
-            nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
-        }
+        restartAttempts = 0
+        discover()
     }
 
     fun stop() {
         if (!running) return
         running = false
+        restartScheduled = false
+        restartAttempts = 0
+        handler.removeCallbacksAndMessages(null)
         if (registered) {
-            nsdManager.stopServiceDiscovery(listener)
+            runCatching { nsdManager.stopServiceDiscovery(listener) }
+                .onFailure { error -> Log.v(TAG, "stopServiceDiscovery failed", error) }
         }
+    }
+
+    private fun discover() {
+        if (!running || registered) return
+        runCatching {
+            nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
+        }.onFailure { error ->
+            Log.w(TAG, "discoverServices threw for $serviceType; scheduling retry", error)
+            scheduleRestart("exception")
+        }
+    }
+
+    private fun scheduleRestart(reason: String) {
+        if (!running || restartScheduled) return
+
+        val delayMs = restartDelayMs(restartAttempts)
+        restartAttempts++
+        restartScheduled = true
+        Log.w(TAG, "Scheduling mDNS restart for $serviceType in ${delayMs}ms ($reason)")
+
+        handler.postDelayed({
+            restartScheduled = false
+            if (running && !registered) discover()
+        }, delayMs)
     }
 
     private fun onDiscoveryStart() {
         registered = true
+        restartScheduled = false
+        restartAttempts = 0
     }
 
     private fun onDiscoveryStop() {
         registered = false
+        if (running) scheduleRestart("discovery stopped unexpectedly")
+    }
+
+    private fun onStartDiscoveryFailed(errorCode: Int) {
+        registered = false
+        scheduleRestart("start failed: $errorCode")
     }
 
     private fun onServiceFound(info: NsdServiceInfo) {
@@ -101,6 +141,7 @@ class AdbMdns(
 
         override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
             Log.v(TAG, "onStartDiscoveryFailed: $serviceType, $errorCode")
+            adbMdns.onStartDiscoveryFailed(errorCode)
         }
 
         override fun onDiscoveryStopped(serviceType: String) {
@@ -138,7 +179,14 @@ class AdbMdns(
         const val TLS_PAIRING = "_adb-tls-pairing._tcp"
         const val TAG = "AdbMdns"
 
+        private const val MIN_RESTART_DELAY_MS = 2_000L
+        private const val MAX_RESTART_DELAY_MS = 30_000L
         private val endpoints = ConcurrentHashMap<String, AdbEndpoint>()
+
+        internal fun restartDelayMs(attempt: Int): Long {
+            val shift = attempt.coerceIn(0, 4)
+            return (MIN_RESTART_DELAY_MS shl shift).coerceAtMost(MAX_RESTART_DELAY_MS)
+        }
 
         internal fun getDiscoveredEndpoint(serviceType: String): AdbEndpoint? = endpoints[serviceType]
 
