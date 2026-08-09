@@ -65,14 +65,15 @@ import moe.shizuku.manager.receiver.BootCompleteReceiver
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import rikka.shizuku.Shizuku
 import moe.shizuku.manager.ui.compose.GroupDivider
+import moe.shizuku.manager.ui.compose.NightzukuSwitchSettingsRow as SwitchSettingsRow
 import moe.shizuku.manager.ui.compose.SettingsGroup
 import moe.shizuku.manager.ui.compose.SettingsRow
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
 import moe.shizuku.manager.ui.compose.ShizukuIcon
-import moe.shizuku.manager.ui.compose.SwitchSettingsRow
 import moe.shizuku.manager.ui.compose.htmlToPlainText
 import moe.shizuku.manager.utils.CustomTabsHelper
+import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.core.util.ResourceUtils
 import rikka.material.app.LocaleDelegate
 import rikka.shizuku.manager.ShizukuLocales
@@ -145,11 +146,19 @@ class SettingsActivity : AppActivity() {
                 stringResource(rikka.core.R.string.follow_system)
             }
             val contributors = htmlToPlainText(getString(R.string.translation_contributors))
+            val isRooted = remember { EnvironmentUtils.isRooted() }
 
             LaunchedEffect(recreateTick) {
                 if (recreateTick > 0) {
                     delay(260)
                     recreate()
+                }
+            }
+
+            LaunchedEffect(isRooted) {
+                if (!isRooted && startOnBoot) {
+                    packageManager.setComponentEnabled(componentName, false)
+                    startOnBoot = false
                 }
             }
 
@@ -242,18 +251,20 @@ class SettingsActivity : AppActivity() {
                         title = stringResource(R.string.settings_title),
                         onNavigateUp = { finish() }
                     ) {
-                        item {
-                            SettingsGroup(title = stringResource(R.string.settings_startup)) {
-                                SwitchSettingsRow(
-                                    icon = R.drawable.ic_server_restart,
-                                    title = stringResource(R.string.settings_start_on_boot),
-                                    summary = stringResource(R.string.settings_start_on_boot_summary),
-                                    checked = startOnBoot,
-                                    onCheckedChange = { enabled ->
-                                        packageManager.setComponentEnabled(componentName, enabled)
-                                        startOnBoot = packageManager.isComponentEnabled(componentName)
-                                    }
-                                )
+                        if (isRooted) {
+                            item {
+                                SettingsGroup(title = stringResource(R.string.settings_startup)) {
+                                    SwitchSettingsRow(
+                                        icon = R.drawable.ic_server_restart,
+                                        title = stringResource(R.string.settings_start_on_boot),
+                                        summary = stringResource(R.string.settings_start_on_boot_summary),
+                                        checked = startOnBoot,
+                                        onCheckedChange = { enabled ->
+                                            packageManager.setComponentEnabled(componentName, enabled)
+                                            startOnBoot = packageManager.isComponentEnabled(componentName)
+                                        }
+                                    )
+                                }
                             }
                         }
 
@@ -344,14 +355,14 @@ class SettingsActivity : AppActivity() {
                             SettingsGroup(title = "Créditos y apoyo") {
                                 SettingsRow(
                                     icon = R.drawable.ic_outline_info_24,
-                                    title = "Créditos",
-                                    summary = "JoseloFarias · Nightzuku · Shizuku",
+                                    title = "Créditos y origen",
+                                    summary = "JoseloFarias · fork Nightzuku · basado en Shizuku",
                                     onClick = { showCreditsDialog = true }
                                 )
                                 GroupDivider()
                                 SettingsRow(
                                     icon = R.drawable.ic_baseline_link_24,
-                                    title = "Apoyar Nightzuku",
+                                    title = "Apoyar este fork",
                                     summary = "USDT · Arbitrum One · Binance Pay",
                                     onClick = { showSupportDialog = true }
                                 )
