@@ -29,12 +29,12 @@ internal fun CreditsDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Créditos") },
+        title = { Text("Créditos y origen") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Edición y mantenimiento: JoseloFarias")
-                Text("Proyecto derivado: kerneldroid/Nightzuku")
-                Text("Base original: RikkaApps/Shizuku")
+                Text("Fork mantenido por JoseloFarias")
+                Text("Derivado de kerneldroid/Nightzuku")
+                Text("Basado originalmente en RikkaApps/Shizuku")
                 Text(
                     "La autoría y las licencias originales se mantienen. Puedes agradecer o apoyar a los autores desde sus proyectos oficiales.",
                     style = MaterialTheme.typography.bodySmall,
@@ -63,7 +63,7 @@ internal fun SupportDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Apoyar Nightzuku") },
+        title = { Text("Apoyar este fork") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("USDT · Arbitrum One", style = MaterialTheme.typography.titleSmall)
