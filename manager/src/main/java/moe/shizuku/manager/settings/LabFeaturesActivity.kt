@@ -30,11 +30,10 @@ import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButto
 import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
 import androidx.wear.compose.material3.Text as WearText
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
+import moe.shizuku.manager.adb.AdbRecoveryTestController
 import moe.shizuku.manager.adb.AdbTcpController
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.module.ModuleSettings
@@ -155,8 +154,8 @@ class LabFeaturesActivity : AppActivity() {
                             SettingsGroup(title = "ADB TCP/IP") {
                                 SwitchSettingsRow(
                                     icon = R.drawable.ic_adb_24dp,
-                                    title = "Persistent TCP transport",
-                                    summary = tcpStatus ?: if (tcpEnabled) "$tcpHost:$tcpPort" else "Disabled; wireless mDNS remains preferred",
+                                    title = "Transporte TCP persistente",
+                                    summary = tcpStatus ?: if (tcpEnabled) "$tcpHost:$tcpPort" else "Desactivado; mDNS inalámbrico sigue siendo preferido",
                                     checked = tcpEnabled,
                                     onCheckedChange = { enabled ->
                                         if (tcpBusy) return@SwitchSettingsRow
@@ -178,7 +177,7 @@ class LabFeaturesActivity : AppActivity() {
                                 GroupDivider()
                                 SettingsRow(
                                     icon = R.drawable.ic_settings_outline_24dp,
-                                    title = "TCP endpoint",
+                                    title = "Endpoint TCP",
                                     summary = "$tcpHost:$tcpPort",
                                     onClick = {
                                         if (tcpBusy) return@SettingsRow
@@ -234,7 +233,7 @@ class LabFeaturesActivity : AppActivity() {
                             title = { Text("Prueba de recuperación NightDog") },
                             text = {
                                 Text(
-                                    "Se enviará SIGKILL al proceso shizuku_server. El estado deseado seguirá siendo ACTIVO, por lo que NightDog deberá detectar la pérdida del Binder y levantar el servicio otra vez. Las apps autorizadas pueden perder el Binder durante unos segundos."
+                                    "Se enviará SIGKILL al proceso shizuku_server mediante el transporte ADB autenticado. El estado deseado se fuerza a ACTIVO antes de la prueba y no se usa la ruta de detención manual. NightDog deberá detectar la pérdida del Binder y levantar el servicio otra vez."
                                 )
                             },
                             confirmButton = {
@@ -267,10 +266,10 @@ class LabFeaturesActivity : AppActivity() {
                     if (showTcpDialog) {
                         AlertDialog(
                             onDismissRequest = { if (!tcpBusy) showTcpDialog = false },
-                            title = { Text("Enable persistent ADB TCP") },
+                            title = { Text("Activar ADB TCP persistente") },
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Nightzuku will use the authenticated wireless-debugging session to restart adbd on this TCP port, verify that it is reachable, and save it only after verification.")
+                                    Text("Nightzuku usará la sesión autenticada de depuración inalámbrica para reiniciar adbd en este puerto TCP y solo guardará el endpoint después de verificarlo.")
                                     OutlinedTextField(
                                         value = tcpHost,
                                         onValueChange = {
@@ -289,14 +288,14 @@ class LabFeaturesActivity : AppActivity() {
                                             tcpError = null
                                         },
                                         modifier = Modifier.fillMaxWidth(),
-                                        label = { Text("Port") },
+                                        label = { Text("Puerto") },
                                         singleLine = true,
                                         enabled = !tcpBusy,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         isError = tcpError != null,
                                         supportingText = tcpError?.let { message -> { Text(message) } }
                                     )
-                                    if (tcpBusy) Text("Applying and verifying TCP mode…")
+                                    if (tcpBusy) Text("Aplicando y verificando modo TCP…")
                                 }
                             },
                             confirmButton = {
@@ -305,7 +304,7 @@ class LabFeaturesActivity : AppActivity() {
                                     onClick = {
                                         val port = tcpPort.toIntOrNull()
                                         if (tcpHost.isBlank() || port == null || port !in 1..65535) {
-                                            tcpError = "Enter a host and a port from 1 to 65535"
+                                            tcpError = "Ingresa un host y un puerto entre 1 y 65535"
                                             return@TextButton
                                         }
                                         tcpBusy = true
@@ -324,7 +323,7 @@ class LabFeaturesActivity : AppActivity() {
                                             }
                                         }
                                     }
-                                ) { Text("Enable") }
+                                ) { Text("Activar") }
                             },
                             dismissButton = {
                                 TextButton(
@@ -339,36 +338,21 @@ class LabFeaturesActivity : AppActivity() {
         }
     }
 
-    private suspend fun killServerProcessForRecoveryTest(): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            check(Shizuku.pingBinder()) {
-                "Nightzuku no está en ejecución; no hay un proceso activo para matar."
-            }
-            check(NightDogRecovery.snapshot.value.desiredRunning) {
-                "NightDog está detenido manualmente. Inicia Nightzuku antes de ejecutar esta prueba."
-            }
-
-            val newProcessMethod = Shizuku::class.java.methods.firstOrNull { method ->
-                method.name == "newProcess" && method.parameterTypes.size == 3
-            } ?: error("Esta versión de la API Shizuku no expone el ejecutor remoto necesario para SIGKILL.")
-
-            val shellCommand =
-                "pid=\"${'$'}(pidof shizuku_server 2>/dev/null | cut -d' ' -f1)\"; " +
-                    "[ -n \"${'$'}pid\" ] || exit 44; " +
-                    "(sleep 1; kill -9 \"${'$'}pid\") >/dev/null 2>&1 &"
-            val command = arrayOf("sh", "-c", shellCommand)
-            val remoteProcess = newProcessMethod.invoke(null, command, null, null) as? Process
-                ?: error("No se pudo crear el proceso remoto de prueba.")
-            val exitCode = remoteProcess.waitFor()
-            check(exitCode == 0) {
-                if (exitCode == 44) {
-                    "No se encontró shizuku_server."
-                } else {
-                    "El comando remoto terminó con código $exitCode."
-                }
-            }
-
-            "SIGKILL programado. Observa Inicio: el estado debe pasar por recuperación y volver a ejecución automáticamente."
+    private suspend fun killServerProcessForRecoveryTest(): Result<String> = runCatching {
+        check(Shizuku.pingBinder()) {
+            "Nightzuku no está en ejecución; no hay un proceso activo para matar."
         }
+
+        // This is deliberately the opposite of prepareForManualStop(): a recovery test
+        // must keep the persisted desired state active even if it was stale from an
+        // earlier manual stop.
+        NightDogRecovery.requestManualStart(applicationContext)
+        check(NightDogRecovery.snapshot.value.desiredRunning) {
+            "No se pudo activar el estado deseado de NightDog."
+        }
+
+        val result = AdbRecoveryTestController.killServerProcess()
+        check(result.success) { result.message }
+        result.message
     }
 }
