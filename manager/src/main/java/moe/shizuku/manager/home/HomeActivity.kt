@@ -9,7 +9,6 @@ package moe.shizuku.manager.home
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -24,8 +23,6 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,6 +69,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -82,7 +81,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.delay
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
@@ -116,14 +114,8 @@ private const val NIGHTZUKU_UPSTREAM = "kerneldroid/Nightzuku · RikkaApps/Shizu
 
 abstract class HomeActivity : AppActivity() {
 
-    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        appsModel.load()
-    }
-
-    private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        AdbModuleManager.resetServiceRunGuard()
-    }
-
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener { appsModel.load() }
+    private val binderDeadListener = Shizuku.OnBinderDeadListener { AdbModuleManager.resetServiceRunGuard() }
     private val homeModel by viewModels { HomeViewModel() }
     private val appsModel by appsViewModel()
     private val permissionRefreshTick = mutableIntStateOf(0)
@@ -148,18 +140,14 @@ abstract class HomeActivity : AppActivity() {
             val runtimeStatus by homeModel.runtimeStatus.collectAsStateWithLifecycle()
             val grantedResource by appsModel.grantedCount.observeAsState()
             val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
-            val localNetworkPermissionState = remember(permissionRefreshTick.intValue) {
-                buildLocalNetworkPermissionState()
-            }
+            val localNetworkPermissionState = remember(permissionRefreshTick.intValue) { buildLocalNetworkPermissionState() }
 
             LaunchedEffect(runtimeStatus) { homeModel.reload() }
-
             LaunchedEffect(serviceResource?.status, serviceResource?.data?.uid) {
                 val status = serviceResource?.data ?: return@LaunchedEffect
                 if (serviceResource?.status == Status.SUCCESS && status.isRunning) {
                     ShizukuSettings.setLastLaunchMode(
-                        if (status.uid == 0) ShizukuSettings.LaunchMethod.ROOT
-                        else ShizukuSettings.LaunchMethod.ADB
+                        if (status.uid == 0) ShizukuSettings.LaunchMethod.ROOT else ShizukuSettings.LaunchMethod.ADB
                     )
                     runCatching { AdbModuleManager.runEnabledServicesIfAllowed(applicationContext) }
                 }
@@ -198,23 +186,19 @@ abstract class HomeActivity : AppActivity() {
                                 )
                             }
                         },
-                        onPairWirelessAdb = {
-                            runWithLocalNetworkAccess {
-                                pairWirelessAdb(onShowPair = { showAdbPairDialog = true })
-                            }
-                        },
+                        onPairWirelessAdb = { runWithLocalNetworkAccess { pairWirelessAdb { showAdbPairDialog = true } } },
                         onOpenWirelessGuide = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.ADB_ANDROID11.get()) },
                         onShowAdbCommand = { showAdbCommandDialog = true },
                         onOpenAdbHelp = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.ADB.get()) },
                         onOpenAdbPermissionHelp = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.ADB_PERMISSION.get()) },
                         onLearnMore = { CustomTabsHelper.launchUrlOrCopy(this@HomeActivity, Helps.HOME.get()) },
-                        onCopyDiagnostics = { copyDiagnostics(it) },
-                        onShareDiagnostics = { shareDiagnostics(it) },
+                        onCopyDiagnostics = ::copyDiagnostics,
+                        onShareDiagnostics = ::shareDiagnostics,
                         onRequestLocalNetworkPermission = { requestLocalNetworkPermission { permissionRefreshTick.intValue++ } }
                     )
 
                     if (showAboutDialog) {
-                        HomeAboutDialog(
+                        ForkAboutDialog(
                             onDismiss = { showAboutDialog = false },
                             onSourceCode = {
                                 CustomTabsHelper.launchUrlOrCopy(
@@ -244,11 +228,11 @@ abstract class HomeActivity : AppActivity() {
                                 }
                             },
                             onSend = {
-                                var intent = Intent(Intent.ACTION_SEND)
-                                intent.type = "text/plain"
-                                intent.putExtra(Intent.EXTRA_TEXT, Starter.adbCommand)
-                                intent = Intent.createChooser(intent, getString(R.string.home_adb_dialog_view_command_button_send))
-                                startActivity(intent)
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, Starter.adbCommand)
+                                }
+                                startActivity(Intent.createChooser(send, getString(R.string.home_adb_dialog_view_command_button_send)))
                             }
                         )
                     }
@@ -258,12 +242,8 @@ abstract class HomeActivity : AppActivity() {
                             onStart = { port -> startAndDismiss(port); showAdbDiscoveryDialog = false }
                         )
                     }
-                    if (showWadbNotEnabledDialog) {
-                        HomeWadbNotEnabledDialog(onDismiss = { showWadbNotEnabledDialog = false })
-                    }
-                    if (showAdbPairDialog) {
-                        HomeAdbPairDialog(onDismiss = { showAdbPairDialog = false })
-                    }
+                    if (showWadbNotEnabledDialog) HomeWadbNotEnabledDialog { showWadbNotEnabledDialog = false }
+                    if (showAdbPairDialog) HomeAdbPairDialog { showAdbPairDialog = false }
                 }
             }
         }
@@ -287,7 +267,7 @@ abstract class HomeActivity : AppActivity() {
         permissionRefreshTick.intValue++
     }
 
-    private fun checkServerStatus() { homeModel.reload() }
+    private fun checkServerStatus() = homeModel.reload()
 
     override fun onDestroy() {
         super.onDestroy()
@@ -295,23 +275,15 @@ abstract class HomeActivity : AppActivity() {
         Shizuku.removeBinderDeadListener(binderDeadListener)
     }
 
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menu.clear()
-        return false
-    }
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean { menu.clear(); return false }
 
     private fun startRoot() {
         if (!EnvironmentUtils.isRooted()) return
-        startActivity(Intent(this, StarterActivity::class.java).apply {
-            putExtra(StarterActivity.EXTRA_IS_ROOT, true)
-        })
+        startActivity(Intent(this, StarterActivity::class.java).apply { putExtra(StarterActivity.EXTRA_IS_ROOT, true) })
     }
 
     private fun startWirelessAdb(onShowDiscovery: () -> Unit, onShowNotEnabled: () -> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            onShowDiscovery()
-            return
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { onShowDiscovery(); return }
         val port = EnvironmentUtils.getAdbTcpPort()
         if (port > 0) {
             startActivity(Intent(this, StarterActivity::class.java).apply {
@@ -374,11 +346,7 @@ abstract class HomeActivity : AppActivity() {
     }
 }
 
-internal data class LocalNetworkPermissionState(
-    val permission: String?,
-    val required: Boolean,
-    val granted: Boolean
-) {
+internal data class LocalNetworkPermissionState(val permission: String?, val required: Boolean, val granted: Boolean) {
     val label: String get() = permission?.substringAfterLast('.') ?: "none"
 }
 
@@ -424,31 +392,87 @@ private fun HomeScreen(
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
             WearHomeScreen(
-                serviceResource, grantedResource, localNetworkPermissionState, lastChecked,
-                isPrimaryUser, isRooted, onRefresh, onSettings, onAbout, onStop, onModules,
-                onManageApps, onTerminal, onStartRoot, onStartWirelessAdb, onPairWirelessAdb,
-                onOpenWirelessGuide, onShowAdbCommand, onOpenAdbHelp, onOpenAdbPermissionHelp,
-                onLearnMore, onCopyDiagnostics, onRequestLocalNetworkPermission
+                serviceResource = serviceResource,
+                grantedResource = grantedResource,
+                localNetworkPermissionState = localNetworkPermissionState,
+                lastChecked = lastChecked,
+                isPrimaryUser = isPrimaryUser,
+                isRooted = isRooted,
+                onRefresh = onRefresh,
+                onSettings = onSettings,
+                onAbout = onAbout,
+                onStop = onStop,
+                onModules = onModules,
+                onManageApps = onManageApps,
+                onTerminal = onTerminal,
+                onStartRoot = onStartRoot,
+                onStartWirelessAdb = onStartWirelessAdb,
+                onPairWirelessAdb = onPairWirelessAdb,
+                onOpenWirelessGuide = onOpenWirelessGuide,
+                onShowAdbCommand = onShowAdbCommand,
+                onOpenAdbHelp = onOpenAdbHelp,
+                onOpenAdbPermissionHelp = onOpenAdbPermissionHelp,
+                onLearnMore = onLearnMore,
+                onCopyDiagnostics = onCopyDiagnostics,
+                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission
             )
         }
     } else if (isTv) {
         moe.shizuku.manager.ui.compose.TvShizukuTheme {
             TVHomeScreen(
-                serviceResource, grantedResource, unauthorizedResource, localNetworkPermissionState,
-                lastChecked, isPrimaryUser, isRooted, onRefresh, onSettings, onAbout, onStop,
-                onModules, onManageApps, onTerminal, onStartRoot, onStartWirelessAdb,
-                onPairWirelessAdb, onOpenWirelessGuide, onShowAdbCommand, onOpenAdbHelp,
-                onOpenAdbPermissionHelp, onLearnMore, onCopyDiagnostics, onRequestLocalNetworkPermission
+                serviceResource = serviceResource,
+                grantedResource = grantedResource,
+                unauthorizedResource = unauthorizedResource,
+                localNetworkPermissionState = localNetworkPermissionState,
+                lastChecked = lastChecked,
+                isPrimaryUser = isPrimaryUser,
+                isRooted = isRooted,
+                onRefresh = onRefresh,
+                onSettings = onSettings,
+                onAbout = onAbout,
+                onStop = onStop,
+                onModules = onModules,
+                onManageApps = onManageApps,
+                onTerminal = onTerminal,
+                onStartRoot = onStartRoot,
+                onStartWirelessAdb = onStartWirelessAdb,
+                onPairWirelessAdb = onPairWirelessAdb,
+                onOpenWirelessGuide = onOpenWirelessGuide,
+                onShowAdbCommand = onShowAdbCommand,
+                onOpenAdbHelp = onOpenAdbHelp,
+                onOpenAdbPermissionHelp = onOpenAdbPermissionHelp,
+                onLearnMore = onLearnMore,
+                onCopyDiagnostics = onCopyDiagnostics,
+                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission
             )
         }
     } else {
         PhoneHomeScreen(
-            serviceResource, grantedResource, unauthorizedResource, localNetworkPermissionState,
-            lastChecked, isPrimaryUser, isRooted, onRefresh, onSettings, onAbout, onStop,
-            onModules, onManageApps, onTerminal, onStartRoot, onStartWirelessAdb,
-            onPairWirelessAdb, onOpenWirelessGuide, onShowAdbCommand, onOpenAdbHelp,
-            onOpenAdbPermissionHelp, onLearnMore, onCopyDiagnostics, onShareDiagnostics,
-            onRequestLocalNetworkPermission
+            serviceResource = serviceResource,
+            grantedResource = grantedResource,
+            unauthorizedResource = unauthorizedResource,
+            localNetworkPermissionState = localNetworkPermissionState,
+            lastChecked = lastChecked,
+            isPrimaryUser = isPrimaryUser,
+            isRooted = isRooted,
+            onRefresh = onRefresh,
+            onSettings = onSettings,
+            onAbout = onAbout,
+            onStop = onStop,
+            onModules = onModules,
+            onManageApps = onManageApps,
+            onTerminal = onTerminal,
+            onStartRoot = onStartRoot,
+            onStartWirelessAdb = onStartWirelessAdb,
+            onPairWirelessAdb = onPairWirelessAdb,
+            onOpenWirelessGuide = onOpenWirelessGuide,
+            onShowAdbCommand = onShowAdbCommand,
+            onOpenAdbHelp = onOpenAdbHelp,
+            onOpenAdbPermissionHelp = onOpenAdbPermissionHelp,
+            onLearnMore = onLearnMore,
+            onCopyDiagnostics = onCopyDiagnostics,
+            onShareDiagnostics = onShareDiagnostics,
+            onRequestLocalNetworkPermission = onRequestLocalNetworkPermission
         )
     }
 }
@@ -495,7 +519,6 @@ private fun PhoneHomeScreen(
         elapsedNow = SystemClock.elapsedRealtime()
         while (running) { delay(1_000L); elapsedNow = SystemClock.elapsedRealtime() }
     }
-
     val diagnostics = remember(status, grantedCount, localNetworkPermissionState, lastChecked, recoverySnapshot, elapsedNow) {
         buildDiagnostics(context, status, grantedCount, localNetworkPermissionState, lastChecked, recoverySnapshot, elapsedNow)
     }
@@ -507,39 +530,33 @@ private fun PhoneHomeScreen(
                 title = {
                     Column {
                         Text(stringResource(R.string.app_name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            NIGHTZUKU_BRAND,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        )
+                        Text(NIGHTZUKU_BRAND, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSettings) { ShizukuIcon(R.drawable.ic_action_settings_24dp, stringResource(R.string.settings_title)) }
-                    IconButton(onClick = onRefresh) { ShizukuIcon(R.drawable.ic_server_restart, stringResource(R.string.home_refresh)) }
+                    IconButton(onClick = onSettings) { ShizukuIcon(icon = R.drawable.ic_action_settings_24dp, contentDescription = stringResource(R.string.settings_title)) }
+                    IconButton(onClick = onRefresh) { ShizukuIcon(icon = R.drawable.ic_server_restart, contentDescription = stringResource(R.string.home_refresh)) }
                     Box {
-                        IconButton(onClick = { moreOpen = true }) { ShizukuIcon(R.drawable.ic_more_vert_24, stringResource(R.string.more_options)) }
+                        IconButton(onClick = { moreOpen = true }) { ShizukuIcon(icon = R.drawable.ic_more_vert_24, contentDescription = stringResource(R.string.more_options)) }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
                             if (!running) {
                                 if (isRooted) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.home_root_button_start)) },
-                                        leadingIcon = { ShizukuIcon(R.drawable.ic_server_start_24dp, null) },
+                                        leadingIcon = { ShizukuIcon(icon = R.drawable.ic_server_start_24dp, contentDescription = null) },
                                         onClick = { moreOpen = false; onStartRoot() }
                                     )
                                 } else if (canUseWirelessAdb) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.home_root_button_start)) },
-                                        leadingIcon = { ShizukuIcon(R.drawable.ic_server_start_24dp, null) },
+                                        leadingIcon = { ShizukuIcon(icon = R.drawable.ic_server_start_24dp, contentDescription = null) },
                                         onClick = { moreOpen = false; onStartWirelessAdb() }
                                     )
                                 }
                             }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_about)) },
-                                leadingIcon = { ShizukuIcon(R.drawable.ic_outline_info_24, null) },
+                                leadingIcon = { ShizukuIcon(icon = R.drawable.ic_outline_info_24, contentDescription = null) },
                                 onClick = { moreOpen = false; onAbout() }
                             )
                         }
@@ -557,17 +574,14 @@ private fun PhoneHomeScreen(
             contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                StatusCard(serviceResource, status, onStartRoot, onStartWirelessAdb, isRooted, canUseWirelessAdb)
-            }
+            item { StatusCard(serviceResource, status, onStartRoot, onStartWirelessAdb, isRooted, canUseWirelessAdb) }
             if (adbPermission) {
                 item { ManageAppsCard(status, grantedResource, unauthorizedResource, onManageApps) }
                 item {
                     SimpleActionCard(
                         R.drawable.ic_adb_24dp,
                         stringResource(R.string.modules_title),
-                        if (running) stringResource(R.string.home_modules_description)
-                        else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
+                        if (running) stringResource(R.string.home_modules_description) else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
                         running,
                         onModules
                     )
@@ -576,8 +590,7 @@ private fun PhoneHomeScreen(
                     SimpleActionCard(
                         R.drawable.ic_terminal_24,
                         stringResource(R.string.home_terminal_title),
-                        if (running) stringResource(R.string.home_terminal_description)
-                        else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
+                        if (running) stringResource(R.string.home_terminal_description) else stringResource(R.string.home_status_service_not_running, stringResource(R.string.app_name)),
                         running,
                         onTerminal
                     )
@@ -599,23 +612,12 @@ private fun PhoneHomeScreen(
             if (isPrimaryUser) {
                 val rootRestart = running && status.uid == 0
                 if (isRooted) item { RootCard(rootRestart, onStartRoot) }
-                if (canUseWirelessAdb) {
-                    item { WirelessAdbCard(running, localNetworkPermissionState, onStartWirelessAdb, onPairWirelessAdb, onOpenWirelessGuide) }
-                }
+                if (canUseWirelessAdb) item { WirelessAdbCard(running, localNetworkPermissionState, onStartWirelessAdb, onPairWirelessAdb, onOpenWirelessGuide) }
                 item { AdbCommandCard(onShowAdbCommand, onOpenAdbHelp) }
             }
-            if (localNetworkPermissionState.required && !localNetworkPermissionState.granted) {
-                item { LocalNetworkPermissionCard(localNetworkPermissionState, onRequestLocalNetworkPermission) }
-            }
+            if (localNetworkPermissionState.required && !localNetworkPermissionState.granted) item { LocalNetworkPermissionCard(localNetworkPermissionState, onRequestLocalNetworkPermission) }
             item { DiagnosticsCard(diagnostics, onCopyDiagnostics, onShareDiagnostics) }
-            item {
-                SimpleActionCard(
-                    R.drawable.ic_learn_more_24dp,
-                    stringResource(R.string.home_learn_more_title),
-                    stringResource(R.string.home_learn_more_description),
-                    onClick = onLearnMore
-                )
-            }
+            item { SimpleActionCard(R.drawable.ic_learn_more_24dp, stringResource(R.string.home_learn_more_title), stringResource(R.string.home_learn_more_description), onClick = onLearnMore) }
         }
     }
 }
@@ -648,9 +650,7 @@ private fun StatusCard(
         recovering -> R.drawable.nightdog_status_recovering
         else -> R.drawable.nightdog_status_stopped
     }
-    val summary = remember(status, running, recoverySnapshot) {
-        if (running) buildServiceSummary(context, status) else buildRecoverySummary(recoverySnapshot)
-    }
+    val summary = remember(status, running, recoverySnapshot) { if (running) buildServiceSummary(context, status) else buildRecoverySummary(recoverySnapshot) }
     val dark = isSystemInDarkTheme()
     val semanticColor = when {
         running -> if (dark) Color(0xFF81C784) else Color(0xFF1B5E20)
@@ -658,7 +658,6 @@ private fun StatusCard(
         recovering || isLoading -> if (dark) Color(0xFFFFD54F) else Color(0xFF8A5A00)
         else -> if (dark) Color(0xFFBDBDBD) else Color(0xFF616161)
     }
-
     HomeCard(
         icon = if (running) R.drawable.ic_server_ok_24dp else if (isLoading) R.drawable.ic_server_restart else R.drawable.ic_server_error_24dp,
         title = title,
@@ -681,12 +680,7 @@ private fun StatusCard(
 }
 
 @Composable
-private fun ManageAppsCard(
-    status: ServiceStatus,
-    grantedResource: Resource<Int>?,
-    unauthorizedResource: Resource<Int>?,
-    onClick: () -> Unit
-) {
+private fun ManageAppsCard(status: ServiceStatus, grantedResource: Resource<Int>?, unauthorizedResource: Resource<Int>?, onClick: () -> Unit) {
     val context = LocalContext.current
     val running = status.isRunning
     val showCount = running && grantedResource?.status == Status.SUCCESS && grantedResource.data != null && unauthorizedResource?.status == Status.SUCCESS && unauthorizedResource.data != null
@@ -715,9 +709,7 @@ private fun RootCard(restart: Boolean, onStartRoot: () -> Unit) {
         htmlStringResource(R.string.home_root_description, "Don't kill my app!"),
         collapsedBody = if (restart) "Reiniciar mediante root." else "Iniciar mediante root.",
         expandable = true
-    ) {
-        HomeButtons(listOf(HomeButtonSpec(buttonLabel, buttonIcon, true, onClick = onStartRoot)))
-    }
+    ) { HomeButtons(listOf(HomeButtonSpec(buttonLabel, buttonIcon, true, onClick = onStartRoot))) }
 }
 
 @Composable
@@ -728,8 +720,7 @@ private fun WirelessAdbCard(
     onPairWirelessAdb: () -> Unit,
     onOpenWirelessGuide: () -> Unit
 ) {
-    val body = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) htmlStringResource(R.string.home_wireless_adb_description)
-    else htmlStringResource(R.string.home_wireless_adb_description_pre_11)
+    val body = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) htmlStringResource(R.string.home_wireless_adb_description) else htmlStringResource(R.string.home_wireless_adb_description_pre_11)
     val permissionLine = if (localNetworkPermissionState.required) {
         val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") stringResource(R.string.permission_nearby_wifi_devices) else localNetworkPermissionState.label
         stringResource(if (localNetworkPermissionState.granted) R.string.home_local_network_granted else R.string.home_local_network_missing, permissionLabel)
@@ -768,26 +759,17 @@ private fun AdbCommandCard(onShowAdbCommand: () -> Unit, onOpenAdbHelp: () -> Un
 }
 
 @Composable
-private fun LocalNetworkPermissionCard(
-    localNetworkPermissionState: LocalNetworkPermissionState,
-    onRequestLocalNetworkPermission: () -> Unit
-) {
+private fun LocalNetworkPermissionCard(localNetworkPermissionState: LocalNetworkPermissionState, onRequestLocalNetworkPermission: () -> Unit) {
     val permissionLabel = if (localNetworkPermissionState.label == "NEARBY_WIFI_DEVICES") stringResource(R.string.permission_nearby_wifi_devices) else localNetworkPermissionState.label
     HomeCard(
         R.drawable.ic_warning_24,
         stringResource(R.string.home_local_network_title),
         stringResource(R.string.home_local_network_description, permissionLabel)
-    ) {
-        HomeButtons(listOf(HomeButtonSpec(R.string.home_local_network_grant, R.drawable.ic_settings_outline_24dp, true, onClick = onRequestLocalNetworkPermission)))
-    }
+    ) { HomeButtons(listOf(HomeButtonSpec(R.string.home_local_network_grant, R.drawable.ic_settings_outline_24dp, true, onClick = onRequestLocalNetworkPermission))) }
 }
 
 @Composable
-private fun DiagnosticsCard(
-    diagnostics: String,
-    onCopyDiagnostics: (String) -> Unit,
-    onShareDiagnostics: (String) -> Unit
-) {
+private fun DiagnosticsCard(diagnostics: String, onCopyDiagnostics: (String) -> Unit, onShareDiagnostics: (String) -> Unit) {
     val compactSummary = remember(diagnostics) { diagnostics.lineSequence().take(3).joinToString("\n") }
     HomeCard(
         R.drawable.ic_outline_info_24,
@@ -805,13 +787,7 @@ private fun DiagnosticsCard(
 }
 
 @Composable
-private fun SimpleActionCard(
-    @DrawableRes icon: Int,
-    title: String,
-    body: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
+private fun SimpleActionCard(@DrawableRes icon: Int, title: String, body: String, enabled: Boolean = true, onClick: () -> Unit) {
     HomeCard(icon, title, body, enabled = enabled, onClick = onClick)
 }
 
@@ -849,26 +825,18 @@ private fun HomeCard(
     ) {
         Row(modifier = Modifier.padding(18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (artwork != null) {
-                Image(painterResource(artwork), null, Modifier.size(88.dp), contentScale = ContentScale.Fit)
+                Image(painter = painterResource(artwork), contentDescription = null, modifier = Modifier.size(88.dp), contentScale = ContentScale.Fit)
             } else {
-                Surface(Modifier.size(44.dp), CircleShape, color = iconContainerColor) {
+                Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = iconContainerColor) {
                     Box(contentAlignment = Alignment.Center) {
-                        ShizukuIcon(icon, null, tint = iconContentColor, modifier = Modifier.size(24.dp))
+                        ShizukuIcon(icon = icon, contentDescription = null, tint = iconContentColor, modifier = Modifier.size(24.dp))
                     }
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = titleColor)
-                if (visibleBody.isNotBlank()) {
-                    Text(visibleBody, style = MaterialTheme.typography.bodyMedium, color = bodyColor, fontFamily = bodyFontFamily)
-                }
-                if (expandable) {
-                    Text(
-                        if (expanded) "Tocar para contraer" else "Tocar para ver detalles",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                if (visibleBody.isNotBlank()) Text(visibleBody, style = MaterialTheme.typography.bodyMedium, color = bodyColor, fontFamily = bodyFontFamily)
+                if (expandable) Text(if (expanded) "Tocar para contraer" else "Tocar para ver detalles", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 content()
             }
         }
@@ -900,7 +868,7 @@ private fun HomeButtons(buttons: List<HomeButtonSpec>) {
 
 @Composable
 private fun ButtonIcon(@DrawableRes icon: Int) {
-    ShizukuIcon(icon, null, modifier = Modifier.padding(end = 8.dp).size(18.dp))
+    ShizukuIcon(icon = icon, contentDescription = null, modifier = Modifier.padding(end = 8.dp).size(18.dp))
 }
 
 @Composable
@@ -956,7 +924,6 @@ private fun buildDiagnostics(
     val lastLoss = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastBinderLostElapsedRealtime)
     val lastRecovery = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastRecoveryElapsedRealtime)
     val pid = recoverySnapshot.serverPid?.toString() ?: "resolviendo…"
-
     fun line(label: String, value: Any?): String = label.padEnd(22) + (value ?: "—")
 
     return buildString {
