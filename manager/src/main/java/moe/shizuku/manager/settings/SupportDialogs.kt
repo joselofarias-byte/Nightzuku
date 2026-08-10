@@ -21,8 +21,6 @@ import androidx.compose.ui.unit.dp
 private const val EVM_ADDRESS = "0x5d580ac4f1eabff84379fa8e217df4684ad30934"
 private const val BINANCE_PAY_ID = "282919237"
 private const val FORK_REPOSITORY = "https://github.com/joselofarias-byte/Nightzuku"
-private const val NIGHTZUKU_UPSTREAM = "https://github.com/kerneldroid/Nightzuku"
-private const val SHIZUKU_UPSTREAM = "https://github.com/RikkaApps/Shizuku"
 
 @Composable
 internal fun CreditsDialog(onDismiss: () -> Unit) {
@@ -43,16 +41,12 @@ internal fun CreditsDialog(onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall
                 )
                 Text("kerneldroid/Nightzuku")
-                TextButton(
-                    onClick = { openUrl(context, NIGHTZUKU_UPSTREAM) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Repositorio de Nightzuku original") }
-
                 Text("RikkaApps/Shizuku")
-                TextButton(
-                    onClick = { openUrl(context, SHIZUKU_UPSTREAM) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Repositorio de Shizuku") }
+                Text(
+                    "Se mantienen sus menciones y atribuciones originales.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = {
