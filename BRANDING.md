@@ -16,7 +16,9 @@ La identidad técnica del paquete Android debe permanecer única respecto del up
 
 ## Créditos y licencia
 
-Nightzuku deriva de trabajo previo de Nightzuku / Shizuku y conserva sus atribuciones, avisos de copyright y licencia aplicable. La marca JoseloFarias identifica únicamente las modificaciones y builds de este fork. Cuando corresponda, se debe dirigir a los usuarios al proyecto original para reconocer o apoyar a sus autores.
+Nightzuku deriva de trabajo previo de Nightzuku y Shizuku. Se mantienen los créditos a sus autores originales, incluyendo **RikkaApps y los contribuidores originales de Shizuku/Nightzuku**, además de los avisos de copyright y licencia aplicables. La marca **JoseloFarias** identifica únicamente las modificaciones y builds de este fork.
+
+No se agregan enlaces promocionales a repositorios externos como parte de la identidad del fork; la atribución se realiza mencionando autores y conservando los avisos exigidos por licencia.
 
 ## Regla visual
 
