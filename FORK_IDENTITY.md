@@ -2,12 +2,13 @@
 
 - Maintainer / distribution brand: **JoseloFarias**
 - Application: **Nightzuku**
+- Android application ID: `com.joselofarias.nightzuku`
 - GitHub account suffix `-byte` is not part of the product brand.
 - Fork-specific UI, release metadata and documentation must identify **JoseloFarias** consistently.
 
 ## Package identity
 
-The Android package must remain distinct from upstream whenever this fork is distributed independently. Package changes must include `applicationId`, authorities, deep links and package-qualified permissions atomically and must be build-verified.
+The fork uses `com.joselofarias.nightzuku` as its independent Android `applicationId`. Source namespaces may remain inherited when changing them would add risk without user-visible benefit. Authorities, deep links and package-qualified permissions must follow the fork application ID where applicable.
 
 ## Credits
 
