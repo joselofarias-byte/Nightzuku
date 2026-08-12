@@ -6,10 +6,10 @@
 
 package moe.shizuku.manager.home
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.spacedBy
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.AlertDialog as WearAlertDialog
 import androidx.wear.compose.material3.Button as WearButton
 import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButton
@@ -27,12 +28,7 @@ import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.OutlinedButton as TvOutlinedButton
 import androidx.tv.material3.Text as TvText
-import moe.shizuku.manager.R
 import moe.shizuku.manager.utils.EnvironmentUtils
-
-private const val FORK_REPOSITORY = "https://github.com/joselofarias-byte/Nightzuku"
-private const val NIGHTZUKU_UPSTREAM = "https://github.com/kerneldroid/Nightzuku"
-private const val SHIZUKU_UPSTREAM = "https://github.com/RikkaApps/Shizuku"
 
 @Composable
 internal fun ForkAboutDialog(
@@ -43,7 +39,7 @@ internal fun ForkAboutDialog(
     val versionName = remember {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }
-    val description = "Nightzuku · Fork JoseloFarias\n$versionName\nBasado en kerneldroid/Nightzuku y RikkaApps/Shizuku"
+    val description = "Versión $versionName\n\nBasado en Nightzuku y Shizuku.\nAutoría y licencias originales preservadas."
 
     when {
         EnvironmentUtils.isWatch(context) -> {
@@ -56,7 +52,7 @@ internal fun ForkAboutDialog(
                 ) {
                     item {
                         WearButton(onClick = onSourceCode, modifier = Modifier.fillMaxWidth()) {
-                            WearText("Repositorio del fork")
+                            WearText("Repositorio de este fork")
                         }
                     }
                     item {
@@ -67,6 +63,7 @@ internal fun ForkAboutDialog(
                 }
             }
         }
+
         EnvironmentUtils.isTV(context) -> {
             moe.shizuku.manager.ui.compose.TvShizukuTheme {
                 AlertDialog(
@@ -74,7 +71,7 @@ internal fun ForkAboutDialog(
                     title = { TvText("Nightzuku · Fork JoseloFarias") },
                     text = { TvText(description) },
                     confirmButton = {
-                        TvButton(onClick = onSourceCode) { TvText("Repositorio del fork") }
+                        TvButton(onClick = onSourceCode) { TvText("Repositorio de este fork") }
                     },
                     dismissButton = {
                         TvOutlinedButton(onClick = onDismiss) { TvText(stringResource(android.R.string.ok)) }
@@ -84,31 +81,25 @@ internal fun ForkAboutDialog(
                 )
             }
         }
+
         else -> {
             AlertDialog(
                 onDismissRequest = onDismiss,
                 title = { Text("Nightzuku · Fork JoseloFarias") },
                 text = {
-                    Column {
-                        Text("Fork mantenido por JoseloFarias", style = MaterialTheme.typography.titleMedium)
-                        Text(versionName, style = MaterialTheme.typography.bodyMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Versión $versionName", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "Basado en proyectos originales con sus licencias y autoría preservadas.",
+                            "Basado en Nightzuku y Shizuku. Autoría y licencias originales preservadas.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         TextButton(
                             onClick = onSourceCode,
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Repositorio de este fork") }
-                        TextButton(
-                            onClick = { openRepository(context, NIGHTZUKU_UPSTREAM) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("kerneldroid/Nightzuku") }
-                        TextButton(
-                            onClick = { openRepository(context, SHIZUKU_UPSTREAM) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("RikkaApps/Shizuku") }
+                        ) {
+                            Text("Repositorio de este fork")
+                        }
                     }
                 },
                 confirmButton = {
@@ -117,10 +108,4 @@ internal fun ForkAboutDialog(
             )
         }
     }
-}
-
-private fun openRepository(context: android.content.Context, url: String) {
-    context.startActivity(
-        Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    )
 }
