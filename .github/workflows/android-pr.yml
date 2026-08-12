@@ -11,6 +11,7 @@ on:
       - main
       - feature/adb-mdns-endpoint
       - feature/adb-tcp-persistence
+      - fix/nightdog-adb-tcp-integration
   workflow_dispatch:
 
 permissions:
@@ -24,12 +25,36 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      NIGHTZUKU_KEYSTORE_BASE64: ${{ secrets.NIGHTZUKU_KEYSTORE_BASE64 }}
+      NIGHTZUKU_KEYSTORE_PASSWORD: ${{ secrets.NIGHTZUKU_KEYSTORE_PASSWORD }}
+      NIGHTZUKU_KEY_ALIAS: ${{ secrets.NIGHTZUKU_KEY_ALIAS }}
+      NIGHTZUKU_KEY_PASSWORD: ${{ secrets.NIGHTZUKU_KEY_PASSWORD }}
 
     steps:
-      - name: Checkout
+      - name: Checkout branch HEAD
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 0
           submodules: recursive
+
+      - name: Verify checked out revision
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ACTUAL_HEAD_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_HEAD_SHA" = "$EXPECTED_HEAD_SHA" || {
+            echo "ERROR: checkout mismatch"
+            echo "Expected: $EXPECTED_HEAD_SHA"
+            echo "Actual:   $ACTUAL_HEAD_SHA"
+            exit 1
+          }
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          echo "BUILD_HEAD_SHA=$ACTUAL_HEAD_SHA" >> "$GITHUB_ENV"
+          echo "BUILD_SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+          echo "Building Nightzuku from HEAD $ACTUAL_HEAD_SHA ($SHORT_SHA)"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -43,6 +68,7 @@ jobs:
 
       - name: Restore root Gradle wrapper jar
         run: |
+          set -Eeuo pipefail
           test -f api/gradle/wrapper/gradle-wrapper.jar
           mkdir -p gradle/wrapper
           cp api/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
@@ -50,14 +76,65 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
+      - name: Restore permanent signing keystore
+        if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$NIGHTZUKU_KEYSTORE_PASSWORD"
+          test -n "$NIGHTZUKU_KEY_ALIAS"
+          test -n "$NIGHTZUKU_KEY_PASSWORD"
+          printf '%s' "$NIGHTZUKU_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nightzuku-release.jks"
+          chmod 600 "$RUNNER_TEMP/nightzuku-release.jks"
+          echo "NIGHTZUKU_KEYSTORE_FILE=$RUNNER_TEMP/nightzuku-release.jks" >> "$GITHUB_ENV"
+
       - name: Build manager debug APK
         run: ./gradlew --no-daemon --stacktrace :manager:assembleDebug
 
-      - name: Upload manager APK
+      - name: Build permanently signed release APK
+        if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
+        run: ./gradlew --no-daemon --stacktrace :manager:assembleRelease
+
+      - name: Verify APK revision and release certificate
+        if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APK="$(find manager/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -path '*/aapt' -type f | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          BADGING="$($AAPT dump badging "$APK" | head -n 1)"
+          printf '%s\n' "$BADGING"
+          printf '%s\n' "$BADGING" | grep -F ".$BUILD_SHORT_SHA'" >/dev/null || {
+            echo "ERROR: APK versionName does not contain checked-out SHA $BUILD_SHORT_SHA"
+            exit 1
+          }
+
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee release-certificate.txt
+          printf '%s\n' "$BUILD_HEAD_SHA" > build-head-sha.txt
+          printf '%s\n' "$BADGING" > release-badging.txt
+
+      - name: Upload manager debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: nightzuku-manager-debug-${{ github.sha }}
-          path: manager/build/outputs/apk/**/*.apk
+          name: nightzuku-manager-debug-${{ env.BUILD_SHORT_SHA }}
+          path: manager/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload permanently signed release APK
+        if: success() && env.NIGHTZUKU_KEYSTORE_BASE64 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightzuku-manager-release-signed-${{ env.BUILD_SHORT_SHA }}
+          path: |
+            manager/build/outputs/apk/release/*.apk
+            release-certificate.txt
+            release-badging.txt
+            build-head-sha.txt
+          if-no-files-found: error
+          retention-days: 30
