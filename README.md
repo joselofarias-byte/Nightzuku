@@ -1,20 +1,29 @@
-# Nightzuku Fork
+# Nightzuku — JoseloFarias
 
-Nightzuku Fork is a personal adaptation based on Nightzuku / Shizuku.
-This repository is not the original project, and I am not the original developer.
+Proyecto Android de la familia Shizuku mantenido por **JoseloFarias**, con identidad propia y foco en acceso privilegiado práctico, estable y compatible con Android moderno.
 
-My work focuses on adapting the app to practical use, adding Spanish support, improving the Android TV and Wear OS experience, refining loading states, documenting the fork clearly, and applying selected safe fixes when they are useful.
+## Objetivos
 
-## Español
+- Consolidar una variante usable y mantenible del ecosistema Shizuku.
+- Mejorar compatibilidad, arranque, permisos y estabilidad.
+- Mantener privacidad por defecto y evitar telemetría innecesaria.
+- Conservar atribuciones y licencias de los componentes de origen.
 
-Nightzuku Fork es una adaptación personal basada en Nightzuku / Shizuku.
-Este repositorio no es el proyecto original y no soy el programador original.
+## Estado
 
-Mi trabajo se centra en adaptar la aplicación a un uso práctico, agregar soporte en español, mejorar la experiencia en Android TV y Wear OS, pulir estados de carga, documentar claramente el fork y aplicar fixes seguros seleccionados cuando son útiles.
+Desarrollo activo. Las funciones nuevas deben validarse en dispositivo y mediante las tareas reales del proyecto.
 
-> **Important / Importante**
->
-> This fork keeps attribution to the original Nightzuku / Shizuku work.
-> Esta adaptación mantiene la atribución al trabajo original de Nightzuku / Shizuku.
->
-> If you are migrating from the original Shizuku or Nightzuku package, uninstalling older builds first may still be required to avoid package/signature conflicts.
+## Desarrollo
+
+```bash
+git clone https://github.com/joselofarias-byte/Nightzuku.git
+cd Nightzuku
+./gradlew assembleDebug
+```
+
+## Licencia y atribución
+
+Consulte `LICENSE` y el historial Git para las condiciones y autores de los componentes derivados.
+
+---
+**Mantenimiento:** JoseloFarias
