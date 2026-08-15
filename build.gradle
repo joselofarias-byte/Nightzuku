@@ -7,14 +7,25 @@ idea.module {
 }
 
 subprojects {
+    configurations.configureEach {
+        resolutionStrategy.force(
+                "androidx.core:core:1.18.0",
+                "androidx.core:core-ktx:1.18.0"
+        )
+    }
+
     plugins.withId("com.android.base") {
         android {
-            compileSdk = 37
-            buildToolsVersion = "37.0.0"
+            compileSdk {
+                version = release(36) {
+                    it.minorApiLevel = 1
+                }
+            }
+            buildToolsVersion = "36.0.0"
             ndkVersion = "29.0.14206865"
             defaultConfig {
                 minSdk = 25
-                targetSdk = 37
+                targetSdk = 36
             }
             compileOptions {
                 sourceCompatibility = JavaVersion.VERSION_21
