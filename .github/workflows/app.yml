@@ -59,12 +59,16 @@ jobs:
       - name: Build with Gradle
         id: buildWithGradle
         run: |
+          set -Eeuo pipefail
           cp api/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
           echo 'org.gradle.caching=true' >> gradle.properties
           echo 'org.gradle.parallel=true' >> gradle.properties
           ./gradlew :manager:assemble
-          releaseName=`basename out/apk/shizuku-v*-release.apk .apk` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+          release_file="$(find out/apk -maxdepth 1 -type f -name 'shizuku-v*-release.apk' -print -quit)"
+          test -n "$release_file"
+          release_name="$(basename "$release_file" .apk)"
+          echo "releaseName=$release_name" >> "$GITHUB_OUTPUT"
       - name: Upload release
         if: success()
         uses: actions/upload-artifact@v4
@@ -72,6 +76,7 @@ jobs:
           name: ${{ steps.buildWithGradle.outputs.releaseName }}
           path: "out"
           compression-level: 9
+          if-no-files-found: error
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
