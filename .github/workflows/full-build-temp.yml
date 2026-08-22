@@ -1,0 +1,34 @@
+name: Full Build Temp
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Build debug APK
+        run: gradle assembleDebug --stacktrace --no-daemon
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightzuku-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            **/build/outputs/apk/**/*.apk
