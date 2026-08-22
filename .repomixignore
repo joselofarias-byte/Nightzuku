@@ -1,0 +1,51 @@
+# Secrets and local machine configuration
+.env
+.env.*
+**/.env
+**/.env.*
+local.properties
+**/local.properties
+signing.properties
+**/signing.properties
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+google-services.json
+**/google-services.json
+**/*credentials*.json
+
+# Generated code-intelligence and orchestration state
+.codegraph/
+.codegraph-*/
+graphify-out/
+.worktrees/
+
+# Dependency/build/cache output
+node_modules/
+.gradle/
+**/build/
+**/out/
+dist/
+coverage/
+.cxx/
+.externalNativeBuild/
+
+# Binary/build artifacts
+*.apk
+*.aab
+*.aar
+*.jar
+*.zip
+*.tar
+*.tar.gz
+*.db
+*.sqlite
+*.sqlite3
+*.wal
+*.shm
+
+# Repomix must never recursively ingest its own generated output
+repomix-output.*

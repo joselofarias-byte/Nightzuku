@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+message_file="$1"
+git_dir="$(git rev-parse --absolute-git-dir)"
+active="$git_dir/llm-work-current"
+
+[[ -s "$active" ]] || exit 0
+order="$(cat "$active")"
+order_id="$(basename "$order")"
+agent="unknown-llm"
+[[ -s "$order/AGENT.txt" ]] && agent="$(cat "$order/AGENT.txt")"
+
+if ! grep -q '^Work-Order: ' "$message_file"; then
+  {
+    printf '\nWork-Order: %s\n' "$order_id"
+    printf 'Agent: %s\n' "$agent"
+  } >> "$message_file"
+fi

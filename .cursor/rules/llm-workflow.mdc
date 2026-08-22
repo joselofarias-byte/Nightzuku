@@ -1,0 +1,29 @@
+---
+description: Mandatory self-documenting work orders, backups, evidence and history for every coding task
+alwaysApply: true
+---
+
+Read `START-HERE.md`, `AI_WORKFLOW.md` and `AGENTS.md` before acting.
+
+Before broad analysis or editing, run:
+
+```bash
+bash tools/system-docs.sh summary
+bash tools/system-docs.sh doctor
+```
+
+For normal work:
+
+```bash
+bash tools/work.sh start --agent cursor --objective "<objective>"
+```
+
+For complex work requiring independent implementation/review:
+
+```bash
+bash tools/swarm.sh start --objective "<objective>"
+```
+
+If `SWARM_ROLE` is set, read `$SWARM_ROLE_PROMPT` and do not open another order. Use `--structural` when appropriate. Record findings and validations through the canonical wrappers, never use `--no-verify`, and always finish or abort through the same front door. The wrappers automatically capture system snapshots, persistent history and Obsidian state.
+
+Commit, push, merge and opening/closing PRs require express user authorization.

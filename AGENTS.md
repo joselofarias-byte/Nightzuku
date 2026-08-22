@@ -1,5 +1,40 @@
 # AGENTS.md
 
+## Mandatory self-documenting work gate
+
+Before analyzing broadly or modifying any file:
+
+1. Read [`START-HERE.md`](START-HERE.md).
+2. Read [`AI_WORKFLOW.md`](AI_WORKFLOW.md).
+3. Execute:
+
+```bash
+bash tools/system-docs.sh summary
+bash tools/system-docs.sh doctor
+```
+
+If `SWARM_ROLE` and `SWARM_ROLE_PROMPT` are set, this agent already belongs to a master swarm order: read the file indicated by `SWARM_ROLE_PROMPT` and **do not start another work order**.
+
+For normal single-agent work use the canonical front door:
+
+```bash
+bash tools/work.sh start --agent <agent-name> --objective "<objective>"
+```
+
+For complex work that benefits from independent implementation and review:
+
+```bash
+bash tools/swarm.sh start --objective "<objective>"
+```
+
+Use `--structural` for architecture, module, IPC, service, dependency or central-flow changes. Record findings with `tools/work.sh note`, run tests/builds through `tools/work.sh run --`, and close/abort using the same front door that opened the work.
+
+`tools/llm-workflow.sh` and `tools/swarm-workflow.sh` are internal stable engines. Do not invoke them directly for new work unless repairing the wrappers themselves. The wrappers add snapshots, persistent history and Obsidian publication so the system remains understandable without conversation memory.
+
+Do not use `--no-verify`. Commit, push, merge and opening/closing PRs require express user authorization.
+
+This gate applies to Claude Code, Codex, ChatGPT, Gemini CLI, Meta Muse Code, Cursor, Windsurf, Cline, OpenCode, Roo, Aider and any future coding agent. The remaining engineering standards below continue to apply.
+
 # Shizuku+ / EverCall / ShizukuCall / Stellar / Nightzuku Engineering Standard
 
 This file defines the default behavior for all AI coding agents operating in this repository.
