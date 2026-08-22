@@ -24,7 +24,8 @@ object AdbModuleManager {
     private const val MAX_EXTRACTED_BYTES = 200L * 1024L * 1024L
     private const val MAX_SCRIPT_SECONDS = 120L
     private const val MAX_OUTPUT_CHARS = 64 * 1024
-    private var servicesStartedForBinder = false
+    private const val MAX_SCRIPT_BYTES = 256 * 1024
+    @Volatile private var servicesStartedForBinder = false
     private val idRegex = Regex("[A-Za-z][A-Za-z0-9._-]{1,63}")
     private val installMutexes = ConcurrentHashMap<String, Mutex>()
 
@@ -136,8 +137,25 @@ object AdbModuleManager {
 
     private fun runModuleScript(module: AdbModule, script: File, logFile: File): ModuleActionResult {
         check(module.enabled) { "Module is disabled." }
-        script.setExecutable(true, false)
         module.logsDir.mkdirs()
+
+        if (script.length() > MAX_SCRIPT_BYTES) {
+            return ModuleActionResult(
+                exitCode = -1,
+                stdout = "",
+                stderr = "Script too large: ${script.length()} bytes (max $MAX_SCRIPT_BYTES)"
+            )
+        }
+
+        val scriptContent = try {
+            script.readText(Charsets.UTF_8)
+        } catch (e: Exception) {
+            return ModuleActionResult(
+                exitCode = -1,
+                stdout = "",
+                stderr = "Cannot read script: ${e.message}"
+            )
+        }
 
         val binder = Shizuku.getBinder() ?: error("Shizuku service is not running.")
         val service = IShizukuService.Stub.asInterface(binder)
@@ -150,9 +168,9 @@ object AdbModuleManager {
             "SHIZUKU_MODULE_BACKGROUND=${if (ModuleSettings.canRunBackground(module)) "1" else "0"}"
         )
         val remote = service.newProcess(
-            arrayOf("sh", script.absolutePath),
+            arrayOf("sh", "-c", scriptContent),
             env,
-            module.directory.absolutePath
+            "/data/local/tmp"
         )
 
         ParcelFileDescriptor.AutoCloseOutputStream(remote.getOutputStream()).close()
