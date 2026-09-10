@@ -86,6 +86,7 @@ import moe.shizuku.manager.module.AdbModuleManager
 import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.model.ServiceStatus
+import moe.shizuku.manager.nightdog.NightDogManager
 import moe.shizuku.manager.settings.SettingsActivity
 import moe.shizuku.manager.shell.ShellTutorialActivity
 import moe.shizuku.manager.starter.Starter
@@ -233,6 +234,7 @@ abstract class HomeActivity : AppActivity() {
                             onDismiss = { showStopDialog = false },
                             onConfirm = {
                                 try {
+                                    NightDogManager.markManualStop()
                                     Shizuku.exit()
                                 } catch (_: Throwable) {
                                 }
@@ -296,6 +298,7 @@ abstract class HomeActivity : AppActivity() {
     }
 
     private fun startAndDismiss(port: Int) {
+        NightDogManager.markManualStart()
         val host = "127.0.0.1"
         val intent = Intent(this, StarterActivity::class.java).apply {
             putExtra(StarterActivity.EXTRA_IS_ROOT, false)
@@ -338,6 +341,7 @@ abstract class HomeActivity : AppActivity() {
     }
 
     private fun startRoot() {
+        NightDogManager.markManualStart()
         startActivity(
             Intent(this, StarterActivity::class.java).apply {
                 putExtra(StarterActivity.EXTRA_IS_ROOT, true)

@@ -61,7 +61,9 @@ import moe.shizuku.manager.app.ThemeHelper.KEY_USE_SYSTEM_COLOR
 import moe.shizuku.manager.ktx.isComponentEnabled
 import moe.shizuku.manager.ktx.setComponentEnabled
 import moe.shizuku.manager.module.ModuleSettings
+import moe.shizuku.manager.nightdog.NightDogManager
 import moe.shizuku.manager.receiver.BootCompleteReceiver
+import moe.shizuku.manager.utils.EnvironmentUtils
 import moe.shizuku.manager.ui.compose.GroupDivider
 import moe.shizuku.manager.ui.compose.SettingsGroup
 import moe.shizuku.manager.ui.compose.SettingsRow
@@ -97,6 +99,9 @@ class SettingsActivity : AppActivity() {
             val scope = rememberCoroutineScope()
             var startOnBoot by remember {
                 mutableStateOf(packageManager.isComponentEnabled(componentName))
+            }
+            var nightDogBootStart by remember {
+                mutableStateOf(NightDogManager.isBootStartEnabled())
             }
             var languageTag by remember {
                 mutableStateOf(prefs.getString(LANGUAGE, "SYSTEM") ?: "SYSTEM")
@@ -240,15 +245,28 @@ class SettingsActivity : AppActivity() {
                         item {
                             SettingsGroup(title = stringResource(R.string.settings_startup)) {
                                 SwitchSettingsRow(
-                                    icon = R.drawable.ic_server_restart,
-                                    title = stringResource(R.string.settings_start_on_boot),
-                                    summary = stringResource(R.string.settings_start_on_boot_summary),
-                                    checked = startOnBoot,
+                                    icon = R.drawable.ic_server_start_24dp,
+                                    title = stringResource(R.string.nightdog_boot_start_title),
+                                    summary = stringResource(R.string.nightdog_boot_start_summary),
+                                    checked = nightDogBootStart,
                                     onCheckedChange = { enabled ->
-                                        packageManager.setComponentEnabled(componentName, enabled)
-                                        startOnBoot = packageManager.isComponentEnabled(componentName)
+                                        nightDogBootStart = enabled
+                                        NightDogManager.setBootStartEnabled(enabled)
                                     }
                                 )
+                                if (EnvironmentUtils.isRooted()) {
+                                    GroupDivider()
+                                    SwitchSettingsRow(
+                                        icon = R.drawable.ic_root_24dp,
+                                        title = stringResource(R.string.settings_start_on_boot),
+                                        summary = stringResource(R.string.settings_start_on_boot_summary),
+                                        checked = startOnBoot,
+                                        onCheckedChange = { enabled ->
+                                            packageManager.setComponentEnabled(componentName, enabled)
+                                            startOnBoot = packageManager.isComponentEnabled(componentName)
+                                        }
+                                    )
+                                }
                             }
                         }
 

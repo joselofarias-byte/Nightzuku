@@ -42,6 +42,9 @@ class AdbMdns(
 
     private fun onDiscoveryStart() {
         registered = true
+        if (!running) {
+            nsdManager.stopServiceDiscovery(listener)
+        }
     }
 
     private fun onDiscoveryStop() {
