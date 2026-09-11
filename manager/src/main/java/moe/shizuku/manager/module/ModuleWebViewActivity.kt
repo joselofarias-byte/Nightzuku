@@ -346,20 +346,31 @@ class ModuleWebViewActivity : AppActivity() {
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
-            return when (uri.scheme?.lowercase()) {
-                "file" -> !isInsideWebRoot(uri.path.orEmpty())
-                "https" -> !webNetworkAllowed
-                "http" -> true
-                else -> true
+            val allowed = when (uri.scheme?.lowercase()) {
+                "file" -> isInsideWebRoot(uri.path.orEmpty())
+                "https" -> webNetworkAllowed
+                else -> false
+            }
+            if (!allowed) return true
+            if (uri.scheme?.lowercase() != "file") {
+                view.removeJavascriptInterface("Shizuku")
+            }
+            return false
+        }
+
+        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+            super.onPageStarted(view, url, favicon)
+            if (url != null && !url.startsWith("file://")) {
+                view?.removeJavascriptInterface("Shizuku")
             }
         }
 
         private fun isInsideWebRoot(path: String): Boolean {
             val root = module.webRoot ?: return false
             return runCatching {
-                val rootFile = root.canonicalFile.toPath()
-                val target = File(path).canonicalFile.toPath()
-                target.startsWith(rootFile)
+                val rootPath = root.canonicalPath
+                val targetPath = File(path).canonicalPath
+                targetPath == rootPath || targetPath.startsWith("$rootPath/")
             }.getOrDefault(false)
         }
     }

@@ -20,6 +20,8 @@ import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
+import moe.shizuku.manager.nightdog.NightDogManager
+import moe.shizuku.manager.nightdog.NightDogTrigger
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
@@ -44,6 +46,11 @@ class BootCompleteReceiver : BroadcastReceiver() {
             adbStart(context)
         } else {
             Log.w(AppConstants.TAG, "No support start on boot")
+        }
+
+        if (NightDogManager.isBootStartEnabled()
+            && ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB) {
+            NightDogManager.ensureRunning(NightDogTrigger.SYSTEM_BOOT)
         }
     }
 

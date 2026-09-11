@@ -5,12 +5,15 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.Text
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
@@ -27,6 +30,7 @@ import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.nightdog.NightDogManager
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
 import moe.shizuku.manager.ui.compose.MonospaceLog
@@ -65,6 +69,7 @@ class StarterActivity : AppActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NightDogManager.markManualStart()
 
         val startedWithRoot = intent.getBooleanExtra(EXTRA_IS_ROOT, true)
 
@@ -154,6 +159,7 @@ class StarterActivity : AppActivity() {
                             navigationIcon = R.drawable.ic_close_24
                         ) {
                             item {
+                                val statusText = deriveStarterStatus(output, failed)
                                 ExpressiveCard(
                                     icon = if (startedWithRoot) R.drawable.ic_root_24dp else R.drawable.ic_adb_24dp,
                                     title = if (startedWithRoot) {
@@ -161,18 +167,27 @@ class StarterActivity : AppActivity() {
                                     } else {
                                         HtmlText(R.string.home_wireless_adb_title)
                                     },
-                                    body = if (failed) {
-                                        stringResource(R.string.notification_service_start_failed)
-                                    } else {
-                                        stringResource(R.string.notification_service_starting)
-                                    },
+                                    body = statusText,
                                     danger = failed
                                 )
                             }
                             item {
-                                MonospaceLog(
-                                    text = output.ifBlank { stringResource(R.string.starting_root_shell) }
-                                )
+                                var showDetails by remember { mutableStateOf(false) }
+                                androidx.compose.material3.TextButton(
+                                    onClick = { showDetails = !showDetails }
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            if (showDetails) R.string.starter_hide_details
+                                            else R.string.starter_show_details
+                                        )
+                                    )
+                                }
+                                if (showDetails) {
+                                    MonospaceLog(
+                                        text = output.ifBlank { stringResource(R.string.starting_root_shell) }
+                                    )
+                                }
                             }
                         }
 
@@ -311,5 +326,27 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 postResult(it)
             }
         }
+    }
+}
+
+@Composable
+private fun deriveStarterStatus(output: String, failed: Boolean): String {
+    if (failed) {
+        val errorLine = output.lines().lastOrNull { it.isNotBlank() } ?: "unknown"
+        return stringResource(R.string.starter_status_error, errorLine.take(80))
+    }
+    return when {
+        output.contains("shizuku_server pid is") -> {
+            val pid = Regex("pid is (\\d+)").find(output)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+            stringResource(R.string.starter_status_success, pid)
+        }
+        output.contains("Waiting for service") || output.contains("waiting_for_service") ->
+            stringResource(R.string.starter_status_waiting_binder)
+        output.contains("starter exit with 0") || output.contains("starting server") ->
+            stringResource(R.string.starter_status_starting)
+        output.contains("Starting with wireless adb") || output.contains("Starting with root") ->
+            stringResource(R.string.starter_status_connecting)
+        output.isBlank() -> stringResource(R.string.starter_status_connecting)
+        else -> stringResource(R.string.starter_status_starting)
     }
 }
