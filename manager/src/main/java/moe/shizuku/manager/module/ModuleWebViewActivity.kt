@@ -368,9 +368,9 @@ class ModuleWebViewActivity : AppActivity() {
         private fun isInsideWebRoot(path: String): Boolean {
             val root = module.webRoot ?: return false
             return runCatching {
-                val rootFile = root.canonicalFile.toPath()
-                val target = File(path).canonicalFile.toPath()
-                target.startsWith(rootFile)
+                val rootPath = root.canonicalPath
+                val targetPath = File(path).canonicalPath
+                targetPath == rootPath || targetPath.startsWith("$rootPath/")
             }.getOrDefault(false)
         }
     }
