@@ -24,8 +24,10 @@ public class ThemeHelper {
     }
 
     public static boolean isUsingSystemColor() {
+        // Nightzuku defaults to its JoseloFarias palette. Dynamic system colors remain
+        // available as an explicit user option in Settings.
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                && ShizukuSettings.getPreferences().getBoolean(KEY_USE_SYSTEM_COLOR, true);
+                && ShizukuSettings.getPreferences().getBoolean(KEY_USE_SYSTEM_COLOR, false);
     }
 
     public static String getTheme(Context context) {

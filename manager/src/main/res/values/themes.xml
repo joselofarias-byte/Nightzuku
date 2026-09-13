@@ -4,7 +4,24 @@
     <style name="Base.AppTheme.Light" parent="Theme.Material3.Light.Shizuku">
         <item name="android:statusBarColor">?android:colorBackground</item>
 
+        <!-- JoseloFarias / Nightzuku: violeta + índigo, sin los roles rosados heredados. -->
         <item name="appColorPrimary">@color/app_color_light</item>
+        <item name="colorPrimary">#6750A4</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#E5DEFF</item>
+        <item name="colorOnPrimaryContainer">#21105C</item>
+        <item name="colorSecondary">#3F51B5</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="colorSecondaryContainer">#DFE2FF</item>
+        <item name="colorOnSecondaryContainer">#101B58</item>
+        <item name="colorTertiary">#565B8F</item>
+        <item name="colorOnTertiary">#FFFFFF</item>
+        <item name="colorTertiaryContainer">#E0E0FF</item>
+        <item name="colorOnTertiaryContainer">#171A49</item>
+        <item name="colorSurfaceVariant">#E5E1E6</item>
+        <item name="colorOnSurfaceVariant">#49454E</item>
+        <item name="colorOutline">#79747E</item>
+        <item name="colorOutlineVariant">#CAC4D0</item>
         <item name="homeCardStyle">@style/Card.Light</item>
 
         <item name="android:windowActionBar">false</item>
@@ -17,6 +34,22 @@
 
     <style name="Base.AppTheme" parent="Theme.Material3.Dark.Shizuku">
         <item name="appColorPrimary">@color/app_color_dark</item>
+        <item name="colorPrimary">#D0BCFF</item>
+        <item name="colorOnPrimary">#381E72</item>
+        <item name="colorPrimaryContainer">#4F378B</item>
+        <item name="colorOnPrimaryContainer">#EADDFF</item>
+        <item name="colorSecondary">#B9C3FF</item>
+        <item name="colorOnSecondary">#1D2A78</item>
+        <item name="colorSecondaryContainer">#35418F</item>
+        <item name="colorOnSecondaryContainer">#DFE2FF</item>
+        <item name="colorTertiary">#C1C4FF</item>
+        <item name="colorOnTertiary">#2A2E65</item>
+        <item name="colorTertiaryContainer">#41457C</item>
+        <item name="colorOnTertiaryContainer">#E0E0FF</item>
+        <item name="colorSurfaceVariant">#49454E</item>
+        <item name="colorOnSurfaceVariant">#CAC4D0</item>
+        <item name="colorOutline">#938F99</item>
+        <item name="colorOutlineVariant">#49454F</item>
         <item name="homeCardStyle">@style/Card</item>
 
         <item name="android:windowActionBar">false</item>

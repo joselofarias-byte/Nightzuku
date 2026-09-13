@@ -34,6 +34,14 @@ class BootCompleteReceiver : BroadcastReceiver() {
             return
         }
 
+        // Safe Mode deliberately suppresses third-party recovery paths. Trying to
+        // recreate a privileged service there works against Android's recovery
+        // semantics and can make troubleshooting harder.
+        if (context.packageManager.isSafeMode) {
+            Log.w(AppConstants.TAG, "Skip start on boot while Android is in Safe Mode")
+            return
+        }
+
         if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
 
         if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
@@ -71,11 +79,18 @@ class BootCompleteReceiver : BroadcastReceiver() {
                 try {
                     val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
                     val key = AdbKey(keystore, "shizuku")
-                    val client = AdbClient("127.0.0.1", port, key)
+                    // AdbMdns already resolved the real interface address. Reuse it
+                    // instead of assuming loopback, which is not valid on every
+                    // Android wireless-debugging implementation.
+                    val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
+                    val host = endpoint?.host ?: "127.0.0.1"
+                    val resolvedPort = endpoint?.port ?: port
+                    val client = AdbClient(host, resolvedPort, key)
                     client.connect()
                     client.shellCommand(Starter.internalCommand, null)
                     client.close()
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    Log.w(AppConstants.TAG, "ADB start on boot failed", error)
                 }
                 latch.countDown()
             }

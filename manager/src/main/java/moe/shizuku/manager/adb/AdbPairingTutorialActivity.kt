@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import moe.shizuku.manager.AppConstants
 import moe.shizuku.manager.R
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
 import moe.shizuku.manager.ui.compose.ShizukuLazyScaffold
@@ -134,7 +135,7 @@ class AdbPairingTutorialActivity : AppActivity() {
                                 }
                                 item {
                                     WearButton(
-                                        onClick = { finish() },
+                                        onClick = ::finishAndRetry,
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         WearText(stringResource(android.R.string.ok))
@@ -151,7 +152,7 @@ class AdbPairingTutorialActivity : AppActivity() {
                         notificationEnabled = notificationEnabled,
                         onOpenNotificationSettings = ::openNotificationSettings,
                         onOpenDeveloperOptions = ::openDeveloperOptions,
-                        onFinish = { finish() }
+                        onFinish = ::finishAndRetry
                     )
                 }
             } else {
@@ -230,7 +231,7 @@ class AdbPairingTutorialActivity : AppActivity() {
                                     number = 3,
                                     title = stringResource(R.string.adb_pairing_tutorial_content_finish),
                                     action = {
-                                        FilledTonalButton(onClick = { finish() }) {
+                                        FilledTonalButton(onClick = ::finishAndRetry) {
                                             Text(stringResource(android.R.string.ok))
                                         }
                                     }
@@ -241,6 +242,11 @@ class AdbPairingTutorialActivity : AppActivity() {
                 }
             }
         }
+    }
+
+    private fun finishAndRetry() {
+        NightDogRecovery.requestManualStart(applicationContext)
+        finish()
     }
 
     private fun openDeveloperOptions() {
