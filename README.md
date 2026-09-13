@@ -22,3 +22,5 @@ Mi trabajo se centra en adaptar la aplicación a un uso práctico, agregar sopor
 ## NightDog restoration build
 
 This branch preserves the NightDog service-status artwork with its original transparent background for device verification.
+
+Build verification trigger: full NightDog integration with transparent status artwork.
