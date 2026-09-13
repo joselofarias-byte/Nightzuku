@@ -8,7 +8,7 @@ android {
     defaultConfig {
         versionCode rootProject.ext.versionCode
         versionName rootProject.ext.versionName
-        buildConfigField "String", "MANAGER_APPLICATION_ID", "\"kerneldroid.nightzuku\""
+        buildConfigField "String", "MANAGER_APPLICATION_ID", "\"com.joselofarias.nightzuku\""
     }
     buildTypes {
         debug {
