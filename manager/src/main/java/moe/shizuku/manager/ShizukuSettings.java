@@ -25,6 +25,12 @@ public class ShizukuSettings {
     public static final String NIGHT_MODE = "night_mode";
     public static final String LANGUAGE = "language";
     public static final String KEEP_START_ON_BOOT = "start_on_boot";
+    public static final String ADB_TCP_ENABLED = "adb_tcp_enabled";
+    public static final String ADB_TCP_HOST = "adb_tcp_host";
+    public static final String ADB_TCP_PORT = "adb_tcp_port";
+
+    private static final String DEFAULT_ADB_TCP_HOST = "127.0.0.1";
+    private static final int DEFAULT_ADB_TCP_PORT = 5555;
 
     private static SharedPreferences sPreferences;
 
@@ -82,6 +88,36 @@ public class ShizukuSettings {
 
     public static void setLastLaunchMode(@LaunchMethod int method) {
         getPreferences().edit().putInt("mode", method).apply();
+    }
+
+    public static boolean isAdbTcpEnabled() {
+        return getPreferences().getBoolean(ADB_TCP_ENABLED, false);
+    }
+
+    public static String getAdbTcpHost() {
+        return getPreferences().getString(ADB_TCP_HOST, DEFAULT_ADB_TCP_HOST);
+    }
+
+    public static int getAdbTcpPort() {
+        return getPreferences().getInt(ADB_TCP_PORT, DEFAULT_ADB_TCP_PORT);
+    }
+
+    public static boolean setAdbTcpEndpoint(boolean enabled, @NonNull String host, int port) {
+        String normalizedHost = host.trim();
+        if (normalizedHost.isEmpty() || port < 1 || port > 65535) {
+            return false;
+        }
+
+        getPreferences().edit()
+                .putBoolean(ADB_TCP_ENABLED, enabled)
+                .putString(ADB_TCP_HOST, normalizedHost)
+                .putInt(ADB_TCP_PORT, port)
+                .apply();
+        return true;
+    }
+
+    public static void setAdbTcpEnabled(boolean enabled) {
+        getPreferences().edit().putBoolean(ADB_TCP_ENABLED, enabled).apply();
     }
 
     @AppCompatDelegate.NightMode
