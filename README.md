@@ -18,3 +18,7 @@ Mi trabajo se centra en adaptar la aplicación a un uso práctico, agregar sopor
 > Esta adaptación mantiene la atribución al trabajo original de Nightzuku / Shizuku.
 >
 > If you are migrating from the original Shizuku or Nightzuku package, uninstalling older builds first may still be required to avoid package/signature conflicts.
+
+## NightDog restoration build
+
+This branch preserves the NightDog service-status artwork with its original transparent background for device verification.
