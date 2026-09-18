@@ -16,10 +16,8 @@ import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.ShizukuSettings.LaunchMethod
-import moe.shizuku.manager.adb.AdbClient
-import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbMdns
-import moe.shizuku.manager.adb.PreferenceAdbKeyStore
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
@@ -43,6 +41,11 @@ class BootCompleteReceiver : BroadcastReceiver() {
         }
 
         if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
+
+        if (!NightDogRecovery.isDesiredRunning(context)) {
+            Log.w(AppConstants.TAG, "Skip start on boot; service was stopped manually")
+            return
+        }
 
         if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
             rootStart(context)
@@ -74,32 +77,44 @@ class BootCompleteReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             val latch = CountDownLatch(1)
+            val startLock = Any()
             val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
                 if (port <= 0) return@AdbMdns
-                try {
-                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                    val key = AdbKey(keystore, "shizuku")
-                    // AdbMdns already resolved the real interface address. Reuse it
-                    // instead of assuming loopback, which is not valid on every
-                    // Android wireless-debugging implementation.
-                    val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-                    val host = endpoint?.host ?: "127.0.0.1"
-                    val resolvedPort = endpoint?.port ?: port
-                    val client = AdbClient(host, resolvedPort, key)
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
-                    client.close()
-                } catch (error: Exception) {
-                    Log.w(AppConstants.TAG, "ADB start on boot failed", error)
+                // NsdManager delivers this on the main thread. Hop to IO before any
+                // blocking ADB connect / binder wait.
+                launch {
+                    synchronized(startLock) {
+                        if (Shizuku.pingBinder()) {
+                            latch.countDown()
+                            return@launch
+                        }
+                        try {
+                            val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
+                            val host = endpoint?.host ?: "127.0.0.1"
+                            val resolvedPort = endpoint?.port ?: port
+                            if (NightDogRecovery.startServerOverAdb(host, resolvedPort)) {
+                                latch.countDown()
+                            } else {
+                                Log.w(AppConstants.TAG, "ADB start on boot did not bring the binder up at $host:$resolvedPort")
+                            }
+                        } catch (error: Exception) {
+                            Log.w(AppConstants.TAG, "ADB start on boot failed", error)
+                        }
+                    }
                 }
-                latch.countDown()
             }
             if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
                 adbMdns.start()
-                latch.await(3, TimeUnit.SECONDS)
+                latch.await(BOOT_ADB_TIMEOUT_S, TimeUnit.SECONDS)
                 adbMdns.stop()
             }
             pending.finish()
         }
+    }
+
+    companion object {
+        // ponytail: Honor/MagicOS wireless debugging is often still advertising after 3s.
+        // 12s stays inside a goAsync boot window without waiting forever.
+        private const val BOOT_ADB_TIMEOUT_S = 12L
     }
 }
