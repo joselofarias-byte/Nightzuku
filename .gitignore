@@ -39,6 +39,7 @@ nightzuku-c*-build.txt
 *.txt
 *PATCH.md
 *AUDIT.md
+!NIGHTZUKU_AUDIT.md
 *POLISH.md
 *WALKTHROUGH.md
 *LOCALIZATION.md

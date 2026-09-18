@@ -3,6 +3,11 @@
 > Comparison date: 2026-06-15
 > Basis: full source traversal of Nightzuku + Stellar architecture knowledge from AGENTS.md
 > Audit is read-only. No code was modified.
+>
+> **Stale as of 2026-09-18.** Current runtime identity is `com.joselofarias.nightzuku`.
+> `ShizukuShellLoader` already targets `BuildConfig.MANAGER_APPLICATION_ID`, and
+> `waitSystemService` already times out after 60s. Use `NIGHTZUKU_AUDIT.md` for the
+> current evidence-based audit.
 
 ---
 
