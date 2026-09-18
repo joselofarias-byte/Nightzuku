@@ -71,7 +71,7 @@ Inherited upstream / fork leftovers that no longer make sense:
 | C5 | **High** | `module.prop` `webui`/`banner`/`action` paths used `directory.resolve(path)` with no canonical containment. A module could point scripts/WebUI outside its tree. | Shared `ModulePathPolicy.isInside`; `findFirstExisting` filters escaped paths. |
 | C6 | **Medium** | Module ZIP copied with no download size cap; extract size checked only after a full entry write. | 50 MiB stream cap on the ZIP; extract budget counted while copying. |
 | C7 | **Medium** | Failed install after `target.deleteRecursively()` left the previous module gone. | Atomic rename with backup; restore backup if the new tree is unreadable; delete backup only after success. Reinstall revokes trust. |
-| C8 | **Medium** | `File.toPath()` in WebView path check requires API 26; minSdk is 25. Failed closed via `runCatching` (broke local WebUI on 7.1). | Canonical-path string check (API 25-safe). Honor 200 is API 36, but minSdk still 25. |
+| C8 | **Medium** | `File.toPath()` in WebView **and** `ModuleJsBridge.ensureInside` requires API 26; minSdk is 25. WebView failed closed via `runCatching` (broke local WebUI on 7.1). JS download used the same API. | Canonical-path `ModulePathPolicy` (API 25-safe). Honor 200 is API 36, but minSdk still 25. |
 | C9 | **Medium** | Boot ADB start used a **3s** mDNS window and **always** `countDown()` after the first callback, including failures. Slow MagicOS wireless debugging missed auto-start. | 12s window; count down only on binder up; ADB work hopped off the main/Nsd thread. |
 | C10 | **Medium** | `OnBinderReceivedListener` wrote `desired_running=true`. Sticky redelivery or an external start could undo a manual stop. | Desired state changes only from explicit start/stop UI (home, pairing, lab) and prefs. |
 | C11 | **Low** | Dead `runCompatTest()` in production server. | Removed. |
@@ -127,10 +127,10 @@ Recorded after the cloud build/test pass on this branch.
 
 | Check | Result |
 | --- | --- |
-| `./gradlew :manager:testDebugUnitTest` (new `ModulePathPolicyTest`) | *pending — filled after CI/local Gradle* |
-| `./gradlew :manager:assembleDebug` | *pending* |
-| `./gradlew :server:compileDebugJavaWithJavac` | *pending* |
-| `./gradlew :manager:lintDebug` | *pending; lint is not in CI* |
+| `./gradlew :manager:testDebugUnitTest` | **PASS** — `ModulePathPolicyTest` 4 tests, 0 failures (0.024s) |
+| `./gradlew :manager:assembleDebug` | **PASS** — `out/apk/nightzuku-v13.6.0.r47.49f2473-debug.apk` (31 MiB) |
+| `:server:compileDebugJavaWithJavac` | **PASS** (pulled in by manager assemble) |
+| `./gradlew :manager:lintDebug` | **Ran; task fails.** Lint is not in CI (`checkReleaseBuilds false`). 271 errors / 126 warnings, pre-existing: 224 `MissingTranslation`, 25 `NewApi` (API 30 AdbMdns vs minSdk 25, call sites already version-gated), 17 Compose `LocalContextGetResourceValueCall`, 1 `BlockedPrivateApi` (Shizuku hidden-API reflection). New code did not add Error-level findings. |
 | Instrumented / device tests | **None in repo**; Honor 200 procedures below |
 | Static analysis besides lint | No detekt/ktlint config in-repo |
 
@@ -143,7 +143,7 @@ On `cursor/nightzuku-audit-and-hardening-faf3` (unmerged):
 - `NightDogRecovery`: ADB in-process start; desired-state only from explicit UI; shared `startServerOverAdb`.
 - `HomeActivity`: stop disables watchdog; start buttons call `requestManualStart`.
 - `BootCompleteReceiver`: honor manual stop; 12s mDNS; success-only latch; IO hop + start lock.
-- `AdbModuleManager` + `ModulePathPolicy`: ZIP/extract limits, backup/rollback, path containment.
+- `AdbModuleManager` + `ModulePathPolicy` + `ModuleJsBridge`: ZIP/extract limits, backup/rollback, path containment (including JS `download()`).
 - `ModuleWebViewActivity`: JS bridge strip; API 25-safe path check.
 - `AdbPairingService`: structured coroutine scope.
 - `ShizukuService`: remove `runCompatTest`.

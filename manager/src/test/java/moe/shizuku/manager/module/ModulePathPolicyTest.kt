@@ -20,8 +20,8 @@ class ModulePathPolicyTest {
         }
         try {
             val child = File(root, "webroot/index.html").apply {
-                parentFile.mkdirs()
-                writeText("ok")
+            parentFile?.mkdirs()
+            writeText("ok")
             }
             assertTrue(ModulePathPolicy.isInside(root, child))
             assertTrue(ModulePathPolicy.isInside(root, child.canonicalPath))
