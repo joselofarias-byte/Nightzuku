@@ -285,30 +285,92 @@ Not coverable here: live binder, PTY, permission UI, SELinux, HONOR OEM broadcas
 
 ---
 
-## 9. Workflow / artifact IDs
+## 9. CI evidence (PR #26)
 
-### PR #25 (already merged)
+PR: https://github.com/joselofarias-byte/Nightzuku/pull/26  
+Branch: `cursor/rish-postmerge-audit-5a11`  
+**HEAD SHA (exact):** `159f30e7809ddbe5d74047abc7bf0ba17b960296`  
+Checked with `git rev-parse origin/cursor/rish-postmerge-audit-5a11` and `gh pr view 26 --json headRefOid`.
 
-See section 1.
+No other workflows ran on this PR (no `app.yml` tag build, no issue-similarity).
 
-### This audit PR
+### 9.1 Workflow / job table (this PR)
 
-Recorded after CI on `cursor/rish-postmerge-audit-5a11`:
+| Workflow | Run ID | Job | Job ID | Head SHA | Conclusion | URL |
+|---|---|---|---|---|---|---|
+| Android PR build | [35471786791](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471786791) | `build` | 105973959866 | `159f30e7809ddbe5d74047abc7bf0ba17b960296` | **SUCCESS** | https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471786791/job/105973959866 |
+| Verify Nightzuku server | [35471786780](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471786780) | `verify-server` | 105973927593 | `159f30e7809ddbe5d74047abc7bf0ba17b960296` | **SUCCESS** | https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471786780/job/105973927593 |
+| Android PR build (superseded) | [35471576648](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576648) | `build` | 105973363193 | `4609e9d8330a18cbce08ced70890927f1a90396f` | **CANCELLED** (concurrency; replaced by 35471786791) | https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576648/job/105973363193 |
+| Verify Nightzuku server (superseded) | [35471576681](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576681) | `verify-server` | 105973363073 | `4609e9d8330a18cbce08ced70890927f1a90396f` | **SUCCESS** | https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576681/job/105973363073 |
 
-| Workflow | Run ID | Conclusion | Artifact IDs |
-|---|---|---|---|
-| Android PR build | [35471576648](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576648) | in progress at first report; see follow-up if superseded | *pending* |
-| Verify Nightzuku server | [35471576681](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576681) | SUCCESS | none (compile-only) |
+HEAD `35471786791` / job `build` step conclusions (all SUCCESS):
 
-Local build/test results are in section 9.1. GitHub APK artifact IDs are filled when the Android PR build finishes.
+- Test rish identity detection
+- Test rish Java helpers
+- Build manager debug APK
+- Build permanently signed release APK
+- Verify APK revision and release certificate
+- Upload manager debug APK
+- Upload permanently signed release APK
 
-### 9.1 Local results
+### 9.2 Artifact table (HEAD run 35471786791)
 
-- `scripts/test_rish_identity.sh`: **PASS** (17 cases: Termux, NewTermux, override, PREFIX, HOME, rejection, no hardcoded ids)
-- `javac` + JUnit `RishIdentityTest`: **PASS** (7 tests)
-- `./gradlew :shell:testDebugUnitTest`: **PASS** — `RishIdentityTest` 7/7, `BroadcastIntentArgsTest` 4/4, 0 failures
-- `./gradlew :manager:assembleDebug`: **PASS**
-- Local debug APK: `out/apk/nightzuku-v13.6.0.r47.4609e9d-debug.apk` (and `manager/build/outputs/apk/debug/manager-debug.apk`)
+CI does **not** publish a separate ARM64-only APK. Both artifacts are **universal / multi-ABI** APKs that include `arm64-v8a` (plus `armeabi-v7a`, `x86`, `x86_64`). GitHub `digest` is the artifact **zip**. APK SHA-256 is of the extracted file.
+
+| Kind | Artifact ID | Artifact name | Zip size (bytes) | GitHub zip digest | Inner APK path | APK size (bytes) | APK SHA-256 |
+|---|---|---|---|---|---|---|---|
+| Debug (universal, includes ARM64) | `10593655334` | `nightzuku-manager-debug-159f30e` | 30081749 | `sha256:73118a88f07918b9ea0643fad6a424cf9e3c7d93dcc4153059cd038bdea4597a` | `manager-debug.apk` | 32101593 | `e995b79eb99c58554c85df6371a3b0b53facce6ddb24703d0f6f40febc37f6f4` |
+| Release signed (universal, includes ARM64) | `10592824826` | `nightzuku-manager-release-signed-159f30e` | 2856364 | `sha256:9ae195875bfea83efed3e124a4e9206d0f192aef04f488ea1343951ab17e2366` | `manager/build/outputs/apk/release/manager-release.apk` | 3684415 | `37a18c83243e9e55a95c6bede94b5b148f99526b5128ef5c0448a433fd24f2cb` |
+
+Release artifact also contains `build-head-sha.txt` (`159f30e7809ddbe5d74047abc7bf0ba17b960296`), `release-badging.txt`, and `release-certificate.txt` (v2 signer CN=Nightzuku Fork, cert SHA-256 `a0aa7a8eecbc38a22f81ffe4e713914c1a810e11ab8e8f507b03b3d54df9b496`).
+
+### 9.3 Package verification (`aapt dump badging`)
+
+Downloaded both artifacts from run `35471786791` and inspected with `/home/ubuntu/android-sdk/build-tools/36.0.0/aapt`.
+
+| APK | package / applicationId | versionCode | versionName | targetSdk | native-code |
+|---|---|---|---|---|---|
+| debug `manager-debug.apk` | **`com.joselofarias.nightzuku`** | 47 | `13.6.0.r47.159f30e` | 36 | `arm64-v8a armeabi-v7a x86 x86_64` |
+| release `manager-release.apk` | **`com.joselofarias.nightzuku`** | 47 | `13.6.0.r47.159f30e` | 36 | `arm64-v8a armeabi-v7a x86 x86_64` |
+
+`versionName` contains HEAD short SHA `159f30e`, matching CI’s revision check. Label: `Nightzuku`.
+
+### 9.4 Local results (agent VM, not a substitute for GitHub artifacts)
+
+- `scripts/test_rish_identity.sh`: **PASS** (17 cases)
+- `./gradlew :shell:testDebugUnitTest`: **PASS** (11 tests)
+- `./gradlew :manager:assembleDebug`: **PASS** (local APK was from earlier commit `4609e9d`; use CI artifacts above for HEAD `159f30e`)
+
+### 9.5 PR #25 CI (already merged; historical)
+
+See section 1. Not re-run for this follow-up.
+
+### 9.6 Physical validation split
+
+#### A) Already physically PASSED on HONOR 200 — do not re-open
+
+Authoritative at merge commit `611aa4b085790ec6d79540b737517775a9491c76` (PR #25):
+
+- Official Termux `com.termux`
+- rish binder connection
+- remote shell `uid=2000(shell)` `gid=2000(shell)` `u:r:shell:s0`
+- `settings` / `pm` / `dumpsys` / `getprop`
+- `/data/local/tmp` accessible
+- no `REQUEST_BINDER` timeout
+- Android 16 `broadcastIntentWithFeature` path
+
+PR #26 did **not** change that packing algorithm or the Nightzuku manager package target. Do not repeat the full uid=2000 Termux shell suite.
+
+#### B) PR #26 behaviors that STILL REQUIRE physical HONOR validation
+
+These are the only new runtime behaviors:
+
+1. Dynamic identity with **no** hardcoded `com.termux` fallback — NewTermux must detect `com.newtermux.dev`, not Termux.
+2. Re-export / replace stale `~/.nightzuku/rish` (old wrappers still have the hardcoded fallback).
+3. Binder timeout cancelled after a successful reply (session alive past 5s during/after first grant).
+4. Server not running → immediate `Server is not running` (not a 5s timeout).
+
+Minimal copy-paste procedure: section 12.B.
 
 ---
 
@@ -348,7 +410,74 @@ Nightzuku package: `com.joselofarias.nightzuku`.
 Official Termux: `com.termux`.  
 NewTermux: `com.newtermux.dev`.
 
-Use an APK built from this branch (CI artifact or local `assembleDebug` / signed release). Re-export rish from Nightzuku **Use Nightzuku in Termux** so `~/.nightzuku` is not stale.
+Install a **HEAD** APK from CI run `35471786791` (artifact `10592824826` signed release, or `10593655334` debug). Do not use the older local `4609e9d` debug APK.
+
+### 12.A Already PASSED (PR #25) — skip
+
+Do **not** repeat the full uid=2000 Termux `id` / SELinux / `settings` / `pm` / `dumpsys` / `getprop` / `/data/local/tmp` suite. That PASS at `611aa4b` still stands.
+
+### 12.B Minimal PR #26-only procedure (required)
+
+One install, one re-export, then four short checks. Nightzuku server should already be the same ADB uid=2000 service from the PR #25 PASS.
+
+**0. Re-export stale rish (required once)**
+
+In Nightzuku: **Use Nightzuku in Termux** → Export files (overwrites Downloads `rish` + `rish_shizuku.dex`).
+
+In **NewTermux** (`com.newtermux.dev`):
+
+```sh
+termux-setup-storage
+mkdir -p ~/.nightzuku
+cp ~/storage/downloads/rish ~/.nightzuku/rish
+cp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex
+chmod +x ~/.nightzuku/rish
+chmod 444 ~/.nightzuku/rish_shizuku.dex
+```
+
+**1. NewTermux identity — must not be `com.termux`**
+
+```sh
+RISH_DETECT_ONLY=1 ~/.nightzuku/rish ; echo EXIT:$?
+RISH_APPLICATION_ID=com.explicit.override RISH_DETECT_ONLY=1 ~/.nightzuku/rish
+```
+
+Required:
+
+- first command prints exactly `com.newtermux.dev` and `EXIT:0`
+- must **not** print `com.termux`
+- override prints exactly `com.explicit.override`
+
+**2. Live rish from NewTermux (permission + timeout cancel)**
+
+```sh
+cd ~/.nightzuku
+RISH_DEBUG=1 ./rish
+```
+
+Grant Nightzuku if prompted (dialog should name NewTermux, not Termux). Then:
+
+```sh
+id
+sleep 6
+echo still-alive
+```
+
+Required: connects (no `Request timeout`); `still-alive` prints after 6s. `id` may show the already-PASSed `uid=2000(shell)` — that is a one-line smoke, not a re-validation of the PR #25 suite.
+
+**3. Server-not-running immediate error**
+
+Stop the Nightzuku server, then:
+
+```sh
+cd ~/.nightzuku && ./rish ; echo EXIT:$?
+```
+
+Required: `Server is not running` immediately (not a ~5s timeout) and non-zero `EXIT`.
+
+**4. Optional one-line Termux smoke (only if NewTermux detection failed)**
+
+If and only if step 1 printed the wrong package, in official Termux run `RISH_DETECT_ONLY=1 ~/.nightzuku/rish` and confirm `com.termux`. Do not run the full shell suite.
 
 ### 12.1 Shared setup (once)
 
