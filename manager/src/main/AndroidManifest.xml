@@ -103,6 +103,10 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".settings.MaximumPersistenceActivity"
+            android:exported="false"
+            android:label="@string/persistence_title" />
+        <activity
             android:name=".settings.LabFeaturesActivity"
             android:exported="false"
             android:label="Lab Features" />

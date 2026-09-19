@@ -211,7 +211,10 @@ abstract class HomeActivity : AppActivity() {
                     if (showStopDialog) {
                         HomeStopDialog(
                             onDismiss = { showStopDialog = false },
-                            onConfirm = { runCatching { Shizuku.exit() } }
+                            onConfirm = {
+                                NightDogRecovery.prepareForManualStop(this@HomeActivity)
+                                runCatching { Shizuku.exit() }
+                            }
                         )
                     }
                     if (showAdbCommandDialog) {
@@ -575,6 +578,7 @@ private fun PhoneHomeScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { StatusCard(serviceResource, status, onStartRoot, onStartWirelessAdb, isRooted, canUseWirelessAdb) }
+            item { MaximumPersistenceCard() }
             if (adbPermission) {
                 item { ManageAppsCard(status, grantedResource, unauthorizedResource, onManageApps) }
                 item {
