@@ -3,24 +3,64 @@ BASEDIR=$(dirname "$0")
 DEX="$BASEDIR"/rish_shizuku.dex
 
 if [ ! -f "$DEX" ]; then
-  echo "Cannot find $DEX, please check the tutorial in Shizuku app"
+  echo "Cannot find $DEX, please check the tutorial in Nightzuku"
   exit 1
 fi
 
-if [ $(getprop ro.build.version.sdk) -ge 34 ]; then
-  if [ -w $DEX ]; then
+if [ "$(getprop ro.build.version.sdk)" -ge 34 ]; then
+  if [ -w "$DEX" ]; then
     echo "On Android 14+, app_process cannot load writable dex."
     echo "Attempting to remove the write permission..."
-    chmod 400 $DEX
+    chmod 400 "$DEX"
   fi
-  if [ -w $DEX ]; then
+  if [ -w "$DEX" ]; then
     echo "Cannot remove the write permission of $DEX."
-    echo "You can copy to file to terminal app's private directory (/data/data/<package>, so that remove write permission is possible"
+    echo "Copy it to the terminal app's private directory and make it read-only."
     exit 1
   fi
 fi
 
-# Replace "com.termux" with the application id of your terminal app
-[ -z "$RISH_APPLICATION_ID" ] && export RISH_APPLICATION_ID="com.termux"
+# rish must tell Nightzuku which terminal application owns this process.
+# Keep an explicit user override, but auto-detect Termux-compatible forks so
+# com.termux, NewTermux (com.newtermux.dev), and future package-renamed forks
+# do not need a hand-edited wrapper.
+if [ -z "$RISH_APPLICATION_ID" ]; then
+  case "$TERMUX_APP__PACKAGE_NAME" in
+    *.*) RISH_APPLICATION_ID="$TERMUX_APP__PACKAGE_NAME" ;;
+  esac
+fi
+
+if [ -z "$RISH_APPLICATION_ID" ]; then
+  case "$PREFIX" in
+    /data/data/*/files/usr)
+      RISH_APPLICATION_ID=${PREFIX#/data/data/}
+      RISH_APPLICATION_ID=${RISH_APPLICATION_ID%/files/usr}
+      ;;
+    /data/user/*/*/files/usr)
+      RISH_APPLICATION_ID=$(printf '%s\n' "$PREFIX" | sed -n 's#^/data/user/[0-9][0-9]*/\([^/]*\)/files/usr$#\1#p')
+      ;;
+  esac
+fi
+
+if [ -z "$RISH_APPLICATION_ID" ]; then
+  case "$HOME" in
+    /data/data/*/files/home)
+      RISH_APPLICATION_ID=${HOME#/data/data/}
+      RISH_APPLICATION_ID=${RISH_APPLICATION_ID%/files/home}
+      ;;
+    /data/user/*/*/files/home)
+      RISH_APPLICATION_ID=$(printf '%s\n' "$HOME" | sed -n 's#^/data/user/[0-9][0-9]*/\([^/]*\)/files/home$#\1#p')
+      ;;
+  esac
+fi
+
+[ -z "$RISH_APPLICATION_ID" ] && RISH_APPLICATION_ID="com.termux"
+export RISH_APPLICATION_ID
+
+if [ "$RISH_DEBUG" = "1" ]; then
+  echo "rish: application id = $RISH_APPLICATION_ID" >&2
+  echo "rish: dex = $DEX" >&2
+fi
+
 unset LD_LIBRARY_PATH
-/system/bin/app_process -Djava.class.path="$DEX" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "$@"
+exec /system/bin/app_process -Djava.class.path="$DEX" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "$@"
