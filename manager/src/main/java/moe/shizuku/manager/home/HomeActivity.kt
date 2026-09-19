@@ -211,7 +211,10 @@ abstract class HomeActivity : AppActivity() {
                     if (showStopDialog) {
                         HomeStopDialog(
                             onDismiss = { showStopDialog = false },
-                            onConfirm = { runCatching { Shizuku.exit() } }
+                            onConfirm = {
+                                NightDogRecovery.prepareForManualStop(applicationContext)
+                                runCatching { Shizuku.exit() }
+                            }
                         )
                     }
                     if (showAdbCommandDialog) {
@@ -253,6 +256,7 @@ abstract class HomeActivity : AppActivity() {
     }
 
     private fun startAndDismiss(port: Int) {
+        NightDogRecovery.requestManualStart(applicationContext)
         startActivity(Intent(this, StarterActivity::class.java).apply {
             putExtra(StarterActivity.EXTRA_IS_ROOT, false)
             putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
@@ -279,6 +283,7 @@ abstract class HomeActivity : AppActivity() {
 
     private fun startRoot() {
         if (!EnvironmentUtils.isRooted()) return
+        NightDogRecovery.requestManualStart(applicationContext)
         startActivity(Intent(this, StarterActivity::class.java).apply { putExtra(StarterActivity.EXTRA_IS_ROOT, true) })
     }
 
@@ -286,6 +291,7 @@ abstract class HomeActivity : AppActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { onShowDiscovery(); return }
         val port = EnvironmentUtils.getAdbTcpPort()
         if (port > 0) {
+            NightDogRecovery.requestManualStart(applicationContext)
             startActivity(Intent(this, StarterActivity::class.java).apply {
                 putExtra(StarterActivity.EXTRA_IS_ROOT, false)
                 putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
