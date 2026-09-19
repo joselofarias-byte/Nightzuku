@@ -297,16 +297,18 @@ Recorded after CI on `cursor/rish-postmerge-audit-5a11`:
 
 | Workflow | Run ID | Conclusion | Artifact IDs |
 |---|---|---|---|
-| Android PR build | *pending* | *pending* | *pending* |
-| Verify Nightzuku server | *pending* | *pending* | *pending* |
+| Android PR build | [35471576648](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576648) | in progress at first report; see follow-up if superseded | *pending* |
+| Verify Nightzuku server | [35471576681](https://github.com/joselofarias-byte/Nightzuku/actions/runs/35471576681) | SUCCESS | none (compile-only) |
 
-Local build/test results are appended in section 9.1 after the agent run.
+Local build/test results are in section 9.1. GitHub APK artifact IDs are filled when the Android PR build finishes.
 
-### 9.1 Local results (filled after execution)
+### 9.1 Local results
 
-- `scripts/test_rish_identity.sh`: *pending*
-- `./gradlew :shell:testDebugUnitTest`: *pending*
-- `./gradlew :manager:assembleDebug`: *pending*
+- `scripts/test_rish_identity.sh`: **PASS** (17 cases: Termux, NewTermux, override, PREFIX, HOME, rejection, no hardcoded ids)
+- `javac` + JUnit `RishIdentityTest`: **PASS** (7 tests)
+- `./gradlew :shell:testDebugUnitTest`: **PASS** — `RishIdentityTest` 7/7, `BroadcastIntentArgsTest` 4/4, 0 failures
+- `./gradlew :manager:assembleDebug`: **PASS**
+- Local debug APK: `out/apk/nightzuku-v13.6.0.r47.4609e9d-debug.apk` (and `manager/build/outputs/apk/debug/manager-debug.apk`)
 
 ---
 
