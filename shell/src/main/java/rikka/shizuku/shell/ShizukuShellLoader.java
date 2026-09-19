@@ -68,14 +68,10 @@ public class ShizukuShellLoader {
         }
 
         try {
-            if (Build.VERSION.SDK_INT >= 36) {
-                Intent activityIntent = new Intent("rikka.shizuku.intent.action.REQUEST_BINDER")
-                        .setPackage(BuildConfig.MANAGER_APPLICATION_ID)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        .putExtra("data", data);
-                am.startActivityAsUser(null, callingPackage, activityIntent, null, null, null, 0, 0, null, null, Os.getuid() / 100000);
-            } else if (Build.VERSION.SDK_INT >= 30) {
+            if (Build.VERSION.SDK_INT >= 30) {
+                // Android 16 still needs the binder request delivered as a broadcast.
+                // Starting ShellRequestHandlerActivity directly can return without error
+                // yet never deliver the receiver binder back to rish, causing a timeout.
                 java.lang.reflect.Method method = findBroadcastMethod(am);
                 if (method == null) {
                     throw new RuntimeException("Cannot find broadcastIntentWithFeature on " + am.getClass());
@@ -173,6 +169,12 @@ public class ShizukuShellLoader {
 
         ShizukuShellLoader.callingPackage = packageName;
 
+        if ("1".equals(System.getenv("RISH_DEBUG"))) {
+            System.err.println("rish: manager package = " + BuildConfig.MANAGER_APPLICATION_ID);
+            System.err.println("rish: Android SDK = " + Build.VERSION.SDK_INT);
+            System.err.flush();
+        }
+
         if (Looper.getMainLooper() == null) {
             Looper.prepareMainLooper();
         }
@@ -189,8 +191,8 @@ public class ShizukuShellLoader {
 
         handler.postDelayed(() -> abort(
                 String.format(
-                        "Request timeout. The connection between the current app (%1$s) and Shizuku app may be blocked by your system. " +
-                                "Please disable all battery optimization features for both current app (%1$s) and Shizuku app.",
+                        "Request timeout. No binder reply was received by current app (%1$s) from Nightzuku (" + BuildConfig.MANAGER_APPLICATION_ID + "). " +
+                                "This can be caused by binder-request delivery being blocked or by the Nightzuku server not answering.",
                         packageName)
         ), 5000);
 

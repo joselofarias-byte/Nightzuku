@@ -146,14 +146,14 @@ Note: Nightzuku is the modern successor to Shizuku. Please make sure to uninstal
     <string name="terminal_tutorial_1">Export the files. You will receive %1$s and %2$s in Downloads.</string>
     <string name="terminal_tutorial_1_description">If there are files with the same name in the selected folder, they will be deleted.\n\nThe export function uses SAF (Storage Access Framework). It\'s reported that MIUI breaks the functions of SAF. If you are using MIUI, you may have to extract the file from Nightzuku\'s apk or download from GitHub.</string>
     <string name="terminal_export_files">Export files</string>
-    <string name="terminal_tutorial_2">For Termux, copy and run these commands:</string>
-    <string name="terminal_tutorial_2_description">For Termux, no manual package replacement is needed.</string>
+    <string name="terminal_tutorial_2">For Termux or NewTermux, copy and run these commands:</string>
+    <string name="terminal_tutorial_2_description">rish now auto-detects the terminal application id from the Termux environment. This supports Termux and package-renamed forks such as NewTermux without editing the script.</string>
     <string name="terminal_tutorial_2_command">termux-setup-storage\nmkdir -p ~/.nightzuku\ncp ~/storage/downloads/rish ~/.nightzuku/rish\ncp ~/storage/downloads/rish_shizuku.dex ~/.nightzuku/rish_shizuku.dex\nchmod +x ~/.nightzuku/rish\nchmod 444 ~/.nightzuku/rish_shizuku.dex\nls -l ~/.nightzuku/rish ~/.nightzuku/rish_shizuku.dex</string>
-    <string name="terminal_tutorial_3">Run in Termux:</string>
+    <string name="terminal_tutorial_3">Run in your terminal:</string>
     <string name="terminal_tutorial_advanced_title">Using another terminal?</string>
     <string name="terminal_tutorial_advanced_dialog_title">Other terminal apps</string>
-    <string name="terminal_tutorial_advanced_dialog_message">For another terminal app, set RISH_APPLICATION_ID to that app&#8217;s package name before running rish.</string>
-    <string name="terminal_tutorial_3_description">For another terminal app, set RISH_APPLICATION_ID manually before running rish.</string>
+    <string name="terminal_tutorial_advanced_dialog_message">If automatic detection is not available for another terminal app, set RISH_APPLICATION_ID to that app&#8217;s package name before running rish. Set RISH_DEBUG=1 to print the detected package.</string>
+    <string name="terminal_tutorial_3_description">Termux-compatible terminals are detected automatically. RISH_APPLICATION_ID remains available as an explicit override.</string>
     <string name="terminal_tutorial_3_command">cd ~/.nightzuku\n./rish</string>
     <string name="copy_commands">Copy commands</string>
     <string name="rish_description"><![CDATA[
