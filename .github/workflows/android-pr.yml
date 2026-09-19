@@ -13,6 +13,7 @@ on:
       - feature/adb-mdns-endpoint
       - feature/adb-tcp-persistence
       - fix/nightdog-adb-tcp-integration
+      - cursor/rish-postmerge-audit-5a11
   workflow_dispatch:
 
 permissions:
@@ -106,6 +107,9 @@ jobs:
 
       - name: Test rish Java helpers
         run: ./gradlew --no-daemon --stacktrace :shell:testDebugUnitTest
+
+      - name: Test manager persistence helpers
+        run: ./gradlew --no-daemon --stacktrace :manager:testDebugUnitTest
 
       - name: Build manager debug APK
         run: ./gradlew --no-daemon --stacktrace :manager:assembleDebug

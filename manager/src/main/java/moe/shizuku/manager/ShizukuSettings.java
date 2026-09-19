@@ -28,6 +28,7 @@ public class ShizukuSettings {
     public static final String ADB_TCP_ENABLED = "adb_tcp_enabled";
     public static final String ADB_TCP_HOST = "adb_tcp_host";
     public static final String ADB_TCP_PORT = "adb_tcp_port";
+    public static final String ADB_REACTIVATION_REQUIRED = "adb_reactivation_required";
 
     private static final String DEFAULT_ADB_TCP_HOST = "127.0.0.1";
     private static final int DEFAULT_ADB_TCP_PORT = 5555;
@@ -118,6 +119,14 @@ public class ShizukuSettings {
 
     public static void setAdbTcpEnabled(boolean enabled) {
         getPreferences().edit().putBoolean(ADB_TCP_ENABLED, enabled).apply();
+    }
+
+    public static boolean isAdbReactivationRequired() {
+        return getPreferences().getBoolean(ADB_REACTIVATION_REQUIRED, false);
+    }
+
+    public static void setAdbReactivationRequired(boolean required) {
+        getPreferences().edit().putBoolean(ADB_REACTIVATION_REQUIRED, required).apply();
     }
 
     @AppCompatDelegate.NightMode
