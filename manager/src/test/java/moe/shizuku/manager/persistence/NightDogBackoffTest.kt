@@ -48,8 +48,9 @@ class NightDogBackoffTest {
     fun remainingRetryCountsDownInsideWindow() {
         val lastAttempt = 10_000L
         val now = 12_000L
-        assertEquals(18_000L, NightDogBackoff.nextRetryElapsedRealtime(now, lastAttempt, 2))
-        assertEquals(6_000L, NightDogBackoff.remainingRetryMs(now, lastAttempt, 2))
+        // attempt 2 uses 16s: next = 10_000 + 16_000 = 26_000
+        assertEquals(26_000L, NightDogBackoff.nextRetryElapsedRealtime(now, lastAttempt, 2))
+        assertEquals(14_000L, NightDogBackoff.remainingRetryMs(now, lastAttempt, 2))
         assertEquals(0L, NightDogBackoff.remainingRetryMs(30_000L, lastAttempt, 2))
     }
 }
