@@ -16,6 +16,7 @@ enum class RecoveryTransport {
     BINDER_ALIVE,
     PERSISTENT_LOCAL_TCP,
     MDNS_WIRELESS_DEBUGGING,
+    DYNAMIC_LOCAL_WIRELESS_ADB,
     SYSTEM_ADB_TCP,
     NONE
 }
@@ -40,7 +41,8 @@ data class TransportCandidate(
             RecoveryTransport.BINDER_ALIVE -> true
             RecoveryTransport.PERSISTENT_LOCAL_TCP,
             RecoveryTransport.SYSTEM_ADB_TCP -> authenticated
-            RecoveryTransport.MDNS_WIRELESS_DEBUGGING -> socketReachable || authenticated
+            RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+            RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB -> socketReachable || authenticated
             RecoveryTransport.NONE -> false
         }
 }
@@ -51,11 +53,13 @@ object RecoveryTransportPolicy {
         binderAlive: Boolean,
         persistent: TransportCandidate?,
         mdns: TransportCandidate?,
-        systemTcp: TransportCandidate?
+        systemTcp: TransportCandidate?,
+        dynamicLocal: TransportCandidate? = null
     ): TransportCandidate {
         if (binderAlive) return TransportCandidate(RecoveryTransport.BINDER_ALIVE)
         persistent?.takeIf { it.usableForRestart }?.let { return it }
         mdns?.takeIf { !it.host.isNullOrBlank() && it.port != null }?.let { return it }
+        dynamicLocal?.takeIf { it.usableForRestart }?.let { return it }
         systemTcp?.takeIf { it.usableForRestart }?.let { return it }
         return TransportCandidate(RecoveryTransport.NONE)
     }
@@ -63,10 +67,12 @@ object RecoveryTransportPolicy {
     fun selectForRecoveryAttempt(
         persistent: TransportCandidate?,
         mdns: TransportCandidate?,
-        systemTcp: TransportCandidate?
+        systemTcp: TransportCandidate?,
+        dynamicLocal: TransportCandidate? = null
     ): TransportCandidate {
         persistent?.takeIf { it.socketReachable }?.let { return it }
         mdns?.takeIf { !it.host.isNullOrBlank() && it.port != null }?.let { return it }
+        dynamicLocal?.takeIf { it.socketReachable }?.let { return it }
         systemTcp?.takeIf { it.socketReachable }?.let { return it }
         return TransportCandidate(RecoveryTransport.NONE)
     }
