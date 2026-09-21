@@ -7,10 +7,8 @@ import android.os.Bundle;
  * Builds {@code IActivityManager.broadcastIntentWithFeature} arguments.
  * <p>
  * Android 16 / SDK 36 still needs REQUEST_BINDER delivered as a broadcast.
- * Starting {@code ShellRequestHandlerActivity} can return without error and
- * never deliver the receiver binder, which is the HONOR 200 ELI-NX9 timeout.
- * Keep this packing conservative: do not replace it with upstream
- * {@code broadcastIntent} or an activity start on SDK 30+.
+ * Keep this packing conservative and explicit: rish requires an unordered,
+ * non-sticky broadcast and the real Android user id.
  */
 public final class BroadcastIntentArgs {
 
@@ -29,31 +27,34 @@ public final class BroadcastIntentArgs {
         return best;
     }
 
-    public static boolean isAppOpParameter(Class<?>[] paramTypes, int index, int intIndex) {
-        if (index + 1 < paramTypes.length && paramTypes[index + 1] == Bundle.class) {
-            return true;
-        }
-        return intIndex == 1 && index + 1 < paramTypes.length && paramTypes[index + 1] != String.class;
+    public static boolean isAppOpParameter(Class<?>[] paramTypes, int index) {
+        return index + 1 < paramTypes.length && paramTypes[index + 1] == Bundle.class;
     }
 
     /**
      * Layout used on Android 11+ hidden IActivityManager:
      * caller, featureId, intent, then version-specific trailing args.
      */
-    public static Object[] build(Class<?>[] paramTypes, Intent intent) {
+    public static Object[] build(Class<?>[] paramTypes, Intent intent, int userId) {
         Object[] args = new Object[paramTypes.length];
         args[0] = null;
         args[1] = null;
         args[2] = intent;
-        int intIndex = 0;
-        int booleanIndex = 0;
+
         for (int i = 3; i < paramTypes.length; i++) {
             Class<?> t = paramTypes[i];
             if (t == boolean.class) {
-                args[i] = booleanIndex++ == 0;
+                // Android 16 tail booleans include serialized and sticky.
+                // rish must use a normal unordered, non-sticky broadcast.
+                args[i] = false;
             } else if (t == int.class) {
-                args[i] = isAppOpParameter(paramTypes, i, intIndex) ? -1 : 0;
-                intIndex++;
+                if (i == paramTypes.length - 1) {
+                    args[i] = userId;
+                } else if (isAppOpParameter(paramTypes, i)) {
+                    args[i] = -1;
+                } else {
+                    args[i] = 0;
+                }
             } else if (t == long.class) {
                 args[i] = 0L;
             } else {
