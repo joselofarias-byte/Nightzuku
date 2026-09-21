@@ -17,6 +17,7 @@ import android.text.TextUtils;
 
 import java.io.File;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import rikka.shizuku.shell.BuildConfig;
 import dalvik.system.BaseDexClassLoader;
@@ -28,6 +29,7 @@ public class ShizukuShellLoader {
     private static String[] args;
     private static String callingPackage;
     private static Handler handler;
+    private static final AtomicBoolean binderReceived = new AtomicBoolean(false);
 
     private static final Binder receiverBinder = new Binder() {
 
@@ -38,11 +40,12 @@ public class ShizukuShellLoader {
 
                 String sourceDir = data.readString();
                 if (binder != null) {
-                    handler.post(() -> onBinderReceived(binder, sourceDir));
-                } else {
-                    System.err.println("Server is not running");
+                    if (binderReceived.compareAndSet(false, true)) {
+                        handler.post(() -> onBinderReceived(binder, sourceDir));
+                    }
+                } else if ("1".equals(System.getenv("RISH_DEBUG"))) {
+                    System.err.println("rish: Nightzuku replied without a server binder");
                     System.err.flush();
-                    System.exit(1);
                 }
                 return true;
             }
@@ -81,15 +84,26 @@ public class ShizukuShellLoader {
                 args[0] = null;
                 args[1] = null;
                 args[2] = intent;
-                int intIndex = 0;
-                int booleanIndex = 0;
+                int userId = Os.getuid() / 100000;
                 for (int i = 3; i < paramTypes.length; i++) {
                     Class<?> t = paramTypes[i];
                     if (t == boolean.class) {
-                        args[i] = booleanIndex++ == 0;
+                        // broadcastIntentWithFeature ends with serialized, sticky, userId.
+                        // rish needs a normal unordered, non-sticky broadcast. The previous
+                        // Android 16 reflection shim accidentally set the first boolean true,
+                        // turning the request into a serialized broadcast that could block
+                        // inside system_server when the Nightzuku manager process was slow.
+                        args[i] = false;
                     } else if (t == int.class) {
-                        args[i] = isAppOpParameter(paramTypes, i, intIndex) ? -1 : 0;
-                        intIndex++;
+                        if (i == paramTypes.length - 1) {
+                            args[i] = userId;
+                        } else if (i + 1 < paramTypes.length && paramTypes[i + 1] == Bundle.class) {
+                            // appOp immediately precedes the options Bundle.
+                            args[i] = -1;
+                        } else {
+                            // resultCode and other integer defaults.
+                            args[i] = 0;
+                        }
                     } else if (t == long.class) {
                         args[i] = 0L;
                     } else {
@@ -181,20 +195,22 @@ public class ShizukuShellLoader {
 
         handler = new Handler(Looper.getMainLooper());
 
-        try {
-            requestForBinder();
-        } catch (Throwable tr) {
-            tr.printStackTrace(System.err);
-            System.err.flush();
-            System.exit(1);
-        }
+        requestForBinderAsync("initial");
 
-        handler.postDelayed(() -> abort(
-                String.format(
+        handler.postDelayed(() -> {
+            if (!binderReceived.get()) {
+                requestForBinderAsync("retry");
+            }
+        }, 1500);
+
+        handler.postDelayed(() -> {
+            if (!binderReceived.get()) {
+                abort(String.format(
                         "Request timeout. No binder reply was received by current app (%1$s) from Nightzuku (" + BuildConfig.MANAGER_APPLICATION_ID + "). " +
-                                "This can be caused by binder-request delivery being blocked or by the Nightzuku server not answering.",
-                        packageName)
-        ), 5000);
+                                "The Android 16 transport was retried without blocking the rish main looper.",
+                        packageName));
+            }
+        }, 8000);
 
         Looper.loop();
         System.exit(0);
@@ -204,6 +220,26 @@ public class ShizukuShellLoader {
         System.err.println(message);
         System.err.flush();
         System.exit(1);
+    }
+
+    private static void requestForBinderAsync(String label) {
+        Thread thread = new Thread(() -> {
+            try {
+                requestForBinder();
+                if ("1".equals(System.getenv("RISH_DEBUG"))) {
+                    System.err.println("rish: binder request dispatched (" + label + ")");
+                    System.err.flush();
+                }
+            } catch (Throwable tr) {
+                if ("1".equals(System.getenv("RISH_DEBUG"))) {
+                    System.err.println("rish: binder request failed (" + label + ")");
+                    tr.printStackTrace(System.err);
+                    System.err.flush();
+                }
+            }
+        }, "rish-binder-" + label);
+        thread.setDaemon(true);
+        thread.start();
     }
 
     private static java.lang.reflect.Method findBroadcastMethod(Object am) {
@@ -216,12 +252,5 @@ public class ShizukuShellLoader {
             }
         }
         return best;
-    }
-
-    private static boolean isAppOpParameter(Class<?>[] paramTypes, int index, int intIndex) {
-        if (index + 1 < paramTypes.length && paramTypes[index + 1] == Bundle.class) {
-            return true;
-        }
-        return intIndex == 1 && index + 1 < paramTypes.length && index + 1 < paramTypes.length && paramTypes[index + 1] != String.class;
     }
 }
