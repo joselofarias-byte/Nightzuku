@@ -316,6 +316,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_transport_binder">Binder active</string>
     <string name="persistence_transport_tcp">Persistent local TCP</string>
     <string name="persistence_transport_mdns">mDNS Wireless debugging</string>
+    <string name="persistence_transport_dynamic_local">Dynamic local Wireless debugging</string>
     <string name="persistence_transport_system">Live system ADB TCP</string>
     <string name="persistence_transport_none">No usable ADB transport</string>
     <string name="persistence_endpoint">Endpoint</string>
