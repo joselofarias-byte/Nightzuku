@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * an ADB CNXN header and accepts only endpoints that answer with a valid ADB
  * CNXN/AUTH/STLS header, so an arbitrary open localhost port is not selected.
  */
-object AdbLocalWirelessDiscovery {
+internal object AdbLocalWirelessDiscovery {
 
     private const val LOOPBACK_HOST = "127.0.0.1"
     private const val PREF_LAST_DYNAMIC_PORT = "nightzuku_last_dynamic_adb_port"
