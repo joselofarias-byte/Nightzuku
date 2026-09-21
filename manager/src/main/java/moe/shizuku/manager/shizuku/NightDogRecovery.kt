@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
+import moe.shizuku.manager.adb.AdbLocalWirelessDiscovery
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.AdbTcpProbe
 import moe.shizuku.manager.adb.AdbTransportResolver
@@ -340,7 +341,35 @@ object NightDogRecovery {
                 socketReachable = AdbTcpProbe.isReachable(endpoint.host, endpoint.port)
             )
         }
-        return RecoveryTransportPolicy.selectForRecoveryAttempt(persistent, mdns, system)
+
+        // HONOR 200 / Android 16: mDNS and service.adb.tls.port can both be
+        // unavailable to the app while adbd is still listening on a rotated
+        // loopback port. Discover that port locally as the final no-root
+        // fallback, without scanning the Wi-Fi/LAN address.
+        val dynamicLocal = if (
+            persistent?.socketReachable != true &&
+            mdns == null &&
+            system?.socketReachable != true
+        ) {
+            AdbLocalWirelessDiscovery.discover()?.let { endpoint ->
+                TransportCandidate(
+                    kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+                    host = endpoint.host,
+                    port = endpoint.port,
+                    configured = false,
+                    socketReachable = true
+                )
+            }
+        } else {
+            null
+        }
+
+        return RecoveryTransportPolicy.selectForRecoveryAttempt(
+            persistent = persistent,
+            mdns = mdns,
+            systemTcp = system,
+            dynamicLocal = dynamicLocal
+        )
     }
 
     private fun refreshServerPid() {
@@ -404,7 +433,7 @@ object NightDogRecovery {
             publish(
                 Stage.DISCOVERING_ADB,
                 RESULT_DISCOVERING,
-                "Binder absent; resolving persistent TCP, mDNS/TLS and local ADB"
+                "Binder absent; resolving persistent TCP, mDNS/TLS and dynamic local ADB"
             )
 
             val candidate = resolveCandidate()
