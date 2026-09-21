@@ -7,8 +7,9 @@ package moe.shizuku.manager.persistence
  * 1. Live Binder
  * 2. Persistent authenticated local TCP
  * 3. mDNS / Wireless debugging
- * 4. Live system ADB TCP, only when safely detectable
- * 5. Wait / retry
+ * 4. Dynamic loopback Wireless debugging port, protocol-verified when mDNS is unavailable
+ * 5. Live system ADB TCP, only when safely detectable
+ * 6. Wait / retry
  *
  * A configured-but-dead TCP endpoint must not hide a live mDNS endpoint.
  */
