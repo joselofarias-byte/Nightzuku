@@ -316,6 +316,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_transport_binder">Binder activo</string>
     <string name="persistence_transport_tcp">TCP local persistente</string>
     <string name="persistence_transport_mdns">Depuración inalámbrica mDNS</string>
+    <string name="persistence_transport_dynamic_local">Depuración inalámbrica local dinámica</string>
     <string name="persistence_transport_system">TCP ADB del sistema en vivo</string>
     <string name="persistence_transport_none">Sin transporte ADB usable</string>
     <string name="persistence_endpoint">Endpoint</string>
