@@ -51,10 +51,10 @@ public class BroadcastIntentArgsTest {
     }
 
     @Test
-    public void packsAndroid16StyleBroadcastArgs() {
+    public void packsAndroid16StyleBroadcastArgsAsUnorderedNonStickyForCurrentUser() {
         Intent intent = new Intent("rikka.shizuku.intent.action.REQUEST_BINDER");
         Class<?>[] types = BroadcastIntentArgs.findBroadcastMethod(new FakeActivityManager()).getParameterTypes();
-        Object[] args = BroadcastIntentArgs.build(types, intent);
+        Object[] args = BroadcastIntentArgs.build(types, intent, 10);
 
         assertEquals(16, args.length);
         assertNull(args[0]);
@@ -70,9 +70,9 @@ public class BroadcastIntentArgsTest {
         assertNull(args[10]);
         assertEquals(-1, args[11]);
         assertNull(args[12]);
-        assertEquals(Boolean.TRUE, args[13]);
+        assertEquals(Boolean.FALSE, args[13]);
         assertEquals(Boolean.FALSE, args[14]);
-        assertEquals(0, args[15]);
+        assertEquals(10, args[15]);
     }
 
     @Test
@@ -80,15 +80,14 @@ public class BroadcastIntentArgsTest {
         Class<?>[] types = new Class<?>[]{
                 Object.class, String.class, Intent.class, int.class, Bundle.class
         };
-        assertTrue(BroadcastIntentArgs.isAppOpParameter(types, 3, 0));
+        assertTrue(BroadcastIntentArgs.isAppOpParameter(types, 3));
     }
 
     @Test
-    public void secondIntBeforeNonStringIsAppOpFallback() {
+    public void unrelatedIntIsNotAppOp() {
         Class<?>[] types = new Class<?>[]{
-                Object.class, String.class, Intent.class, int.class, int.class, Object.class
+                Object.class, String.class, Intent.class, int.class, Object.class
         };
-        assertFalse(BroadcastIntentArgs.isAppOpParameter(types, 3, 0));
-        assertTrue(BroadcastIntentArgs.isAppOpParameter(types, 4, 1));
+        assertFalse(BroadcastIntentArgs.isAppOpParameter(types, 3));
     }
 }
