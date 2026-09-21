@@ -526,6 +526,7 @@ private fun transportLabel(transport: RecoveryTransport): String = stringResourc
         RecoveryTransport.BINDER_ALIVE -> R.string.persistence_transport_binder
         RecoveryTransport.PERSISTENT_LOCAL_TCP -> R.string.persistence_transport_tcp
         RecoveryTransport.MDNS_WIRELESS_DEBUGGING -> R.string.persistence_transport_mdns
+        RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB -> R.string.persistence_transport_dynamic_local
         RecoveryTransport.SYSTEM_ADB_TCP -> R.string.persistence_transport_system
         RecoveryTransport.NONE -> R.string.persistence_transport_none
     }
