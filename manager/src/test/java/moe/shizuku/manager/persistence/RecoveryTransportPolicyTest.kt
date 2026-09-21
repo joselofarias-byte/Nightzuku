@@ -81,6 +81,26 @@ class RecoveryTransportPolicyTest {
         assertEquals(RecoveryTransport.SYSTEM_ADB_TCP, selected.kind)
     }
 
+
+    @Test
+    fun recoveryAttemptUsesDynamicLocalWirelessAdbWhenDiscoveryIsOtherwiseEmpty() {
+        val dynamicLocal = TransportCandidate(
+            kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+            host = "127.0.0.1",
+            port = 39921,
+            socketReachable = true
+        )
+        val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
+            persistent = null,
+            mdns = null,
+            systemTcp = null,
+            dynamicLocal = dynamicLocal
+        )
+        assertEquals(RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB, selected.kind)
+        assertEquals("127.0.0.1:39921", selected.endpoint)
+        assertTrue(selected.usableForRestart)
+    }
+
     @Test
     fun recoveryAttemptWaitsWhenNothingIsUsable() {
         val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
