@@ -63,13 +63,10 @@ object DeveloperOptionsController {
         AdbLocalWirelessDiscovery.lastKnownEndpoint()?.let(endpoints::add)
         AdbTransportResolver.systemAdbTcpEndpoint()?.let(endpoints::add)
 
-        if (endpoints.isEmpty()) {
-            AdbLocalWirelessDiscovery.discover()?.let(endpoints::add)
-        }
-
         var lastError: String? = null
-        for (endpoint in endpoints) {
-            val granted = runCatching {
+
+        suspend fun tryGrant(endpoint: AdbEndpoint): Boolean {
+            return runCatching {
                 val key = AdbKey(
                     PreferenceAdbKeyStore(ShizukuSettings.getPreferences()),
                     "shizuku"
@@ -90,9 +87,21 @@ object DeveloperOptionsController {
             }.onFailure { error ->
                 lastError = "${endpoint.host}:${endpoint.port}: ${error.message ?: error.javaClass.simpleName}"
             }.getOrDefault(false)
+        }
 
-            if (granted) {
+        for (endpoint in endpoints) {
+            if (tryGrant(endpoint)) {
                 return@withContext Result(true, snapshot(context), "granted")
+            }
+        }
+
+        // A saved TCP endpoint can be stale after Android rotates or restarts
+        // adbd. Fall back to the loopback protocol scan even when other
+        // candidates existed, rather than only when the initial set was empty.
+        val dynamicEndpoint = AdbLocalWirelessDiscovery.discover()
+        if (dynamicEndpoint != null && dynamicEndpoint !in endpoints) {
+            if (tryGrant(dynamicEndpoint)) {
+                return@withContext Result(true, snapshot(context), "granted_dynamic")
             }
         }
 
