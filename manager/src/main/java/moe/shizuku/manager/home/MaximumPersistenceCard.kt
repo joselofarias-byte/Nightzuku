@@ -421,6 +421,8 @@ private fun PersistenceCardBody(
                 )
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                var showDetails by remember { mutableStateOf(false) }
+
                 Text(
                     stringResource(R.string.persistence_title),
                     style = MaterialTheme.typography.titleMedium,
@@ -431,7 +433,9 @@ private fun PersistenceCardBody(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
                 Fact(R.string.persistence_service, serviceLabel(model.service))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -458,6 +462,7 @@ private fun PersistenceCardBody(
                         onCheckedChange = onDesiredChange
                     )
                 }
+
                 Fact(
                     R.string.persistence_developer_control,
                     stringResource(
@@ -468,64 +473,11 @@ private fun PersistenceCardBody(
                         }
                     )
                 )
-                Fact(
-                    R.string.persistence_developer_options,
-                    stringResource(
-                        if (developerState.developerOptionsEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                Fact(
-                    R.string.persistence_adb_global,
-                    stringResource(
-                        if (developerState.adbEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                Fact(
-                    R.string.persistence_wireless_debugging_state,
-                    stringResource(
-                        if (developerState.wirelessDebuggingEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                if (developerState.restorePending) {
-                    Fact(
-                        R.string.persistence_developer_restore_state,
-                        stringResource(R.string.persistence_developer_restore_pending)
-                    )
+
+                if (!model.lastFailure.isNullOrBlank()) {
+                    Fact(R.string.persistence_last_failure, model.lastFailure)
                 }
-                Fact(R.string.persistence_transport, transportLabel(model.transport))
-                Fact(
-                    R.string.persistence_endpoint,
-                    model.endpoint?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_endpoint_none)
-                )
-                Fact(R.string.persistence_tcp_state, tcpStateLabel(model.tcp))
-                Fact(R.string.persistence_pid, model.serverPid?.toString() ?: stringResource(R.string.persistence_pid_unknown))
-                Fact(R.string.persistence_recovery_count, model.recoveryCount.toString())
-                Fact(R.string.persistence_last_result, lastResultText)
-                Fact(
-                    R.string.persistence_last_failure,
-                    model.lastFailure?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
-                )
-                Fact(
-                    R.string.persistence_retry,
-                    if (model.retryRemainingMs > 0L) {
-                        stringResource(R.string.persistence_retry_in, ((model.retryRemainingMs + 999) / 1000).toInt())
-                    } else {
-                        stringResource(R.string.persistence_retry_now)
-                    }
-                )
-                HonestyBanner(model)
+
                 if (!actionStatus.isNullOrBlank()) {
                     Text(
                         actionStatus,
@@ -533,6 +485,7 @@ private fun PersistenceCardBody(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -545,38 +498,7 @@ private fun PersistenceCardBody(
                         ButtonIcon(R.drawable.ic_server_restart)
                         Text(stringResource(R.string.persistence_action_recover_now))
                     }
-                    FilledTonalButton(
-                        enabled = !busy,
-                        onClick = onEnableTcp,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_adb_24dp)
-                        Text(stringResource(R.string.persistence_action_enable_tcp))
-                    }
-                    FilledTonalButton(
-                        enabled = !busy,
-                        onClick = onTestTcp,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_server_ok_24dp)
-                        Text(stringResource(R.string.persistence_action_test_tcp))
-                    }
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = onDisableTcp,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_close_24)
-                        Text(stringResource(R.string.persistence_action_disable_tcp))
-                    }
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = onTestRecovery,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_warning_24)
-                        Text(stringResource(R.string.persistence_action_test_recovery))
-                    }
+
                     if (!developerState.writeSecureSettingsGranted) {
                         FilledTonalButton(
                             enabled = !busy,
@@ -587,29 +509,143 @@ private fun PersistenceCardBody(
                             Text(stringResource(R.string.persistence_prepare_developer_control))
                         }
                     }
-                    OutlinedButton(
+
+                    TextButton(
                         enabled = !busy,
-                        onClick = onDeveloperOff,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        onClick = { showDetails = !showDetails }
                     ) {
-                        ButtonIcon(R.drawable.ic_close_24)
-                        Text(stringResource(R.string.persistence_developer_off))
+                        Text(
+                            stringResource(
+                                if (showDetails) R.string.persistence_hide_details
+                                else R.string.persistence_show_details
+                            )
+                        )
                     }
-                    FilledTonalButton(
-                        enabled = !busy && developerState.writeSecureSettingsGranted,
-                        onClick = onDeveloperRestore,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_server_restart)
-                        Text(stringResource(R.string.persistence_developer_restore))
+                }
+
+                if (showDetails) {
+                    Fact(
+                        R.string.persistence_developer_options,
+                        stringResource(
+                            if (developerState.developerOptionsEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_adb_global,
+                        stringResource(
+                            if (developerState.adbEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_wireless_debugging_state,
+                        stringResource(
+                            if (developerState.wirelessDebuggingEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    if (developerState.restorePending) {
+                        Fact(
+                            R.string.persistence_developer_restore_state,
+                            stringResource(R.string.persistence_developer_restore_pending)
+                        )
                     }
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = onOpenSettings,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                    Fact(R.string.persistence_transport, transportLabel(model.transport))
+                    Fact(
+                        R.string.persistence_endpoint,
+                        model.endpoint?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.persistence_endpoint_none)
+                    )
+                    Fact(R.string.persistence_tcp_state, tcpStateLabel(model.tcp))
+                    Fact(
+                        R.string.persistence_pid,
+                        model.serverPid?.toString() ?: stringResource(R.string.persistence_pid_unknown)
+                    )
+                    Fact(R.string.persistence_recovery_count, model.recoveryCount.toString())
+                    Fact(R.string.persistence_last_result, lastResultText)
+                    Fact(
+                        R.string.persistence_retry,
+                        if (model.retryRemainingMs > 0L) {
+                            stringResource(
+                                R.string.persistence_retry_in,
+                                ((model.retryRemainingMs + 999) / 1000).toInt()
+                            )
+                        } else {
+                            stringResource(R.string.persistence_retry_now)
+                        }
+                    )
+                    HonestyBanner(model)
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ButtonIcon(R.drawable.ic_settings_outline_24dp)
-                        Text(stringResource(R.string.persistence_action_open_settings))
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onEnableTcp,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_adb_24dp)
+                            Text(stringResource(R.string.persistence_action_enable_tcp))
+                        }
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onTestTcp,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_server_ok_24dp)
+                            Text(stringResource(R.string.persistence_action_test_tcp))
+                        }
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = onDisableTcp,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_close_24)
+                            Text(stringResource(R.string.persistence_action_disable_tcp))
+                        }
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = onTestRecovery,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_warning_24)
+                            Text(stringResource(R.string.persistence_action_test_recovery))
+                        }
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = onDeveloperOff,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_close_24)
+                            Text(stringResource(R.string.persistence_developer_off))
+                        }
+                        FilledTonalButton(
+                            enabled = !busy && developerState.writeSecureSettingsGranted,
+                            onClick = onDeveloperRestore,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_server_restart)
+                            Text(stringResource(R.string.persistence_developer_restore))
+                        }
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = onOpenSettings,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_settings_outline_24dp)
+                            Text(stringResource(R.string.persistence_action_open_settings))
+                        }
                     }
                 }
             }

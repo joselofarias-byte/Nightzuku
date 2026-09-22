@@ -300,7 +300,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
 
     <!-- Maximum persistence -->
     <string name="persistence_title">Persistencia máxima</string>
-    <string name="persistence_summary">Mantén Nightzuku en ejecución y recupéralo si el binder o el servidor mueren.</string>
+    <string name="persistence_summary">Recupera Nightzuku automáticamente si el servicio se detiene.</string>
     <string name="persistence_service">Servicio</string>
     <string name="persistence_service_running">En ejecución</string>
     <string name="persistence_service_recovering">Recuperando</string>
@@ -343,6 +343,8 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_honest_wadb_required">Se requiere una activación puntual de Depuración inalámbrica</string>
     <string name="persistence_honest_reboot_limit">Mientras Opciones de desarrollador estén apagadas no se puede recrear uid=2000. Prepara primero el control automático para que Nightzuku pueda restaurarlas sin ADB.</string>
     <string name="persistence_action_recover_now">Recuperar ahora</string>
+    <string name="persistence_show_details">Detalles y controles</string>
+    <string name="persistence_hide_details">Ocultar detalles</string>
     <string name="persistence_action_enable_tcp">Activar TCP local</string>
     <string name="persistence_action_test_tcp">Probar TCP local</string>
     <string name="persistence_action_disable_tcp">Desactivar TCP local</string>
@@ -380,9 +382,9 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_result_recover_now">Recuperar ahora solicitado</string>
     <string name="persistence_enable_tcp_need_wadb">Activa primero Depuración inalámbrica y luego toca Activar TCP local.</string>
 
-    <string name="persistence_developer_control">Control de desarrollo</string>
-    <string name="persistence_developer_control_ready">Preparado · sobrevive a Desarrollo OFF</string>
-    <string name="persistence_developer_control_not_ready">Aún no preparado</string>
+    <string name="persistence_developer_control">Recuperación ADB</string>
+    <string name="persistence_developer_control_ready">Preparada</string>
+    <string name="persistence_developer_control_not_ready">Requiere preparación</string>
     <string name="persistence_developer_options">Opciones de desarrollador</string>
     <string name="persistence_adb_global">ADB</string>
     <string name="persistence_wireless_debugging_state">Depuración inalámbrica</string>
