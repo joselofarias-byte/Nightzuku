@@ -162,6 +162,48 @@ object DeveloperOptionsController {
         }
     }
 
+    suspend fun enableForRecovery(context: Context): Result = withContext(Dispatchers.IO) {
+        if (!hasWriteSecureSettings(context)) {
+            return@withContext Result(
+                false,
+                snapshot(context),
+                "WRITE_SECURE_SETTINGS is not granted"
+            )
+        }
+
+        val resolver = context.contentResolver
+        return@withContext runCatching {
+            // Recovery needs all three switches ON regardless of the pre-disable
+            // combination, otherwise adbd may still be unavailable.
+            Settings.Global.putInt(resolver, DEVELOPMENT_SETTINGS_ENABLED, 1)
+            Settings.Global.putInt(resolver, ADB_ENABLED, 1)
+            Settings.Global.putInt(resolver, ADB_WIFI_ENABLED, 1)
+            Settings.Global.putLong(resolver, ADB_ALLOWED_CONNECTION_TIME, 0L)
+
+            delay(400L)
+
+            val after = snapshot(context)
+            val success = after.developerOptionsEnabled &&
+                after.adbEnabled &&
+                after.wirelessDebuggingEnabled
+
+            if (success) {
+                ShizukuSettings.getPreferences().edit()
+                    .putBoolean(PREF_RESTORE_PENDING, false)
+                    .apply()
+            }
+
+            Result(
+                success,
+                snapshot(context),
+                if (success) "enabled_for_recovery"
+                else "Settings.Global did not retain all required recovery switches"
+            )
+        }.getOrElse { error ->
+            Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
+        }
+    }
+
     suspend fun restore(context: Context): Result = withContext(Dispatchers.IO) {
         if (!hasWriteSecureSettings(context)) {
             return@withContext Result(
