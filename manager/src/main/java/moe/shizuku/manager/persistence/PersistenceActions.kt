@@ -97,6 +97,28 @@ object PersistenceActions {
         return AndroidDebugSettingsIntents.openWirelessDebugging(context)
     }
 
+    fun developerOptionsSnapshot(context: Context): DeveloperOptionsController.Snapshot {
+        return DeveloperOptionsController.snapshot(context)
+    }
+
+    suspend fun prepareDeveloperOptionsControl(context: Context): DeveloperOptionsController.Result {
+        return DeveloperOptionsController.prepare(context)
+    }
+
+    suspend fun disableDeveloperOptionsTemporarily(context: Context): DeveloperOptionsController.Result {
+        return DeveloperOptionsController.disableTemporarily(context)
+    }
+
+    suspend fun restoreDeveloperOptions(context: Context): DeveloperOptionsController.Result {
+        val result = DeveloperOptionsController.restore(context)
+        if (result.success) {
+            // adbd may need a short settle after the global settings are restored.
+            delay(1_000L)
+            NightDogRecovery.requestImmediateRecovery(context)
+        }
+        return result
+    }
+
     fun retryRemainingMs(snapshot: NightDogRecovery.Snapshot, nowElapsedRealtime: Long = SystemClock.elapsedRealtime()): Long {
         return NightDogBackoff.remainingRetryMs(
             nowElapsedRealtime,
