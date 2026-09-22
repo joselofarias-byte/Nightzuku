@@ -30,6 +30,7 @@ import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
 import moe.shizuku.manager.ui.compose.MonospaceLog
@@ -59,6 +60,9 @@ class StarterActivity : AppActivity() {
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations && !Shizuku.pingBinder()) {
+            NightDogRecovery.clearStarterAttempt()
+        }
         super.onDestroy()
         binderReceivedListener?.let {
             Shizuku.removeBinderReceivedListener(it)
@@ -68,6 +72,7 @@ class StarterActivity : AppActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NightDogRecovery.noteStarterAttempt()
 
         val startedWithRoot = intent.getBooleanExtra(EXTRA_IS_ROOT, true)
 
@@ -80,6 +85,7 @@ class StarterActivity : AppActivity() {
 
                 val listener = object : Shizuku.OnBinderReceivedListener {
                     override fun onBinderReceived() {
+                        NightDogRecovery.clearStarterAttempt()
                         Shizuku.removeBinderReceivedListener(this)
                         binderReceivedListener = null
                         runOnUiThread {
