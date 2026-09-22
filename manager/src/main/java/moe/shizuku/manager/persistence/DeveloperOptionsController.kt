@@ -48,6 +48,13 @@ object DeveloperOptionsController {
                 !snapshot.wirelessDebuggingEnabled)
     }
 
+    fun shouldEnableForManualRecovery(snapshot: Snapshot): Boolean {
+        return snapshot.writeSecureSettingsGranted &&
+            (!snapshot.developerOptionsEnabled ||
+                !snapshot.adbEnabled ||
+                !snapshot.wirelessDebuggingEnabled)
+    }
+
     fun snapshot(context: Context): Snapshot {
         val resolver = context.contentResolver
         val preferences = ShizukuSettings.getPreferences()
