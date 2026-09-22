@@ -483,7 +483,7 @@ object NightDogRecovery {
             // path does not need an already-running ADB connection.
             if (candidate.kind == RecoveryTransport.NONE) {
                 val debugState = DeveloperOptionsController.snapshot(context)
-                if (debugState.writeSecureSettingsGranted && debugState.restorePending) {
+                if (DeveloperOptionsController.shouldRestoreForRecovery(debugState)) {
                     publish(
                         Stage.DISCOVERING_ADB,
                         RESULT_DEBUG_SETTINGS_RESTORING,
