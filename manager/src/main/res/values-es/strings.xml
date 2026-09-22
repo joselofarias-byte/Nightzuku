@@ -410,4 +410,6 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="unsafe_warning_title">Advertencia</string>
     <string name="unsafe_warning_message">Habilitar esta función NO ES SEGURO. ¿Estás seguro?</string>
     <string name="application_management_load_failed">No se pudieron cargar las aplicaciones.</string>
+    <string name="persistence_show_details">Ver detalles</string>
+    <string name="persistence_hide_details">Ocultar detalles</string>
 </resources>
