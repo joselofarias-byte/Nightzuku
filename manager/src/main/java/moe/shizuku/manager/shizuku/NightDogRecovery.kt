@@ -304,6 +304,14 @@ object NightDogRecovery {
     }
 
     @Synchronized
+    fun tryBeginStarterAttempt(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (starterInFlightUntil > now) return false
+        starterInFlightUntil = now + STARTER_IN_FLIGHT_GUARD_MS
+        return true
+    }
+
+    @Synchronized
     fun noteStarterAttempt() {
         val until = SystemClock.elapsedRealtime() + STARTER_IN_FLIGHT_GUARD_MS
         if (until > starterInFlightUntil) starterInFlightUntil = until
@@ -496,7 +504,14 @@ object NightDogRecovery {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
 
-            noteStarterAttempt()
+            if (!tryBeginStarterAttempt()) {
+                publish(
+                    Stage.STARTING_SERVICE,
+                    RESULT_START_REQUESTED,
+                    "Another Starter attempt is already active; waiting for Binder"
+                )
+                return@launch
+            }
             runCatching {
                 context.startActivity(intent)
             }.onFailure { error ->
