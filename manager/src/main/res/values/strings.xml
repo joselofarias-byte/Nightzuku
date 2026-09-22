@@ -396,6 +396,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_developer_control_prepared">Automatic Developer control is prepared.</string>
     <string name="persistence_developer_disabled">Developer options, ADB and Wireless debugging were disabled. The previous state was saved.</string>
     <string name="persistence_developer_restored">Developer options and the previous ADB state were restored.</string>
+    <string name="persistence_developer_reenabled_for_recovery">Developer options, USB debugging and Wireless debugging were enabled for recovery.</string>
     <string name="persistence_developer_action_failed">Developer control failed: %1$s</string>
     <string name="persistence_developer_unknown_error">unknown error</string>
     <string name="persistence_developer_off_confirm_title">Temporarily disable Developer options?</string>
