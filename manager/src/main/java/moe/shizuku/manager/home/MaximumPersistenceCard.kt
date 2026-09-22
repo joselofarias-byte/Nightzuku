@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -34,9 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -299,12 +296,12 @@ private fun PersistenceCardBody(
     onTestRecovery: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val artwork = when (model.service) {
-        PersistenceServiceState.RUNNING -> R.drawable.nightdog_status_active
-        PersistenceServiceState.ERROR -> R.drawable.nightdog_status_error
-        PersistenceServiceState.MANUALLY_STOPPED -> R.drawable.nightdog_status_stopped
+    val statusIcon = when (model.service) {
+        PersistenceServiceState.RUNNING -> R.drawable.ic_server_ok_24dp
+        PersistenceServiceState.ERROR -> R.drawable.ic_warning_24
+        PersistenceServiceState.MANUALLY_STOPPED -> R.drawable.ic_server_error_24dp
         PersistenceServiceState.RECOVERING,
-        PersistenceServiceState.WAITING_FOR_ADB -> R.drawable.nightdog_status_recovering
+        PersistenceServiceState.WAITING_FOR_ADB -> R.drawable.ic_server_restart
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -313,12 +310,18 @@ private fun PersistenceCardBody(
         tonalElevation = 2.dp
     ) {
         Row(modifier = Modifier.padding(18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Image(
-                painter = painterResource(artwork),
-                contentDescription = null,
-                modifier = Modifier.size(88.dp),
-                contentScale = ContentScale.Fit
-            )
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                ShizukuIcon(
+                    icon = statusIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(10.dp).size(24.dp)
+                )
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     stringResource(R.string.persistence_title),
