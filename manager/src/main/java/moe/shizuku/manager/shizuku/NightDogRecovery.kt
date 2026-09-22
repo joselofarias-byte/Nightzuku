@@ -492,7 +492,7 @@ object NightDogRecovery {
                         endpoint = null
                     )
 
-                    val restored = DeveloperOptionsController.restore(context)
+                    val restored = DeveloperOptionsController.enableForRecovery(context)
                     if (restored.success) {
                         ShizukuSettings.setAdbReactivationRequired(false)
                         publish(
