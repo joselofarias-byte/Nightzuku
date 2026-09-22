@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.persistence.DeveloperOptionsController
 import moe.shizuku.manager.persistence.PersistenceActions
 import moe.shizuku.manager.persistence.PersistenceServiceState
 import moe.shizuku.manager.persistence.PersistenceUiMapper
@@ -75,11 +76,15 @@ fun MaximumPersistenceCard() {
             )
         )
     }
+    var developerState by remember {
+        mutableStateOf(PersistenceActions.developerOptionsSnapshot(context))
+    }
     var actionStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmStopKeepRunning by remember { mutableStateOf(false) }
     var confirmDisableTcp by remember { mutableStateOf(false) }
     var confirmRecoveryTest by remember { mutableStateOf(false) }
+    var confirmDeveloperOff by remember { mutableStateOf(false) }
     var showAndroidSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(snapshot.stage, snapshot.lastAttemptElapsedRealtime, snapshot.desiredRunning) {
@@ -87,6 +92,13 @@ fun MaximumPersistenceCard() {
         while (snapshot.desiredRunning && !snapshot.binderAlive) {
             delay(1_000L)
             nowElapsed = SystemClock.elapsedRealtime()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            developerState = PersistenceActions.developerOptionsSnapshot(context)
+            delay(1_500L)
         }
     }
 
@@ -141,6 +153,7 @@ fun MaximumPersistenceCard() {
 
     PersistenceCardBody(
         model = model,
+        developerState = developerState,
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
         busy = busy,
@@ -180,6 +193,43 @@ fun MaximumPersistenceCard() {
         },
         onDisableTcp = { confirmDisableTcp = true },
         onTestRecovery = { confirmRecoveryTest = true },
+        onPrepareDeveloperControl = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val result = PersistenceActions.prepareDeveloperOptionsControl(context)
+                developerState = result.snapshot
+                actionStatus = if (result.success) {
+                    context.getString(R.string.persistence_developer_control_prepared)
+                } else {
+                    context.getString(
+                        R.string.persistence_developer_action_failed,
+                        result.detail ?: context.getString(R.string.persistence_developer_unknown_error)
+                    )
+                }
+                busy = false
+            }
+        },
+        onDeveloperOff = { confirmDeveloperOff = true },
+        onDeveloperRestore = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val result = PersistenceActions.restoreDeveloperOptions(context)
+                developerState = result.snapshot
+                actionStatus = if (result.success) {
+                    context.getString(R.string.persistence_developer_restored)
+                } else {
+                    context.getString(
+                        R.string.persistence_developer_action_failed,
+                        result.detail ?: context.getString(R.string.persistence_developer_unknown_error)
+                    )
+                }
+                busy = false
+            }
+        },
         onOpenSettings = { showAndroidSettings = true }
     )
 
@@ -210,6 +260,33 @@ fun MaximumPersistenceCard() {
                     val result = PersistenceActions.disableLocalTcp()
                     actionStatus = result.message
                     tcpHealth = PersistenceActions.classifyStoredTcp()
+                    busy = false
+                }
+            }
+        )
+    }
+    if (confirmDeveloperOff) {
+        ConfirmDialog(
+            title = R.string.persistence_developer_off_confirm_title,
+            message = R.string.persistence_developer_off_confirm_message,
+            confirm = R.string.persistence_developer_off,
+            onDismiss = { confirmDeveloperOff = false },
+            onConfirm = {
+                confirmDeveloperOff = false
+                if (busy) return@ConfirmDialog
+                busy = true
+                actionStatus = context.getString(R.string.persistence_action_busy)
+                scope.launch {
+                    val result = PersistenceActions.disableDeveloperOptionsTemporarily(context)
+                    developerState = result.snapshot
+                    actionStatus = if (result.success) {
+                        context.getString(R.string.persistence_developer_disabled)
+                    } else {
+                        context.getString(
+                            R.string.persistence_developer_action_failed,
+                            result.detail ?: context.getString(R.string.persistence_developer_unknown_error)
+                        )
+                    }
                     busy = false
                 }
             }
@@ -285,6 +362,7 @@ fun MaximumPersistenceCard() {
 @Composable
 private fun PersistenceCardBody(
     model: PersistenceUiModel,
+    developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
     actionStatus: String?,
     busy: Boolean,
@@ -294,6 +372,9 @@ private fun PersistenceCardBody(
     onTestTcp: () -> Unit,
     onDisableTcp: () -> Unit,
     onTestRecovery: () -> Unit,
+    onPrepareDeveloperControl: () -> Unit,
+    onDeveloperOff: () -> Unit,
+    onDeveloperRestore: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val statusIcon = when (model.service) {
@@ -358,6 +439,52 @@ private fun PersistenceCardBody(
                         checked = model.desiredRunning,
                         enabled = !busy,
                         onCheckedChange = onDesiredChange
+                    )
+                }
+                Fact(
+                    R.string.persistence_developer_control,
+                    stringResource(
+                        if (developerState.writeSecureSettingsGranted) {
+                            R.string.persistence_developer_control_ready
+                        } else {
+                            R.string.persistence_developer_control_not_ready
+                        }
+                    )
+                )
+                Fact(
+                    R.string.persistence_developer_options,
+                    stringResource(
+                        if (developerState.developerOptionsEnabled) {
+                            R.string.persistence_toggle_enabled
+                        } else {
+                            R.string.persistence_toggle_disabled
+                        }
+                    )
+                )
+                Fact(
+                    R.string.persistence_adb_global,
+                    stringResource(
+                        if (developerState.adbEnabled) {
+                            R.string.persistence_toggle_enabled
+                        } else {
+                            R.string.persistence_toggle_disabled
+                        }
+                    )
+                )
+                Fact(
+                    R.string.persistence_wireless_debugging_state,
+                    stringResource(
+                        if (developerState.wirelessDebuggingEnabled) {
+                            R.string.persistence_toggle_enabled
+                        } else {
+                            R.string.persistence_toggle_disabled
+                        }
+                    )
+                )
+                if (developerState.restorePending) {
+                    Fact(
+                        R.string.persistence_developer_restore_state,
+                        stringResource(R.string.persistence_developer_restore_pending)
                     )
                 }
                 Fact(R.string.persistence_transport, transportLabel(model.transport))
@@ -433,6 +560,32 @@ private fun PersistenceCardBody(
                         ButtonIcon(R.drawable.ic_warning_24)
                         Text(stringResource(R.string.persistence_action_test_recovery))
                     }
+                    if (!developerState.writeSecureSettingsGranted) {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onPrepareDeveloperControl,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_settings_outline_24dp)
+                            Text(stringResource(R.string.persistence_prepare_developer_control))
+                        }
+                    }
+                    OutlinedButton(
+                        enabled = !busy,
+                        onClick = onDeveloperOff,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        ButtonIcon(R.drawable.ic_close_24)
+                        Text(stringResource(R.string.persistence_developer_off))
+                    }
+                    FilledTonalButton(
+                        enabled = !busy && developerState.writeSecureSettingsGranted,
+                        onClick = onDeveloperRestore,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        ButtonIcon(R.drawable.ic_server_restart)
+                        Text(stringResource(R.string.persistence_developer_restore))
+                    }
                     OutlinedButton(
                         enabled = !busy,
                         onClick = onOpenSettings,
@@ -467,7 +620,13 @@ private fun HonestyBanner(model: PersistenceUiModel) {
         )
     }
     Text(
-        stringResource(R.string.persistence_honest_reboot_limit),
+        stringResource(
+            if (DeveloperOptionsController.snapshot(LocalContext.current).writeSecureSettingsGranted) {
+                R.string.persistence_honest_reboot_prepared
+            } else {
+                R.string.persistence_honest_reboot_limit
+            }
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
