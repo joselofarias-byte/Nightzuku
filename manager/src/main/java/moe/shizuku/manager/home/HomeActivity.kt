@@ -142,7 +142,10 @@ abstract class HomeActivity : AppActivity() {
             val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
             val localNetworkPermissionState = remember(permissionRefreshTick.intValue) { buildLocalNetworkPermissionState() }
 
-            LaunchedEffect(runtimeStatus) { homeModel.reload() }
+            // Runtime status carries a fresh lastChecked timestamp on every poll.
+            // Keying the effect to the whole object caused redundant Home reloads
+            // even when the semantic state had not changed.
+            LaunchedEffect(runtimeStatus::class) { homeModel.reload() }
             LaunchedEffect(serviceResource?.status, serviceResource?.data?.uid) {
                 val status = serviceResource?.data ?: return@LaunchedEffect
                 if (serviceResource?.status == Status.SUCCESS && status.isRunning) {
