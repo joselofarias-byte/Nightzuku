@@ -341,7 +341,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_retry_in">In %1$d s</string>
     <string name="persistence_honest_tcp_available">Local TCP recovery available</string>
     <string name="persistence_honest_wadb_required">One-time Wireless debugging activation required</string>
-    <string name="persistence_honest_reboot_limit">Nightzuku cannot recreate uid=2000 after reboot if Developer options are fully disabled.</string>
+    <string name="persistence_honest_reboot_limit">While Developer options are off, uid=2000 cannot be recreated. Prepare automatic control first so Nightzuku can restore them without ADB.</string>
     <string name="persistence_action_recover_now">Recover now</string>
     <string name="persistence_action_enable_tcp">Enable local TCP</string>
     <string name="persistence_action_test_tcp">Test local TCP</string>
@@ -379,6 +379,28 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_result_manual_start">Start requested</string>
     <string name="persistence_result_recover_now">Recover now requested</string>
     <string name="persistence_enable_tcp_need_wadb">Enable Wireless debugging first, then tap Enable local TCP.</string>
+
+    <string name="persistence_developer_control">Developer control</string>
+    <string name="persistence_developer_control_ready">Prepared · survives Developer options OFF</string>
+    <string name="persistence_developer_control_not_ready">Not prepared yet</string>
+    <string name="persistence_developer_options">Developer options</string>
+    <string name="persistence_adb_global">ADB</string>
+    <string name="persistence_wireless_debugging_state">Wireless debugging</string>
+    <string name="persistence_developer_restore_state">Saved restore state</string>
+    <string name="persistence_developer_restore_pending">Pending · previous state preserved</string>
+    <string name="persistence_toggle_enabled">Enabled</string>
+    <string name="persistence_toggle_disabled">Disabled</string>
+    <string name="persistence_prepare_developer_control">Prepare automatic control</string>
+    <string name="persistence_developer_off">Developer OFF</string>
+    <string name="persistence_developer_restore">Restore Developer</string>
+    <string name="persistence_developer_control_prepared">Automatic Developer control is prepared.</string>
+    <string name="persistence_developer_disabled">Developer options, ADB and Wireless debugging were disabled. The previous state was saved.</string>
+    <string name="persistence_developer_restored">Developer options and the previous ADB state were restored.</string>
+    <string name="persistence_developer_action_failed">Developer control failed: %1$s</string>
+    <string name="persistence_developer_unknown_error">unknown error</string>
+    <string name="persistence_developer_off_confirm_title">Temporarily disable Developer options?</string>
+    <string name="persistence_developer_off_confirm_message">Nightzuku will first make sure its persistent control permission is armed, save the current Developer/ADB/Wireless state, and then turn those switches off. The running Nightzuku server may stay alive, but automatic restart is unavailable until you restore Developer options.</string>
+    <string name="persistence_honest_reboot_prepared">Automatic control is prepared. Nightzuku can restore Developer options without a new ADB session.</string>
 
     <!-- Lab Features -->
     <string name="lab_features_title">Lab Features</string>
