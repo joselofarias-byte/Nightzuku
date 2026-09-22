@@ -53,4 +53,40 @@ class DeveloperOptionsControllerTest {
         )
         assertFalse(DeveloperOptionsController.shouldRestoreForRecovery(enabled))
     }
+
+    @Test
+    fun manualRecoverCanReEnableDebuggingWithoutPendingRestore() {
+        val manualOff = DeveloperOptionsController.Snapshot(
+            writeSecureSettingsGranted = true,
+            developerOptionsEnabled = false,
+            adbEnabled = false,
+            wirelessDebuggingEnabled = false,
+            restorePending = false
+        )
+        assertTrue(DeveloperOptionsController.shouldEnableForManualRecovery(manualOff))
+    }
+
+    @Test
+    fun manualRecoverDoesNothingWhenDebuggingIsAlreadyReady() {
+        val ready = DeveloperOptionsController.Snapshot(
+            writeSecureSettingsGranted = true,
+            developerOptionsEnabled = true,
+            adbEnabled = true,
+            wirelessDebuggingEnabled = true,
+            restorePending = false
+        )
+        assertFalse(DeveloperOptionsController.shouldEnableForManualRecovery(ready))
+    }
+
+    @Test
+    fun manualRecoverRequiresWriteSecureSettings() {
+        val noGrant = DeveloperOptionsController.Snapshot(
+            writeSecureSettingsGranted = false,
+            developerOptionsEnabled = false,
+            adbEnabled = false,
+            wirelessDebuggingEnabled = false,
+            restorePending = false
+        )
+        assertFalse(DeveloperOptionsController.shouldEnableForManualRecovery(noGrant))
+    }
 }
