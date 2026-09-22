@@ -407,6 +407,10 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="lab_features_summary">Características avanzadas en fase experimental.</string>
     <string name="shizuku_connectors_title">Conectores de Nightzuku</string>
     <string name="shizuku_connectors_summary">Permitir que los complementos activen Nightzuku</string>
+    <string name="tapi_title">TAPI</string>
+    <string name="tapi_summary">Puente de línea de comandos para Termux/NewTermux</string>
+    <string name="tapi_warning_title">¿Activar TAPI?</string>
+    <string name="tapi_warning_message">Los comandos de gestión TAPI pueden consultar Nightzuku, detener el servidor y conceder o revocar permisos de Nightzuku. rish normal sigue disponible aunque TAPI esté desactivado. Actívalo solo para terminales de confianza.</string>
     <string name="unsafe_warning_title">Advertencia</string>
     <string name="unsafe_warning_message">Habilitar esta función NO ES SEGURO. ¿Estás seguro?</string>
     <string name="application_management_load_failed">No se pudieron cargar las aplicaciones.</string>
