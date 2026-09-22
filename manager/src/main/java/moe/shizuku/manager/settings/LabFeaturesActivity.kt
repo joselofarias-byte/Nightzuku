@@ -54,6 +54,7 @@ class LabFeaturesActivity : AppActivity() {
         setContent {
             val scope = rememberCoroutineScope()
             var connectorEnabled by remember { mutableStateOf(ModuleSettings.isConnectorEnabled()) }
+            var tapiEnabled by remember { mutableStateOf(ModuleSettings.isTapiEnabled()) }
             var tcpEnabled by remember { mutableStateOf(ShizukuSettings.isAdbTcpEnabled()) }
             var tcpHost by remember { mutableStateOf(ShizukuSettings.getAdbTcpHost()) }
             var tcpPort by remember { mutableStateOf(ShizukuSettings.getAdbTcpPort().toString()) }
@@ -63,6 +64,7 @@ class LabFeaturesActivity : AppActivity() {
             var killBusy by remember { mutableStateOf(false) }
             var killStatus by remember { mutableStateOf<String?>(null) }
             var showUnsafeDialog by remember { mutableStateOf(false) }
+            var showTapiWarningDialog by remember { mutableStateOf(false) }
             var showTcpDialog by remember { mutableStateOf(false) }
             var showKillDialog by remember { mutableStateOf(false) }
 
@@ -103,6 +105,27 @@ class LabFeaturesActivity : AppActivity() {
                                     }
                                 )
                             }
+                            item {
+                                WearSwitchButton(
+                                    checked = tapiEnabled,
+                                    onCheckedChange = { enabled ->
+                                        if (enabled) showTapiWarningDialog = true
+                                        else {
+                                            tapiEnabled = false
+                                            ModuleSettings.setTapiEnabled(false)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { WearText(stringResource(R.string.tapi_title)) },
+                                    secondaryLabel = { WearText(stringResource(R.string.tapi_summary)) },
+                                    icon = {
+                                        WearIcon(
+                                            painter = painterResource(R.drawable.ic_adb_24dp),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -121,6 +144,27 @@ class LabFeaturesActivity : AppActivity() {
                             },
                             dismissButton = {
                                 WearFilledTonalButton(onClick = { showUnsafeDialog = false }) {
+                                    WearText(stringResource(android.R.string.cancel))
+                                }
+                            }
+                        )
+                    }
+
+                    if (showTapiWarningDialog) {
+                        WearAlertDialog(
+                            show = true,
+                            onDismissRequest = { showTapiWarningDialog = false },
+                            title = { WearText(stringResource(R.string.tapi_warning_title)) },
+                            text = { WearText(stringResource(R.string.tapi_warning_message)) },
+                            confirmButton = {
+                                WearButton(onClick = {
+                                    showTapiWarningDialog = false
+                                    tapiEnabled = true
+                                    ModuleSettings.setTapiEnabled(true)
+                                }) { WearText(stringResource(android.R.string.ok)) }
+                            },
+                            dismissButton = {
+                                WearFilledTonalButton(onClick = { showTapiWarningDialog = false }) {
                                     WearText(stringResource(android.R.string.cancel))
                                 }
                             }
@@ -145,6 +189,20 @@ class LabFeaturesActivity : AppActivity() {
                                         else {
                                             connectorEnabled = false
                                             ModuleSettings.setConnectorEnabled(false)
+                                        }
+                                    }
+                                )
+                                GroupDivider()
+                                NightzukuSwitchSettingsRow(
+                                    icon = R.drawable.ic_adb_24dp,
+                                    title = stringResource(R.string.tapi_title),
+                                    summary = stringResource(R.string.tapi_summary),
+                                    checked = tapiEnabled,
+                                    onCheckedChange = { enabled ->
+                                        if (enabled) showTapiWarningDialog = true
+                                        else {
+                                            tapiEnabled = false
+                                            ModuleSettings.setTapiEnabled(false)
                                         }
                                     }
                                 )
@@ -224,6 +282,26 @@ class LabFeaturesActivity : AppActivity() {
                             },
                             dismissButton = {
                                 TextButton(onClick = { showUnsafeDialog = false }) {
+                                    Text(stringResource(android.R.string.cancel))
+                                }
+                            }
+                        )
+                    }
+
+                    if (showTapiWarningDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showTapiWarningDialog = false },
+                            title = { Text(stringResource(R.string.tapi_warning_title)) },
+                            text = { Text(stringResource(R.string.tapi_warning_message)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showTapiWarningDialog = false
+                                    tapiEnabled = true
+                                    ModuleSettings.setTapiEnabled(true)
+                                }) { Text(stringResource(android.R.string.ok)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showTapiWarningDialog = false }) {
                                     Text(stringResource(android.R.string.cancel))
                                 }
                             }
