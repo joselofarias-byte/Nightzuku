@@ -134,6 +134,7 @@ jobs:
           name: nightzuku-manager-debug-${{ env.BUILD_SHORT_SHA }}
           path: manager/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          # Canonical physical-test window for the latest PR debug APK.
           retention-days: 14
 
       - name: Upload permanently signed release APK
@@ -147,4 +148,5 @@ jobs:
             release-badging.txt
             build-head-sha.txt
           if-no-files-found: error
-          retention-days: 30
+          # Canonical physical-test window. Avoid the previous 30-day retention.
+          retention-days: 14
