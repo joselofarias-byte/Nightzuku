@@ -42,6 +42,7 @@ class ShellTutorialActivity : AppActivity() {
 
         private const val SH_NAME = "rish"
         private const val DEX_NAME = "rish_shizuku.dex"
+        private const val TAPI_NAME = "tapi"
     }
 
     private val openDocumentsTree =
@@ -63,7 +64,7 @@ class ShellTutorialActivity : AppActivity() {
                 while (it.moveToNext()) {
                     val id = it.getString(0)
                     val name = it.getString(1)
-                    if (name == SH_NAME || name == DEX_NAME) {
+                    if (name == SH_NAME || name == DEX_NAME || name == TAPI_NAME) {
                         DocumentsContract.deleteDocument(cr, DocumentsContract.buildDocumentUriUsingTree(tree, id))
                     }
                 }
@@ -77,6 +78,7 @@ class ShellTutorialActivity : AppActivity() {
 
             writeToDocument(SH_NAME)
             writeToDocument(DEX_NAME)
+            writeToDocument(TAPI_NAME)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
