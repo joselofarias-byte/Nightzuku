@@ -162,8 +162,25 @@ fun MaximumPersistenceCard() {
             else PersistenceActions.setDesiredRunning(context, true)
         },
         onRecoverNow = {
-            PersistenceActions.recoverNow(context)
-            actionStatus = context.getString(R.string.persistence_result_recover_now)
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val debugResult = PersistenceActions.recoverNow(context)
+                developerState = PersistenceActions.developerOptionsSnapshot(context)
+                actionStatus = when {
+                    debugResult == null ->
+                        context.getString(R.string.persistence_result_recover_now)
+                    debugResult.success ->
+                        context.getString(R.string.persistence_developer_reenabled_for_recovery)
+                    else ->
+                        context.getString(
+                            R.string.persistence_developer_action_failed,
+                            debugResult.detail ?: context.getString(R.string.persistence_developer_unknown_error)
+                        )
+                }
+                busy = false
+            }
         },
         onEnableTcp = {
             if (busy) return@PersistenceCardBody
