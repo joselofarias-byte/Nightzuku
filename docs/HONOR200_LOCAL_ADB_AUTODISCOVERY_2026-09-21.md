@@ -80,3 +80,6 @@ A 2026-09-21 HONOR 200 screen recording showed two independent presentation/star
 - Home also reloaded on every runtime-status polling timestamp because the full status object was used as a Compose effect key.
 
 The integration branch now keeps the mascot only on the main status card, coordinates Starter launches through one shared in-flight guard, and reloads Home only when the semantic runtime-status class changes.
+
+
+Snapshot note: visual/startup validation branch `fix/nightzuku-visual-startup-snapshot-20260921` freezes the current integration state for a reproducible APK build.
