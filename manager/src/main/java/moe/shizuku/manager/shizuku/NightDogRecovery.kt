@@ -36,6 +36,7 @@ object NightDogRecovery {
 
     private const val PREFS_NAME = "nightdog_recovery"
     private const val KEY_DESIRED_RUNNING = "desired_running"
+    private const val STARTER_IN_FLIGHT_GUARD_MS = 15_000L
 
     enum class Stage {
         IDLE,
@@ -102,6 +103,7 @@ object NightDogRecovery {
     @Volatile private var lastBinderLostAt = 0L
     @Volatile private var lastRecoveryAt = 0L
     @Volatile private var lastFailure: String? = null
+    @Volatile private var starterInFlightUntil = 0L
 
     private val _snapshot = MutableStateFlow(Snapshot())
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
@@ -131,6 +133,7 @@ object NightDogRecovery {
         failedAttempts = 0
         lastAttemptAt = 0L
         lastFailure = null
+        starterInFlightUntil = 0L
         recoveryJob?.cancel()
         recoveryJob = null
         publishRunning(RESULT_BINDER_RECEIVED, "Binder received; service is active")
@@ -292,11 +295,27 @@ object NightDogRecovery {
         lastBinderLostAt = 0L
         lastRecoveryAt = 0L
         lastFailure = null
+        starterInFlightUntil = 0L
         _snapshot.value = Snapshot(
             stage = Stage.IDLE,
             lastResult = "Watchdog stopped",
             lastResultKey = RESULT_WATCHDOG_STOPPED
         )
+    }
+
+    @Synchronized
+    fun noteStarterAttempt() {
+        val until = SystemClock.elapsedRealtime() + STARTER_IN_FLIGHT_GUARD_MS
+        if (until > starterInFlightUntil) starterInFlightUntil = until
+    }
+
+    @Synchronized
+    fun clearStarterAttempt() {
+        starterInFlightUntil = 0L
+    }
+
+    private fun starterAttemptInFlight(now: Long = SystemClock.elapsedRealtime()): Boolean {
+        return starterInFlightUntil > now
     }
 
     private fun ensureDesiredStateInitialized(context: Context) {
@@ -414,6 +433,14 @@ object NightDogRecovery {
         if (recoveryJob?.isActive == true) return
 
         val now = SystemClock.elapsedRealtime()
+        if (starterAttemptInFlight(now)) {
+            publish(
+                Stage.STARTING_SERVICE,
+                RESULT_START_REQUESTED,
+                "Starter is already active; waiting for Binder"
+            )
+            return
+        }
         val retryDelay = NightDogBackoff.retryDelayMs(failedAttempts)
         if (lastAttemptAt != 0L && now - lastAttemptAt < retryDelay) {
             val remainingSeconds = ((retryDelay - (now - lastAttemptAt)) / 1000).coerceAtLeast(1)
@@ -469,9 +496,11 @@ object NightDogRecovery {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
 
+            noteStarterAttempt()
             runCatching {
                 context.startActivity(intent)
             }.onFailure { error ->
+                clearStarterAttempt()
                 lastFailure = error.javaClass.simpleName
                 publish(
                     Stage.ERROR,
