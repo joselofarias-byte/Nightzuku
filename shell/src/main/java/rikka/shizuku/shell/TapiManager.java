@@ -77,6 +77,7 @@ public class TapiManager {
         Intent intent = new Intent("rikka.shizuku.intent.action.REQUEST_BINDER")
                 .setPackage(BuildConfig.MANAGER_APPLICATION_ID)
                 .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+                .putExtra("tapi", true)
                 .putExtra("data", data);
 
         IBinder amBinder = ServiceManager.getService("activity");
@@ -93,6 +94,7 @@ public class TapiManager {
                         .setPackage(BuildConfig.MANAGER_APPLICATION_ID)
                         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra("tapi", true)
                         .putExtra("data", data);
                 am.startActivityAsUser(null, callingPackage, activityIntent, null, null, null, 0, 0, null, null, Os.getuid() / 100000);
             } else if (Build.VERSION.SDK_INT >= 30) {
@@ -142,6 +144,7 @@ public class TapiManager {
                             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
+                            .putExtra("tapi", true)
                             .putExtra("data", data),
                     "Request binder from Nightzuku"
             );
