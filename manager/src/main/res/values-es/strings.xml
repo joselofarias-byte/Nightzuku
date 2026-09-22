@@ -341,7 +341,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_retry_in">En %1$d s</string>
     <string name="persistence_honest_tcp_available">Recuperación por TCP local disponible</string>
     <string name="persistence_honest_wadb_required">Se requiere una activación puntual de Depuración inalámbrica</string>
-    <string name="persistence_honest_reboot_limit">Nightzuku no puede recrear uid=2000 después de un reinicio si las Opciones de desarrollador están completamente desactivadas.</string>
+    <string name="persistence_honest_reboot_limit">Mientras Opciones de desarrollador estén apagadas no se puede recrear uid=2000. Prepara primero el control automático para que Nightzuku pueda restaurarlas sin ADB.</string>
     <string name="persistence_action_recover_now">Recuperar ahora</string>
     <string name="persistence_action_enable_tcp">Activar TCP local</string>
     <string name="persistence_action_test_tcp">Probar TCP local</string>
@@ -379,6 +379,28 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_result_manual_start">Inicio solicitado</string>
     <string name="persistence_result_recover_now">Recuperar ahora solicitado</string>
     <string name="persistence_enable_tcp_need_wadb">Activa primero Depuración inalámbrica y luego toca Activar TCP local.</string>
+
+    <string name="persistence_developer_control">Control de desarrollo</string>
+    <string name="persistence_developer_control_ready">Preparado · sobrevive a Desarrollo OFF</string>
+    <string name="persistence_developer_control_not_ready">Aún no preparado</string>
+    <string name="persistence_developer_options">Opciones de desarrollador</string>
+    <string name="persistence_adb_global">ADB</string>
+    <string name="persistence_wireless_debugging_state">Depuración inalámbrica</string>
+    <string name="persistence_developer_restore_state">Estado guardado para restaurar</string>
+    <string name="persistence_developer_restore_pending">Pendiente · estado anterior preservado</string>
+    <string name="persistence_toggle_enabled">Activado</string>
+    <string name="persistence_toggle_disabled">Desactivado</string>
+    <string name="persistence_prepare_developer_control">Preparar control automático</string>
+    <string name="persistence_developer_off">Desarrollo OFF</string>
+    <string name="persistence_developer_restore">Restaurar Desarrollo</string>
+    <string name="persistence_developer_control_prepared">El control automático de Desarrollo quedó preparado.</string>
+    <string name="persistence_developer_disabled">Se desactivaron Opciones de desarrollador, ADB y Depuración inalámbrica. El estado anterior quedó guardado.</string>
+    <string name="persistence_developer_restored">Se restauraron Opciones de desarrollador y el estado ADB anterior.</string>
+    <string name="persistence_developer_action_failed">Falló el control de Desarrollo: %1$s</string>
+    <string name="persistence_developer_unknown_error">error desconocido</string>
+    <string name="persistence_developer_off_confirm_title">¿Desactivar temporalmente Opciones de desarrollador?</string>
+    <string name="persistence_developer_off_confirm_message">Nightzuku primero verificará que su permiso persistente esté armado, guardará el estado actual de Desarrollo/ADB/Depuración inalámbrica y luego apagará esos interruptores. El servidor de Nightzuku que ya está ejecutándose puede seguir vivo, pero la recuperación automática no estará disponible hasta restaurar Desarrollo.</string>
+    <string name="persistence_honest_reboot_prepared">El control automático está preparado. Nightzuku puede restaurar Opciones de desarrollador sin iniciar una nueva sesión ADB.</string>
 
     <!-- Lab Features -->
     <string name="lab_features_title">Funciones experimentales</string>
