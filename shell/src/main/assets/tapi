@@ -13,12 +13,21 @@ MV="$ANDROID_BIN/mv"
 RM="$ANDROID_BIN/rm"
 MKTEMP="$ANDROID_BIN/mktemp"
 SED="$ANDROID_BIN/sed"
+CP="$ANDROID_BIN/cp"
 
 MANAGER_PKG="com.joselofarias.nightzuku"
 
 [ -z "$HOME" ] && HOME=/data/local/tmp
 TAPI_DIR="$HOME/.tapi"
 DEX="$TAPI_DIR/rish_shizuku.dex"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
+if [ ! -f "$DEX" ]; then
+  "$MKDIR" -p "$TAPI_DIR"
+  if [ -f "$SCRIPT_DIR/rish_shizuku.dex" ]; then
+    "$CP" "$SCRIPT_DIR/rish_shizuku.dex" "$DEX" 2>/dev/null
+  fi
+fi
 
 if [ ! -f "$DEX" ]; then
   "$MKDIR" -p "$TAPI_DIR"
