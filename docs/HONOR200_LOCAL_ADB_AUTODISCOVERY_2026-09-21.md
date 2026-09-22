@@ -69,3 +69,14 @@ After CI produces the integrated APK:
 5. confirm the service recovers without pressing Start or entering a port;
 6. repeat with Wi-Fi -> mobile data -> Wi-Fi;
 7. run repeated rish calls and confirm none hangs past the internal timeout.
+
+
+## UI / startup stabilization from physical video
+
+A 2026-09-21 HONOR 200 screen recording showed two independent presentation/startup issues:
+
+- the NightDog artwork was duplicated between the main service-status card and Maximum persistence;
+- manual startup and automatic NightDog recovery could overlap, reopening StarterActivity before Binder settled;
+- Home also reloaded on every runtime-status polling timestamp because the full status object was used as a Compose effect key.
+
+The integration branch now keeps the mascot only on the main status card, coordinates Starter launches through one shared in-flight guard, and reloads Home only when the semantic runtime-status class changes.
