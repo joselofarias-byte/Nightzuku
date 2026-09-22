@@ -396,6 +396,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_developer_control_prepared">El control automático de Desarrollo quedó preparado.</string>
     <string name="persistence_developer_disabled">Se desactivaron Opciones de desarrollador, ADB y Depuración inalámbrica. El estado anterior quedó guardado.</string>
     <string name="persistence_developer_restored">Se restauraron Opciones de desarrollador y el estado ADB anterior.</string>
+    <string name="persistence_developer_reenabled_for_recovery">Se activaron Opciones de desarrollador, Depuración USB y Depuración inalámbrica para la recuperación.</string>
     <string name="persistence_developer_action_failed">Falló el control de Desarrollo: %1$s</string>
     <string name="persistence_developer_unknown_error">error desconocido</string>
     <string name="persistence_developer_off_confirm_title">¿Desactivar temporalmente Opciones de desarrollador?</string>
