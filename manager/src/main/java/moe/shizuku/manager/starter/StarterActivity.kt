@@ -27,10 +27,10 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
-import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
 import moe.shizuku.manager.ui.compose.MonospaceLog
@@ -60,6 +60,9 @@ class StarterActivity : AppActivity() {
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations && !Shizuku.pingBinder()) {
+            NightDogRecovery.clearStarterAttempt()
+        }
         super.onDestroy()
         binderReceivedListener?.let {
             Shizuku.removeBinderReceivedListener(it)
@@ -69,6 +72,7 @@ class StarterActivity : AppActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NightDogRecovery.noteStarterAttempt()
 
         val startedWithRoot = intent.getBooleanExtra(EXTRA_IS_ROOT, true)
 
@@ -81,6 +85,7 @@ class StarterActivity : AppActivity() {
 
                 val listener = object : Shizuku.OnBinderReceivedListener {
                     override fun onBinderReceived() {
+                        NightDogRecovery.clearStarterAttempt()
                         Shizuku.removeBinderReceivedListener(this)
                         binderReceivedListener = null
                         runOnUiThread {
@@ -232,12 +237,13 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         try {
             if (root) {
                 startRoot()
+            } else if (!host.isNullOrBlank() && port in 1..65535) {
+                // Honor the caller-selected recovery endpoint. Persistent TCP must
+                // not silently replace an explicit mDNS or system-TCP attempt.
+                startAdb(host, port)
             } else {
-                val discovered = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
-                val useDiscovered = discovered != null && (host.isNullOrBlank() || host == LOOPBACK_HOST)
-                val resolvedHost = if (useDiscovered) discovered.host else requireNotNull(host)
-                val resolvedPort = if (useDiscovered) discovered.port else port
-                startAdb(resolvedHost, resolvedPort)
+                val resolved = moe.shizuku.manager.adb.AdbTransportResolver.resolve(host, port)
+                startAdb(resolved.host, resolved.port)
             }
         } catch (e: Throwable) {
             postResult(e)
@@ -338,9 +344,5 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 postResult(it)
             }
         }
-    }
-
-    companion object {
-        private const val LOOPBACK_HOST = "127.0.0.1"
     }
 }
