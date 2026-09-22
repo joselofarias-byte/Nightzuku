@@ -22,7 +22,7 @@ if [ -z "${TARGET:-}" ]; then
   TARGET="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
 fi
 
-{
+(
   echo "# HONOR 200 - Nightzuku TAPI physical validation"
   echo
   echo "Fecha: $(date -Iseconds)"
@@ -115,9 +115,12 @@ fi
   echo "## Siguiente pasada"
   echo "Si TAPI estaba desactivado, activalo en Nightzuku > Funciones experimentales > TAPI y ejecuta:"
   echo "INSTALL=0 TARGET=$TARGET ~/HONOR200-TAPI-PHYSICAL-VALIDATION.sh"
-} > "$OUT" 2>&1
+) > "$OUT" 2>&1
 RC=$?
-cp -f "$OUT" "$FINAL"
-echo "Informe final: $FINAL"
+if cp -f "$OUT" "$FINAL"; then
+  echo "Informe final: $FINAL"
+else
+  echo "No se pudo copiar el informe a Descargas. Interno: $OUT" >&2
+fi
 echo "EXIT=$RC"
 exit "$RC"
