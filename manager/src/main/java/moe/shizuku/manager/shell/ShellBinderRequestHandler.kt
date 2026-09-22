@@ -18,7 +18,7 @@ object ShellBinderRequestHandler {
 
         val binder = intent.getBundleExtra("data")?.getBinder("binder") ?: return false
 
-        if (!ModuleSettings.isTapiEnabled()) {
+        if (intent.getBooleanExtra("tapi", false) && !ModuleSettings.isTapiEnabled()) {
             try {
                 val emptyData = Parcel.obtain()
                 binder.transact(2, emptyData, null, IBinder.FLAG_ONEWAY)
