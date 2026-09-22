@@ -19,8 +19,22 @@ data class RecoveryTestReport(
 
 object PersistenceActions {
 
-    fun recoverNow(context: Context) {
-        NightDogRecovery.requestImmediateRecovery(context)
+    suspend fun recoverNow(context: Context): DeveloperOptionsController.Result? {
+        val before = DeveloperOptionsController.snapshot(context)
+        val debugResult = if (DeveloperOptionsController.shouldEnableForManualRecovery(before)) {
+            DeveloperOptionsController.enableForRecovery(context)
+        } else {
+            null
+        }
+
+        if (debugResult == null || debugResult.success) {
+            // Give Android a short settle window after re-enabling adbd-related
+            // global switches before asking NightDog to rediscover transports.
+            if (debugResult?.success == true) delay(1_000L)
+            NightDogRecovery.requestImmediateRecovery(context)
+        }
+
+        return debugResult
     }
 
     fun setDesiredRunning(context: Context, desired: Boolean) {
