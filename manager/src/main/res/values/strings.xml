@@ -300,7 +300,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
 
     <!-- Maximum persistence -->
     <string name="persistence_title">Maximum persistence</string>
-    <string name="persistence_summary">Keep Nightzuku running and recover it when the binder or server dies.</string>
+    <string name="persistence_summary">Automatically recover Nightzuku if the service stops.</string>
     <string name="persistence_service">Service</string>
     <string name="persistence_service_running">Running</string>
     <string name="persistence_service_recovering">Recovering</string>
@@ -343,6 +343,8 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_honest_wadb_required">One-time Wireless debugging activation required</string>
     <string name="persistence_honest_reboot_limit">While Developer options are off, uid=2000 cannot be recreated. Prepare automatic control first so Nightzuku can restore them without ADB.</string>
     <string name="persistence_action_recover_now">Recover now</string>
+    <string name="persistence_show_details">Details and controls</string>
+    <string name="persistence_hide_details">Hide details</string>
     <string name="persistence_action_enable_tcp">Enable local TCP</string>
     <string name="persistence_action_test_tcp">Test local TCP</string>
     <string name="persistence_action_disable_tcp">Disable local TCP</string>
@@ -380,9 +382,9 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_result_recover_now">Recover now requested</string>
     <string name="persistence_enable_tcp_need_wadb">Enable Wireless debugging first, then tap Enable local TCP.</string>
 
-    <string name="persistence_developer_control">Developer control</string>
-    <string name="persistence_developer_control_ready">Prepared · survives Developer options OFF</string>
-    <string name="persistence_developer_control_not_ready">Not prepared yet</string>
+    <string name="persistence_developer_control">ADB recovery</string>
+    <string name="persistence_developer_control_ready">Prepared</string>
+    <string name="persistence_developer_control_not_ready">Needs preparation</string>
     <string name="persistence_developer_options">Developer options</string>
     <string name="persistence_adb_global">ADB</string>
     <string name="persistence_wireless_debugging_state">Wireless debugging</string>
