@@ -3,12 +3,12 @@ set -u
 
 # HONOR 200 / Android 16 physical validation for Nightzuku TAPI.
 # Produces one Markdown report in shared Downloads.
-# Optional: TARGET=ip:port INSTALL=0 RUN_ID=... ARTIFACT=...
+# Optional: TARGET=ip:port INSTALL=0
 
-RUN_ID="${RUN_ID:-35673782416}"
-ARTIFACT="${ARTIFACT:-nightzuku-manager-release-signed-5f58ab8}"
+BRANCH="feature/tapi-termux-newtermux-20260921"
 INSTALL="${INSTALL:-1}"
 PKG="com.joselofarias.nightzuku"
+REPO="joselofarias-byte/Nightzuku"
 DOWNLOADS="$HOME/storage/downloads"
 WORK="$HOME/.cache/nightzuku-tapi-physical"
 OUT="$WORK/HONOR200-TAPI-PHYSICAL-VALIDATION.md"
@@ -26,8 +26,9 @@ fi
   echo "# HONOR 200 - Nightzuku TAPI physical validation"
   echo
   echo "Fecha: $(date -Iseconds)"
-  echo "Run: $RUN_ID"
-  echo "Artifact: $ARTIFACT"
+  REMOTE_HEAD="$(gh api "repos/$REPO/branches/$BRANCH" --jq '.commit.sha' 2>/dev/null)"
+  echo "Branch: $BRANCH"
+  echo "Remote HEAD: $REMOTE_HEAD"
   echo "Target: ${TARGET:-NO_CONECTADO}"
   echo
 
@@ -40,8 +41,24 @@ fi
   adb -s "$TARGET" shell 'id; getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk' 2>&1
   echo
 
+  echo "## Resolver CI exacto del HEAD actual"
+  if [ -z "$REMOTE_HEAD" ]; then
+    echo "NO_SE_PUDO_RESOLVER_HEAD_REMOTO"
+    exit 22
+  fi
+  RUN_ID="$(gh run list -R "$REPO" --branch "$BRANCH" --workflow "Android PR build" --limit 30 --json databaseId,headSha,status,conclusion --jq ".[] | select(.headSha==\"$REMOTE_HEAD\" and .status==\"completed\" and .conclusion==\"success\") | .databaseId" | head -n 1)"
+  if [ -z "$RUN_ID" ]; then
+    echo "CI_NO_VERDE_PARA_HEAD_ACTUAL=$REMOTE_HEAD"
+    exit 23
+  fi
+  SHORT_SHA="${REMOTE_HEAD:0:7}"
+  ARTIFACT="nightzuku-manager-release-signed-$SHORT_SHA"
+  echo "Run: $RUN_ID"
+  echo "Artifact: $ARTIFACT"
+  echo
+
   echo "## Descargar APK firmado de CI"
-  gh run download "$RUN_ID" -R joselofarias-byte/Nightzuku -n "$ARTIFACT" -D "$WORK/artifact" 2>&1
+  gh run download "$RUN_ID" -R "$REPO" -n "$ARTIFACT" -D "$WORK/artifact" 2>&1
   APK="$(find "$WORK/artifact" -type f -name '*.apk' | head -n 1)"
   echo "APK=$APK"
   if [ -z "$APK" ] || [ ! -s "$APK" ]; then
