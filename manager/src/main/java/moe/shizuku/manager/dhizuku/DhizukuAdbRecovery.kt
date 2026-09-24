@@ -45,6 +45,18 @@ object DhizukuAdbRecovery {
         )
     }
 
+    suspend fun authorize(context: Context): Result<DhizukuAdbState> {
+        val appContext = context.applicationContext
+        return runCatching {
+            check(runCatching { Dhizuku.init(appContext) }.getOrDefault(false)) {
+                "Dhizuku no está disponible o no está activo."
+            }
+            ensurePermission()
+            delay(250)
+            readState(appContext)
+        }
+    }
+
     suspend fun setAdbEnabled(context: Context, enabled: Boolean): Result<DhizukuAdbState> {
         val appContext = context.applicationContext
 
