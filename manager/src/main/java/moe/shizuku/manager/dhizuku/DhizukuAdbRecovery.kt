@@ -33,9 +33,15 @@ object DhizukuAdbRecovery {
         return DhizukuAdbState(
             dhizukuAvailable = initialized,
             permissionGranted = granted,
-            adbEnabled = Settings.Global.getInt(resolver, Settings.Global.ADB_ENABLED, 0) == 1,
-            wirelessDebuggingEnabled = Settings.Global.getInt(resolver, "adb_wifi_enabled", 0) == 1,
-            port = Settings.Global.getInt(resolver, "adb_wifi_port", -1)
+            adbEnabled = runCatching {
+                Settings.Global.getInt(resolver, Settings.Global.ADB_ENABLED, 0) == 1
+            }.getOrDefault(false),
+            wirelessDebuggingEnabled = runCatching {
+                Settings.Global.getInt(resolver, "adb_wifi_enabled", 0) == 1
+            }.getOrDefault(false),
+            port = runCatching {
+                Settings.Global.getInt(resolver, "adb_wifi_port", -1)
+            }.getOrDefault(-1)
         )
     }
 
