@@ -7,7 +7,8 @@ import android.os.SystemProperties
 import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
-import moe.shizuku.manager.utils.EnvironmentUtils
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Runs inside Dhizuku's Device Owner context.
@@ -105,7 +106,14 @@ class DhizukuService(private val context: Context) : IDhizukuService.Stub() {
 
     private fun waitForAdbTcpPort(port: Int): Boolean {
         repeat(10) {
-            if (EnvironmentUtils.isAdbPortLive(port)) return true
+            val live = runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress("127.0.0.1", port), 700)
+                }
+                true
+            }.getOrDefault(false)
+            if (live) return true
+
             try {
                 Thread.sleep(500)
             } catch (_: InterruptedException) {
