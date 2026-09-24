@@ -626,7 +626,9 @@ private fun PhoneHomeScreen(
                 val rootRestart = running && status.uid == 0
                 if (isRooted) item { RootCard(rootRestart, onStartRoot) }
                 if (canUseWirelessAdb) item { WirelessAdbCard(running, localNetworkPermissionState, onStartWirelessAdb, onPairWirelessAdb, onOpenWirelessGuide) }
-                item { DhizukuAdbRecoveryCard() }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    item { DhizukuAdbRecoveryCard() }
+                }
                 item { AdbCommandCard(onShowAdbCommand, onOpenAdbHelp) }
             }
             if (localNetworkPermissionState.required && !localNetworkPermissionState.granted) item { LocalNetworkPermissionCard(localNetworkPermissionState, onRequestLocalNetworkPermission) }
