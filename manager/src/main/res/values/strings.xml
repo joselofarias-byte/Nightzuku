@@ -415,4 +415,25 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="unsafe_warning_title">Warning</string>
     <string name="unsafe_warning_message">Enabling this feature is UNSAFE. Are you sure?</string>
     <string name="application_management_load_failed">Could not load applications.</string>
+    <!-- Dhizuku ADB recovery -->
+    <string name="home_dhizuku_adb_title">ADB recovery with Dhizuku</string>
+    <string name="home_dhizuku_adb_description">Uses Dhizuku Device Owner privileges to restore ADB without requiring an existing ADB connection. Wireless debugging is restored only when Android allows it.</string>
+    <string name="home_dhizuku_adb_available">Dhizuku: available</string>
+    <string name="home_dhizuku_adb_unavailable">Dhizuku: unavailable or inactive</string>
+    <string name="home_dhizuku_adb_permission_ok">Dhizuku permission: granted</string>
+    <string name="home_dhizuku_adb_permission_missing">Dhizuku permission: required on first use</string>
+    <string name="home_dhizuku_adb_status_on">ADB: enabled</string>
+    <string name="home_dhizuku_adb_status_off">ADB: disabled</string>
+    <string name="home_dhizuku_wireless_on">Wireless debugging: enabled</string>
+    <string name="home_dhizuku_wireless_off">Wireless debugging: disabled</string>
+    <string name="home_dhizuku_adb_port">Wireless ADB port: %1$d</string>
+    <string name="home_dhizuku_adb_enable">Enable ADB</string>
+    <string name="home_dhizuku_adb_disable">Disable ADB</string>
+    <string name="home_dhizuku_adb_refresh">Refresh status</string>
+    <string name="home_dhizuku_adb_working">Applying Device Owner policy…</string>
+    <string name="home_dhizuku_adb_success_on">ADB enabled through Dhizuku.</string>
+    <string name="home_dhizuku_adb_success_off">ADB disabled through Dhizuku.</string>
+    <string name="home_dhizuku_adb_failed">Dhizuku could not change ADB: %1$s</string>
+    <string name="home_dhizuku_adb_wireless_note">ADB was restored, but Wireless debugging is still off. You can enable it from Developer options or try again if MagicOS allows Device Owner to restore it.</string>
+
 </resources>
