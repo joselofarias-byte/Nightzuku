@@ -769,6 +769,34 @@ private fun DhizukuAdbRecoveryCard() {
         state = DhizukuAdbRecovery.readState(context)
     }
 
+    fun authorizeDhizuku() {
+        if (working) return
+        working = true
+        scope.launch {
+            DhizukuAdbRecovery.authorize(context)
+                .onSuccess { updated ->
+                    state = updated
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.home_dhizuku_adb_permission_ok),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .onFailure { error ->
+                    refresh()
+                    Toast.makeText(
+                        context,
+                        context.getString(
+                            R.string.home_dhizuku_adb_failed,
+                            error.message ?: error.javaClass.simpleName
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            working = false
+        }
+    }
+
     fun applyAdb(enabled: Boolean) {
         if (working) return
         working = true
@@ -846,25 +874,33 @@ private fun DhizukuAdbRecoveryCard() {
         collapsedBody = lines.drop(2).joinToString(" · "),
         expandable = true
     ) {
-        HomeButtons(
-            listOf(
-                HomeButtonSpec(
-                    label = if (state.adbEnabled) R.string.home_dhizuku_adb_disable
-                    else R.string.home_dhizuku_adb_enable,
-                    icon = if (state.adbEnabled) R.drawable.ic_close_24
-                    else R.drawable.ic_server_start_24dp,
-                    primary = !state.adbEnabled,
-                    enabled = !working,
-                    onClick = { applyAdb(!state.adbEnabled) }
-                ),
-                HomeButtonSpec(
-                    label = R.string.home_dhizuku_adb_refresh,
-                    icon = R.drawable.ic_server_restart,
-                    enabled = !working,
-                    onClick = { refresh() }
-                )
+        val buttons = mutableListOf<HomeButtonSpec>()
+        if (!state.permissionGranted) {
+            buttons += HomeButtonSpec(
+                label = R.string.home_dhizuku_authorize,
+                icon = R.drawable.ic_system_icon,
+                primary = true,
+                enabled = state.dhizukuAvailable && !working,
+                onClick = { authorizeDhizuku() }
             )
+        } else {
+            buttons += HomeButtonSpec(
+                label = if (state.adbEnabled) R.string.home_dhizuku_adb_disable
+                else R.string.home_dhizuku_adb_enable,
+                icon = if (state.adbEnabled) R.drawable.ic_close_24
+                else R.drawable.ic_server_start_24dp,
+                primary = !state.adbEnabled,
+                enabled = !working,
+                onClick = { applyAdb(!state.adbEnabled) }
+            )
+        }
+        buttons += HomeButtonSpec(
+            label = R.string.home_dhizuku_adb_refresh,
+            icon = R.drawable.ic_server_restart,
+            enabled = !working,
+            onClick = { refresh() }
         )
+        HomeButtons(buttons)
     }
 }
 
