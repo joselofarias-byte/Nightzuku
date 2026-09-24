@@ -55,17 +55,15 @@ object DhizukuAdbRecovery {
 
             ensurePermission()
 
-            val service = bindService(appContext)
+            val bound = bindService(appContext)
                 ?: error("No se pudo conectar al servicio Device Owner de Dhizuku.")
 
-            val remote = service.first
-            val connection = service.second
             try {
-                check(remote.setAdbEnabled(enabled)) {
+                check(bound.remote.setAdbEnabled(enabled)) {
                     "Dhizuku no pudo cambiar el estado de ADB."
                 }
             } finally {
-                runCatching { Dhizuku.unbindUserService(connection) }
+                closeService(bound)
             }
 
             delay(700)
@@ -103,17 +101,15 @@ object DhizukuAdbRecovery {
 
             ensurePermission()
 
-            val service = bindService(appContext)
+            val bound = bindService(appContext)
                 ?: error("No se pudo conectar al servicio Device Owner de Dhizuku.")
 
-            val remote = service.first
-            val connection = service.second
             try {
-                check(remote.bindAdbTcp(port)) {
+                check(bound.remote.bindAdbTcp(port)) {
                     "Dhizuku no pudo abrir ADB TCP en el puerto $port."
                 }
             } finally {
-                runCatching { Dhizuku.unbindUserService(connection) }
+                closeService(bound)
             }
 
             delay(500)
@@ -137,9 +133,18 @@ object DhizukuAdbRecovery {
         check(granted) { "Se denegó el permiso de Dhizuku." }
     }
 
-    private suspend fun bindService(context: Context): Pair<IDhizukuService, ServiceConnection>? {
+    private data class BoundService(
+        val remote: IDhizukuService,
+        val connection: ServiceConnection,
+        val args: DhizukuUserServiceArgs
+    )
+
+    private suspend fun bindService(context: Context): BoundService? {
         return withTimeoutOrNull(SERVICE_BIND_TIMEOUT_MS) {
             suspendCancellableCoroutine { continuation ->
+                val args = DhizukuUserServiceArgs(
+                    ComponentName(context, DhizukuService::class.java)
+                )
                 lateinit var connection: ServiceConnection
                 connection = object : ServiceConnection {
                     override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -148,30 +153,34 @@ object DhizukuAdbRecovery {
                         if (service == null) {
                             continuation.resume(null)
                         } else {
-                            continuation.resume(service to connection)
+                            continuation.resume(BoundService(service, connection, args))
                         }
                     }
 
                     override fun onServiceDisconnected(name: ComponentName?) = Unit
                 }
 
-                val args = DhizukuUserServiceArgs(
-                    ComponentName(context, DhizukuService::class.java)
-                )
-
-                val bound = runCatching {
+                val didBind = runCatching {
                     Dhizuku.bindUserService(args, connection)
                 }.getOrDefault(false)
 
-                if (!bound && continuation.isActive) {
+                if (!didBind && continuation.isActive) {
                     continuation.resume(null)
                 }
 
                 continuation.invokeOnCancellation {
+                    runCatching { Dhizuku.stopUserService(args) }
                     runCatching { Dhizuku.unbindUserService(connection) }
                 }
             }
         }
+    }
+
+    private fun closeService(bound: BoundService) {
+        // Dhizuku does not auto-stop user services on newer app versions.
+        // Stop first, then unbind, so a stale service cannot poison later calls.
+        runCatching { Dhizuku.stopUserService(bound.args) }
+        runCatching { Dhizuku.unbindUserService(bound.connection) }
     }
 
     private const val SERVICE_BIND_TIMEOUT_MS = 10_000L
