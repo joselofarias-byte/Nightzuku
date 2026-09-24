@@ -91,7 +91,6 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.management.ApplicationManagementActivity
 import moe.shizuku.manager.dhizuku.DhizukuAdbRecovery
-import moe.shizuku.manager.dhizuku.DhizukuAdbState
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.module.AdbModuleManager
