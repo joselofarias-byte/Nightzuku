@@ -306,4 +306,25 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="unsafe_warning_title">Advertencia</string>
     <string name="unsafe_warning_message">Habilitar esta función NO ES SEGURO. ¿Estás seguro?</string>
     <string name="application_management_load_failed">No se pudieron cargar las aplicaciones.</string>
+    <!-- Recuperación ADB con Dhizuku -->
+    <string name="home_dhizuku_adb_title">Recuperación ADB con Dhizuku</string>
+    <string name="home_dhizuku_adb_description">Usa los privilegios de Propietario del dispositivo de Dhizuku para recuperar ADB sin necesitar una conexión ADB previa. La depuración inalámbrica se restaura sólo si Android lo permite.</string>
+    <string name="home_dhizuku_adb_available">Dhizuku: disponible</string>
+    <string name="home_dhizuku_adb_unavailable">Dhizuku: no disponible o inactivo</string>
+    <string name="home_dhizuku_adb_permission_ok">Permiso Dhizuku: concedido</string>
+    <string name="home_dhizuku_adb_permission_missing">Permiso Dhizuku: se solicitará en el primer uso</string>
+    <string name="home_dhizuku_adb_status_on">ADB: activado</string>
+    <string name="home_dhizuku_adb_status_off">ADB: desactivado</string>
+    <string name="home_dhizuku_wireless_on">Depuración inalámbrica: activada</string>
+    <string name="home_dhizuku_wireless_off">Depuración inalámbrica: desactivada</string>
+    <string name="home_dhizuku_adb_port">Puerto ADB inalámbrico: %1$d</string>
+    <string name="home_dhizuku_adb_enable">Activar ADB</string>
+    <string name="home_dhizuku_adb_disable">Apagar ADB</string>
+    <string name="home_dhizuku_adb_refresh">Actualizar estado</string>
+    <string name="home_dhizuku_adb_working">Aplicando política de Propietario del dispositivo…</string>
+    <string name="home_dhizuku_adb_success_on">ADB activado mediante Dhizuku.</string>
+    <string name="home_dhizuku_adb_success_off">ADB apagado mediante Dhizuku.</string>
+    <string name="home_dhizuku_adb_failed">Dhizuku no pudo cambiar ADB: %1$s</string>
+    <string name="home_dhizuku_adb_wireless_note">ADB se recuperó, pero la Depuración inalámbrica sigue apagada. Podés activarla desde Opciones de desarrollador o volver a intentar si MagicOS permite restaurarla mediante Device Owner.</string>
+
 </resources>
