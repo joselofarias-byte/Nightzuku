@@ -16,29 +16,6 @@ import moe.shizuku.manager.utils.EnvironmentUtils
  */
 class DhizukuService(private val context: Context) : IDhizukuService.Stub() {
 
-    override fun runCommand(command: String?) {
-        command ?: return
-        try {
-            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
-            runCatching { process.outputStream.close() }
-            val stdout = Thread {
-                runCatching { process.inputStream.use { it.readBytes() } }
-            }
-            val stderr = Thread {
-                runCatching { process.errorStream.use { it.readBytes() } }
-            }
-            stdout.start()
-            stderr.start()
-            Thread {
-                runCatching { process.waitFor() }
-                runCatching { stdout.join(2_000) }
-                runCatching { stderr.join(2_000) }
-            }.start()
-        } catch (e: Throwable) {
-            Log.e(TAG, "runCommand failed", e)
-        }
-    }
-
     override fun enableAdb(): Boolean = setAdbEnabled(true)
 
     override fun setAdbEnabled(enabled: Boolean): Boolean {
