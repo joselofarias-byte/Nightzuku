@@ -427,6 +427,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="home_dhizuku_wireless_on">Wireless debugging: enabled</string>
     <string name="home_dhizuku_wireless_off">Wireless debugging: disabled</string>
     <string name="home_dhizuku_adb_port">Wireless ADB port: %1$d</string>
+    <string name="home_dhizuku_authorize">Authorize Dhizuku</string>
     <string name="home_dhizuku_adb_enable">Enable ADB</string>
     <string name="home_dhizuku_adb_disable">Disable ADB</string>
     <string name="home_dhizuku_adb_refresh">Refresh status</string>
