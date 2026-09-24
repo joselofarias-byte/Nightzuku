@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
 import android.os.SystemProperties
+import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import moe.shizuku.manager.utils.EnvironmentUtils
@@ -29,6 +30,14 @@ class DhizukuService(private val context: Context) : IDhizukuService.Stub() {
                     Log.e(TAG, "No Device Owner admin found")
                     return false
                 }
+
+            if (enabled) {
+                // If the Device Owner itself previously applied the debugging
+                // restriction, remove it before requesting ADB again.
+                runCatching {
+                    dpm.clearUserRestriction(ownerAdmin, UserManager.DISALLOW_DEBUGGING_FEATURES)
+                }
+            }
 
             dpm.setGlobalSetting(
                 ownerAdmin,
