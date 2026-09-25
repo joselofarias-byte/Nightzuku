@@ -19,6 +19,7 @@ import moe.shizuku.manager.ShizukuSettings.LaunchMethod
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.adb.AdbTransportResolver
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.UserHandleCompat
@@ -46,11 +47,50 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
         if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
             rootStart(context)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            return
+        }
+
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                recoverAfterBoot(context)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    private fun recoverAfterBoot(context: Context) {
+        if (Shizuku.pingBinder()) return
+
+        val tcpEndpoint = AdbTransportResolver.persistentTcpEndpoint()
+        if (tcpEndpoint != null) {
+            if (tryAuthenticatedStart(tcpEndpoint.host, tcpEndpoint.port)) {
+                ShizukuSettings.setAdbReactivationRequired(false)
+                Log.i(AppConstants.TAG, "Persistent local TCP was still usable after reboot")
+                return
+            }
+            ShizukuSettings.setAdbReactivationRequired(true)
+            Log.w(
+                AppConstants.TAG,
+                "Persistent local TCP is not usable after reboot; Wireless debugging reactivation required"
+            )
+        } else if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB) {
+            ShizukuSettings.setAdbReactivationRequired(true)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
             && context.checkSelfPermission(WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
-            && ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB) {
+            && ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB
+        ) {
             adbStart(context)
-        } else {
+            if (Shizuku.pingBinder()) {
+                ShizukuSettings.setAdbReactivationRequired(false)
+            }
+            return
+        }
+
+        if (tcpEndpoint == null) {
             Log.w(AppConstants.TAG, "No support start on boot")
         }
     }
@@ -71,35 +111,44 @@ class BootCompleteReceiver : BroadcastReceiver() {
         Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
         Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
         Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
-        val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            val latch = CountDownLatch(1)
-            val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
-                if (port <= 0) return@AdbMdns
-                try {
-                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                    val key = AdbKey(keystore, "shizuku")
-                    // AdbMdns already resolved the real interface address. Reuse it
-                    // instead of assuming loopback, which is not valid on every
-                    // Android wireless-debugging implementation.
-                    val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-                    val host = endpoint?.host ?: "127.0.0.1"
-                    val resolvedPort = endpoint?.port ?: port
-                    val client = AdbClient(host, resolvedPort, key)
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
-                    client.close()
-                } catch (error: Exception) {
-                    Log.w(AppConstants.TAG, "ADB start on boot failed", error)
+        val latch = CountDownLatch(1)
+        val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
+            if (port <= 0) return@AdbMdns
+            try {
+                val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
+                val key = AdbKey(keystore, "shizuku")
+                // AdbMdns already resolved the real interface address. Reuse it
+                // instead of assuming loopback, which is not valid on every
+                // Android wireless-debugging implementation.
+                val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
+                val host = endpoint?.host ?: "127.0.0.1"
+                val resolvedPort = endpoint?.port ?: port
+                if (tryAuthenticatedStart(host, resolvedPort)) {
+                    ShizukuSettings.setAdbReactivationRequired(false)
                 }
-                latch.countDown()
+            } catch (error: Exception) {
+                Log.w(AppConstants.TAG, "ADB start on boot failed", error)
             }
-            if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
-                adbMdns.start()
-                latch.await(3, TimeUnit.SECONDS)
-                adbMdns.stop()
-            }
-            pending.finish()
+            latch.countDown()
         }
+        if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
+            adbMdns.start()
+            latch.await(3, TimeUnit.SECONDS)
+            adbMdns.stop()
+        }
+    }
+
+    private fun tryAuthenticatedStart(host: String, port: Int): Boolean {
+        return runCatching {
+            val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
+            val key = AdbKey(keystore, "shizuku")
+            AdbClient(host, port, key).use { client ->
+                client.connect()
+                client.shellCommand(Starter.internalCommand, null)
+            }
+            true
+        }.onFailure { error ->
+            Log.w(AppConstants.TAG, "Authenticated ADB start failed at $host:$port", error)
+        }.getOrDefault(false)
     }
 }

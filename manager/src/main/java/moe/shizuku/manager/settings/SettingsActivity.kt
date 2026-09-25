@@ -324,6 +324,24 @@ class SettingsActivity : AppActivity() {
                             }
 
                             item {
+                                SettingsGroup(title = stringResource(R.string.persistence_title)) {
+                                    SettingsRow(
+                                        icon = R.drawable.ic_adb_24dp,
+                                        title = stringResource(R.string.persistence_title),
+                                        summary = stringResource(R.string.persistence_summary),
+                                        onClick = {
+                                            startActivity(
+                                                android.content.Intent(
+                                                    this@SettingsActivity,
+                                                    MaximumPersistenceActivity::class.java
+                                                )
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
+                            item {
                                 SettingsGroup(title = stringResource(R.string.lab_features_title)) {
                                     SettingsRow(
                                         icon = R.drawable.ic_settings_outline_24dp,

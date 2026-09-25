@@ -13,6 +13,7 @@ on:
       - feature/adb-mdns-endpoint
       - feature/adb-tcp-persistence
       - fix/nightdog-adb-tcp-integration
+      - cursor/rish-postmerge-audit-5a11
   workflow_dispatch:
 
 permissions:
@@ -86,6 +87,12 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
+      - name: Test rish identity detection
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/test_rish_identity.sh
+          scripts/test_rish_identity.sh
+
       - name: Restore permanent signing keystore
         if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
         shell: bash
@@ -97,6 +104,12 @@ jobs:
           printf '%s' "$NIGHTZUKU_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nightzuku-release.jks"
           chmod 600 "$RUNNER_TEMP/nightzuku-release.jks"
           echo "NIGHTZUKU_KEYSTORE_FILE=$RUNNER_TEMP/nightzuku-release.jks" >> "$GITHUB_ENV"
+
+      - name: Test rish Java helpers
+        run: ./gradlew --no-daemon --stacktrace :shell:testDebugUnitTest
+
+      - name: Test manager persistence helpers
+        run: ./gradlew --no-daemon --stacktrace :manager:testDebugUnitTest
 
       - name: Build manager debug APK
         run: ./gradlew --no-daemon --stacktrace :manager:assembleDebug
