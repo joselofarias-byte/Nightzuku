@@ -412,6 +412,10 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="lab_features_summary">Experimental features</string>
     <string name="shizuku_connectors_title">Nightzuku Connectors</string>
     <string name="shizuku_connectors_summary">Allow plugins to activate Nightzuku</string>
+    <string name="tapi_title">TAPI</string>
+    <string name="tapi_summary">Termux/NewTermux command-line bridge for Nightzuku</string>
+    <string name="tapi_warning_title">Enable TAPI?</string>
+    <string name="tapi_warning_message">TAPI management commands can inspect Nightzuku status, stop the server, and grant or revoke Nightzuku permissions. Normal rish remains available when TAPI is disabled. Enable this only for terminal apps you trust.</string>
     <string name="unsafe_warning_title">Warning</string>
     <string name="unsafe_warning_message">Enabling this feature is UNSAFE. Are you sure?</string>
     <string name="application_management_load_failed">Could not load applications.</string>
