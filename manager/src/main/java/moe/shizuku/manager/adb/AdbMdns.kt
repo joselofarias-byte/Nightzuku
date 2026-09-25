@@ -190,6 +190,11 @@ class AdbMdns(
 
         internal fun getDiscoveredEndpoint(serviceType: String): AdbEndpoint? = endpoints[serviceType]
 
+        internal fun invalidateWhere(predicate: (AdbEndpoint) -> Boolean) {
+            val stale = endpoints.filterValues(predicate).keys.toList()
+            stale.forEach { endpoints.remove(it) }
+        }
+
         internal fun getResolvedEndpoint(serviceType: String): AdbEndpoint? {
             if (serviceType == TLS_CONNECT) {
                 AdbTransportResolver.persistentTcpEndpoint()?.let { return it }

@@ -380,6 +380,8 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_result_app_start">App start: desired running is on</string>
     <string name="persistence_result_manual_start">Start requested</string>
     <string name="persistence_result_recover_now">Recover now requested</string>
+    <string name="persistence_result_network_changed">Wi-Fi or mobile data changed; retrying on this device</string>
+    <string name="persistence_network_change_notice">Wi-Fi or mobile data changed. The previous network address is ignored and recovery retries on this device.</string>
     <string name="persistence_enable_tcp_need_wadb">Enable Wireless debugging first, then tap Enable local TCP.</string>
 
     <string name="persistence_developer_control">ADB recovery</string>

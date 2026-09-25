@@ -20,7 +20,8 @@ data class PersistenceUiModel(
     val lastFailure: String?,
     val retryRemainingMs: Long,
     val localTcpRecoveryAvailable: Boolean,
-    val wirelessActivationRequired: Boolean
+    val wirelessActivationRequired: Boolean,
+    val networkChangePending: Boolean = false
 )
 
 object PersistenceUiMapper {
@@ -57,7 +58,8 @@ object PersistenceUiMapper {
         retryRemainingMs: Long,
         reactivationRequired: Boolean,
         tcp: TcpHealth,
-        displayTransport: TransportCandidate
+        displayTransport: TransportCandidate,
+        networkChangePending: Boolean = false
     ): PersistenceUiModel {
         val service = mapService(desiredRunning, binderAlive, stage)
         val localTcpRecoveryAvailable = tcp.usableForRestart
@@ -65,13 +67,12 @@ object PersistenceUiMapper {
             !localTcpRecoveryAvailable &&
             (reactivationRequired || displayTransport.kind == RecoveryTransport.NONE)
 
-        val endpoint = when {
-            displayTransport.kind == RecoveryTransport.BINDER_ALIVE ->
-                tcp.endpoint ?: snapshotEndpoint?.takeUnless { it == "not required" }
-            !displayTransport.endpoint.isNullOrBlank() -> displayTransport.endpoint
-            !tcp.endpoint.isNullOrBlank() -> tcp.endpoint
-            else -> snapshotEndpoint
-        }
+        val endpoint = visibleEndpoint(
+            networkChangePending = networkChangePending,
+            displayTransport = displayTransport,
+            tcp = tcp,
+            snapshotEndpoint = snapshotEndpoint
+        )
 
         return PersistenceUiModel(
             service = service,
@@ -85,7 +86,34 @@ object PersistenceUiMapper {
             lastFailure = lastFailure,
             retryRemainingMs = retryRemainingMs.coerceAtLeast(0L),
             localTcpRecoveryAvailable = localTcpRecoveryAvailable,
-            wirelessActivationRequired = wirelessActivationRequired
+            wirelessActivationRequired = wirelessActivationRequired,
+            networkChangePending = networkChangePending
         )
+    }
+
+    private fun visibleEndpoint(
+        networkChangePending: Boolean,
+        displayTransport: TransportCandidate,
+        tcp: TcpHealth,
+        snapshotEndpoint: String?
+    ): String? {
+        if (networkChangePending) {
+            displayTransport.endpoint
+                ?.takeIf { NetworkChangePolicy.isLoopbackHost(NetworkChangePolicy.hostOf(it)) }
+                ?.let { return it }
+            if (tcp.usableForRestart) {
+                tcp.endpoint
+                    ?.takeIf { NetworkChangePolicy.isLoopbackHost(NetworkChangePolicy.hostOf(it)) }
+                    ?.let { return it }
+            }
+            return null
+        }
+        return when {
+            displayTransport.kind == RecoveryTransport.BINDER_ALIVE ->
+                tcp.endpoint ?: snapshotEndpoint?.takeUnless { it == "not required" }
+            !displayTransport.endpoint.isNullOrBlank() -> displayTransport.endpoint
+            !tcp.endpoint.isNullOrBlank() -> tcp.endpoint
+            else -> snapshotEndpoint
+        }
     }
 }

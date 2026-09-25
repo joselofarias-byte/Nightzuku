@@ -12,6 +12,7 @@ package moe.shizuku.manager.persistence
  * 6. Wait / retry
  *
  * A configured-but-dead TCP endpoint must not hide a live mDNS endpoint.
+ * An unreachable or network-stale mDNS endpoint must not hide loopback recovery.
  */
 enum class RecoveryTransport {
     BINDER_ALIVE,
@@ -55,11 +56,23 @@ object RecoveryTransportPolicy {
         persistent: TransportCandidate?,
         mdns: TransportCandidate?,
         systemTcp: TransportCandidate?,
-        dynamicLocal: TransportCandidate? = null
+        dynamicLocal: TransportCandidate? = null,
+        networkChanged: Boolean = false
     ): TransportCandidate {
         if (binderAlive) return TransportCandidate(RecoveryTransport.BINDER_ALIVE)
+        if (networkChanged) {
+            persistent?.takeIf { it.usableForRestart && NetworkChangePolicy.isLoopbackHost(it.host) }
+                ?.let { return it }
+            dynamicLocal?.takeIf { it.usableForRestart && NetworkChangePolicy.isLoopbackHost(it.host) }
+                ?.let { return it }
+            systemTcp?.takeIf { it.usableForRestart && NetworkChangePolicy.isLoopbackHost(it.host) }
+                ?.let { return it }
+            mdns?.takeIf { it.socketReachable && NetworkChangePolicy.isLoopbackHost(it.host) }
+                ?.let { return it }
+            return TransportCandidate(RecoveryTransport.NONE)
+        }
         persistent?.takeIf { it.usableForRestart }?.let { return it }
-        mdns?.takeIf { !it.host.isNullOrBlank() && it.port != null }?.let { return it }
+        mdns?.takeIf { it.socketReachable && !it.host.isNullOrBlank() && it.port != null }?.let { return it }
         dynamicLocal?.takeIf { it.usableForRestart }?.let { return it }
         systemTcp?.takeIf { it.usableForRestart }?.let { return it }
         return TransportCandidate(RecoveryTransport.NONE)
@@ -69,13 +82,25 @@ object RecoveryTransportPolicy {
         persistent: TransportCandidate?,
         mdns: TransportCandidate?,
         systemTcp: TransportCandidate?,
-        dynamicLocal: TransportCandidate? = null
+        dynamicLocal: TransportCandidate? = null,
+        networkChanged: Boolean = false
     ): TransportCandidate {
+        if (networkChanged) {
+            firstReachableLoopback(persistent, dynamicLocal, systemTcp, mdns)?.let { return it }
+        }
         persistent?.takeIf { it.socketReachable }?.let { return it }
-        mdns?.takeIf { !it.host.isNullOrBlank() && it.port != null }?.let { return it }
+        mdns?.takeIf { it.socketReachable && !it.host.isNullOrBlank() && it.port != null }?.let { return it }
         dynamicLocal?.takeIf { it.socketReachable }?.let { return it }
         systemTcp?.takeIf { it.socketReachable }?.let { return it }
         return TransportCandidate(RecoveryTransport.NONE)
+    }
+
+    private fun firstReachableLoopback(vararg candidates: TransportCandidate?): TransportCandidate? {
+        return candidates.firstOrNull { candidate ->
+            candidate != null &&
+                candidate.socketReachable &&
+                NetworkChangePolicy.isLoopbackHost(candidate.host)
+        }
     }
 
     fun localTcpRecoveryAvailable(persistent: TransportCandidate?): Boolean {

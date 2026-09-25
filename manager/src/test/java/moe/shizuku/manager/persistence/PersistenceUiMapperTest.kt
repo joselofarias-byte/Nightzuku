@@ -94,4 +94,55 @@ class PersistenceUiMapperTest {
         assertFalse(model.localTcpRecoveryAvailable)
         assertTrue(model.wirelessActivationRequired)
     }
+
+    @Test
+    fun hidesLanEndpointWhileNetworkChangeIsPending() {
+        val model = PersistenceUiMapper.map(
+            desiredRunning = true,
+            binderAlive = false,
+            stage = "DISCOVERING_ADB",
+            snapshotEndpoint = "192.168.1.20:37000",
+            serverPid = null,
+            recoveryCount = 1,
+            lastResultKey = "network_changed",
+            lastFailure = null,
+            retryRemainingMs = 0L,
+            reactivationRequired = false,
+            tcp = TcpHealth(
+                TcpHealthState.ENABLED_REACHABLE,
+                TcpCapability.USABLE_FOR_RESTART,
+                "192.168.1.20:5555"
+            ),
+            displayTransport = TransportCandidate(
+                RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+                "192.168.1.20",
+                37000,
+                configured = true,
+                socketReachable = true
+            ),
+            networkChangePending = true
+        )
+        assertTrue(model.networkChangePending)
+        assertEquals(null, model.endpoint)
+    }
+
+    @Test
+    fun keepsLoopbackEndpointVisibleDuringNetworkChange() {
+        val model = PersistenceUiMapper.map(
+            desiredRunning = true,
+            binderAlive = false,
+            stage = "DISCOVERING_ADB",
+            snapshotEndpoint = "192.168.1.20:37000",
+            serverPid = null,
+            recoveryCount = 1,
+            lastResultKey = "network_changed",
+            lastFailure = null,
+            retryRemainingMs = 0L,
+            reactivationRequired = false,
+            tcp = usableTcp,
+            displayTransport = TransportCandidate(RecoveryTransport.NONE),
+            networkChangePending = true
+        )
+        assertEquals("127.0.0.1:5555", model.endpoint)
+    }
 }

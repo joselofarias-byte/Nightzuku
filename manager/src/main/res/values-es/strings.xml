@@ -380,6 +380,8 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_result_app_start">Inicio de la app: se desea el servicio activo</string>
     <string name="persistence_result_manual_start">Inicio solicitado</string>
     <string name="persistence_result_recover_now">Recuperar ahora solicitado</string>
+    <string name="persistence_result_network_changed">Cambió el Wi-Fi o los datos móviles; reintentando en este dispositivo</string>
+    <string name="persistence_network_change_notice">Cambió el Wi-Fi o los datos móviles. Se ignora la dirección de red anterior y la recuperación reintenta en este dispositivo.</string>
     <string name="persistence_enable_tcp_need_wadb">Activa primero Depuración inalámbrica y luego toca Activar TCP local.</string>
 
     <string name="persistence_developer_control">Recuperación ADB</string>

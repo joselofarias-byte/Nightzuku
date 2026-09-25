@@ -44,6 +44,7 @@ import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.persistence.DeveloperOptionsController
+import moe.shizuku.manager.persistence.NetworkChangePolicy
 import moe.shizuku.manager.persistence.PersistenceActions
 import moe.shizuku.manager.persistence.PersistenceServiceState
 import moe.shizuku.manager.persistence.PersistenceUiMapper
@@ -127,14 +128,16 @@ fun MaximumPersistenceCard() {
             host = it.host,
             port = it.port,
             configured = true,
-            socketReachable = true
+            socketReachable = !snapshot.networkChangePending ||
+                NetworkChangePolicy.isLoopbackHost(it.host)
         )
     }
     val displayTransport = RecoveryTransportPolicy.selectForDisplay(
         binderAlive = snapshot.binderAlive,
         persistent = persistentCandidate,
         mdns = mdnsCandidate,
-        systemTcp = null
+        systemTcp = null,
+        networkChanged = snapshot.networkChangePending
     )
     val model = PersistenceUiMapper.map(
         desiredRunning = snapshot.desiredRunning,
@@ -148,7 +151,8 @@ fun MaximumPersistenceCard() {
         retryRemainingMs = PersistenceActions.retryRemainingMs(snapshot, nowElapsed),
         reactivationRequired = snapshot.reactivationRequired,
         tcp = tcpHealth,
-        displayTransport = displayTransport
+        displayTransport = displayTransport,
+        networkChangePending = snapshot.networkChangePending
     )
 
     PersistenceCardBody(
@@ -435,6 +439,14 @@ private fun PersistenceCardBody(
                 )
 
                 Fact(R.string.persistence_service, serviceLabel(model.service))
+
+                if (model.networkChangePending) {
+                    Text(
+                        stringResource(R.string.persistence_network_change_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -790,6 +802,7 @@ private fun lastResultText(model: PersistenceUiModel): String {
         NightDogRecovery.RESULT_APP_START -> R.string.persistence_result_app_start
         NightDogRecovery.RESULT_MANUAL_START -> R.string.persistence_result_manual_start
         NightDogRecovery.RESULT_RECOVER_NOW -> R.string.persistence_result_recover_now
+        NightDogRecovery.RESULT_NETWORK_CHANGED -> R.string.persistence_result_network_changed
         else -> null
     }
     return mapped?.let { stringResource(it) } ?: model.lastResultKey

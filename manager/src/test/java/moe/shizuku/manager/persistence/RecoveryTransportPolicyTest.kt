@@ -102,6 +102,86 @@ class RecoveryTransportPolicyTest {
     }
 
     @Test
+    fun recoveryAttemptIgnoresUnreachableMdns() {
+        val dynamicLocal = TransportCandidate(
+            kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+            host = "127.0.0.1",
+            port = 39921,
+            socketReachable = true
+        )
+        val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
+            persistent = null,
+            mdns = mdns.copy(socketReachable = false),
+            systemTcp = null,
+            dynamicLocal = dynamicLocal
+        )
+        assertEquals(RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB, selected.kind)
+        assertEquals("127.0.0.1:39921", selected.endpoint)
+    }
+
+    @Test
+    fun displayIgnoresUnreachableMdns() {
+        val selected = RecoveryTransportPolicy.selectForDisplay(
+            binderAlive = false,
+            persistent = null,
+            mdns = mdns.copy(socketReachable = false),
+            systemTcp = null
+        )
+        assertEquals(RecoveryTransport.NONE, selected.kind)
+    }
+
+    @Test
+    fun recoveryAfterNetworkChangePrefersLoopbackOverReachableLan() {
+        val lan = persistent.copy(host = "192.168.1.20", port = 5555)
+        val dynamicLocal = TransportCandidate(
+            kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+            host = "127.0.0.1",
+            port = 37111,
+            socketReachable = true
+        )
+        val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
+            persistent = lan,
+            mdns = mdns,
+            systemTcp = null,
+            dynamicLocal = dynamicLocal,
+            networkChanged = true
+        )
+        assertEquals(RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB, selected.kind)
+        assertEquals("127.0.0.1:37111", selected.endpoint)
+    }
+
+    @Test
+    fun recoveryAfterNetworkChangeKeepsLoopbackPersistentTcpFirst() {
+        val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
+            persistent = persistent,
+            mdns = mdns,
+            systemTcp = null,
+            dynamicLocal = TransportCandidate(
+                kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+                host = "127.0.0.1",
+                port = 37111,
+                socketReachable = true
+            ),
+            networkChanged = true
+        )
+        assertEquals(RecoveryTransport.PERSISTENT_LOCAL_TCP, selected.kind)
+        assertEquals("127.0.0.1:5555", selected.endpoint)
+    }
+
+    @Test
+    fun displayAfterNetworkChangeHidesLanMdns() {
+        val selected = RecoveryTransportPolicy.selectForDisplay(
+            binderAlive = false,
+            persistent = persistent.copy(host = "10.0.0.8", authenticated = true, socketReachable = true),
+            mdns = mdns,
+            systemTcp = null,
+            networkChanged = true
+        )
+        assertEquals(RecoveryTransport.NONE, selected.kind)
+        assertFalse(selected.usableForRestart)
+    }
+
+    @Test
     fun recoveryAttemptWaitsWhenNothingIsUsable() {
         val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
             persistent.copy(socketReachable = false),
