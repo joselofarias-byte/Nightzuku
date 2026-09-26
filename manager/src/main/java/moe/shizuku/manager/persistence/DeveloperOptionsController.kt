@@ -249,22 +249,22 @@ object DeveloperOptionsController {
             val current = snapshot(context)
             val restorePending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
 
-            // Bank-safe cleanup: when the user keeps Developer options OFF,
-            // never leave ADB or Wireless debugging enabled after Binder recovery.
-            // WRITE_SECURE_SETTINGS lets Nightzuku bring the transport back
-            // temporarily on the next recovery attempt.
-            val forceDebugTransportOff = !current.developerOptionsEnabled
+            // Stellar-compatible cleanup:
+            // keep the internal ADB transport enabled while Developer options
+            // remain visually OFF, and disable only Wireless debugging after
+            // Binder recovery. This is the behavior proven stable on the HONOR 200.
+            val developerOptionsOff = !current.developerOptionsEnabled
 
-            if (!restorePending && !forceDebugTransportOff) {
+            if (!restorePending && !developerOptionsOff) {
                 return@withContext Result(true, current, "no_transport_restore_pending")
             }
 
-            val adbEnabled = if (forceDebugTransportOff) {
-                false
+            val adbEnabled = if (developerOptionsOff) {
+                true
             } else {
                 preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false)
             }
-            val wirelessEnabled = if (forceDebugTransportOff) {
+            val wirelessEnabled = if (developerOptionsOff) {
                 false
             } else {
                 preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, false)
@@ -292,7 +292,7 @@ object DeveloperOptionsController {
                 Result(
                     success,
                     after,
-                    if (success && forceDebugTransportOff) "debug_transport_disabled_after_recovery"
+                    if (success && developerOptionsOff) "stellar_transport_ready_after_recovery"
                     else if (success) "transport_restored_after_recovery"
                     else "Android did not restore the requested ADB transport state"
                 )
