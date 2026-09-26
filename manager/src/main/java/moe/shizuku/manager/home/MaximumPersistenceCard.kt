@@ -86,6 +86,7 @@ fun MaximumPersistenceCard() {
     var confirmRecoveryTest by remember { mutableStateOf(false) }
     var confirmDeveloperOff by remember { mutableStateOf(false) }
     var showAndroidSettings by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
 
     LaunchedEffect(snapshot.stage, snapshot.lastAttemptElapsedRealtime, snapshot.desiredRunning) {
         nowElapsed = SystemClock.elapsedRealtime()
@@ -157,6 +158,8 @@ fun MaximumPersistenceCard() {
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
         busy = busy,
+        showDetails = showDetails,
+        onToggleDetails = { showDetails = !showDetails },
         onDesiredChange = { desired ->
             if (!desired) confirmStopKeepRunning = true
             else PersistenceActions.setDesiredRunning(context, true)
@@ -383,6 +386,8 @@ private fun PersistenceCardBody(
     lastResultText: String,
     actionStatus: String?,
     busy: Boolean,
+    showDetails: Boolean,
+    onToggleDetails: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -469,63 +474,99 @@ private fun PersistenceCardBody(
                     )
                 )
                 Fact(
-                    R.string.persistence_developer_options,
+                    R.string.persistence_recovery_status,
                     stringResource(
-                        if (developerState.developerOptionsEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
+                        when {
+                            model.service == PersistenceServiceState.RUNNING ->
+                                R.string.persistence_recovery_ready
+                            model.service == PersistenceServiceState.RECOVERING ->
+                                R.string.persistence_service_recovering
+                            model.service == PersistenceServiceState.WAITING_FOR_ADB ->
+                                R.string.persistence_service_waiting_adb
+                            else ->
+                                R.string.persistence_recovery_attention
                         }
                     )
                 )
-                Fact(
-                    R.string.persistence_adb_global,
-                    stringResource(
-                        if (developerState.adbEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                Fact(
-                    R.string.persistence_wireless_debugging_state,
-                    stringResource(
-                        if (developerState.wirelessDebuggingEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                if (developerState.restorePending) {
-                    Fact(
-                        R.string.persistence_developer_restore_state,
-                        stringResource(R.string.persistence_developer_restore_pending)
+
+                TextButton(
+                    onClick = onToggleDetails,
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        stringResource(
+                            if (showDetails) R.string.persistence_hide_details
+                            else R.string.persistence_show_details
+                        )
                     )
                 }
-                Fact(R.string.persistence_transport, transportLabel(model.transport))
-                Fact(
-                    R.string.persistence_endpoint,
-                    model.endpoint?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_endpoint_none)
-                )
-                Fact(R.string.persistence_tcp_state, tcpStateLabel(model.tcp))
-                Fact(R.string.persistence_pid, model.serverPid?.toString() ?: stringResource(R.string.persistence_pid_unknown))
-                Fact(R.string.persistence_recovery_count, model.recoveryCount.toString())
-                Fact(R.string.persistence_last_result, lastResultText)
-                Fact(
-                    R.string.persistence_last_failure,
-                    model.lastFailure?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
-                )
-                Fact(
-                    R.string.persistence_retry,
-                    if (model.retryRemainingMs > 0L) {
-                        stringResource(R.string.persistence_retry_in, ((model.retryRemainingMs + 999) / 1000).toInt())
-                    } else {
-                        stringResource(R.string.persistence_retry_now)
+
+                if (showDetails) {
+                    Fact(
+                        R.string.persistence_developer_options,
+                        stringResource(
+                            if (developerState.developerOptionsEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_adb_global,
+                        stringResource(
+                            if (developerState.adbEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_wireless_debugging_state,
+                        stringResource(
+                            if (developerState.wirelessDebuggingEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    if (developerState.restorePending) {
+                        Fact(
+                            R.string.persistence_developer_restore_state,
+                            stringResource(R.string.persistence_developer_restore_pending)
+                        )
                     }
-                )
-                HonestyBanner(model)
+                    Fact(R.string.persistence_transport, transportLabel(model.transport))
+                    Fact(
+                        R.string.persistence_endpoint,
+                        model.endpoint?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_endpoint_none)
+                    )
+                    Fact(R.string.persistence_tcp_state, tcpStateLabel(model.tcp))
+                    Fact(
+                        R.string.persistence_pid,
+                        model.serverPid?.toString() ?: stringResource(R.string.persistence_pid_unknown)
+                    )
+                    Fact(R.string.persistence_recovery_count, model.recoveryCount.toString())
+                    Fact(R.string.persistence_last_result, lastResultText)
+                    Fact(
+                        R.string.persistence_last_failure,
+                        model.lastFailure?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
+                    )
+                    Fact(
+                        R.string.persistence_retry,
+                        if (model.retryRemainingMs > 0L) {
+                            stringResource(
+                                R.string.persistence_retry_in,
+                                ((model.retryRemainingMs + 999) / 1000).toInt()
+                            )
+                        } else {
+                            stringResource(R.string.persistence_retry_now)
+                        }
+                    )
+                    HonestyBanner(model)
+                }
                 if (!actionStatus.isNullOrBlank()) {
                     Text(
                         actionStatus,
@@ -545,6 +586,7 @@ private fun PersistenceCardBody(
                         ButtonIcon(R.drawable.ic_server_restart)
                         Text(stringResource(R.string.persistence_action_recover_now))
                     }
+                    if (showDetails) {
                     FilledTonalButton(
                         enabled = !busy,
                         onClick = onEnableTcp,
@@ -610,6 +652,7 @@ private fun PersistenceCardBody(
                     ) {
                         ButtonIcon(R.drawable.ic_settings_outline_24dp)
                         Text(stringResource(R.string.persistence_action_open_settings))
+                    }
                     }
                 }
             }
