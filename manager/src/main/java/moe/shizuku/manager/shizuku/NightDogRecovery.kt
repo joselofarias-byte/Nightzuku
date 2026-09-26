@@ -126,6 +126,15 @@ object NightDogRecovery {
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         applicationContext?.let { context ->
             preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+
+            // If NightDog temporarily enabled ADB only to recover the service,
+            // return ADB / wireless debugging to the exact previous state once
+            // Binder proves that Nightzuku is alive. Developer options itself
+            // is intentionally never changed by this cleanup.
+            scope.launch {
+                delay(500L)
+                DeveloperOptionsController.restoreAdbTransportAfterRecovery(context)
+            }
         }
         ShizukuSettings.setAdbReactivationRequired(false)
         val now = SystemClock.elapsedRealtime()
