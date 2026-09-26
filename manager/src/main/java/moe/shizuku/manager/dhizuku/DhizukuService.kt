@@ -7,8 +7,6 @@ import android.os.SystemProperties
 import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
-import java.net.InetSocketAddress
-import java.net.Socket
 
 /**
  * Runs inside Dhizuku's Device Owner context.
@@ -83,45 +81,6 @@ class DhizukuService(private val context: Context) : IDhizukuService.Stub() {
             Log.e(TAG, "getAdbPort failed", e)
             -1
         }
-    }
-
-    override fun bindAdbTcp(port: Int): Boolean {
-        val targetPort = port.takeIf { it in 1..65535 } ?: 5555
-        return try {
-            val cmd = "setprop service.adb.tcp.port $targetPort; setprop ctl.restart adbd || (stop adbd; start adbd)"
-            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd))
-            val out = Thread { runCatching { process.inputStream.use { it.readBytes() } } }
-            val err = Thread { runCatching { process.errorStream.use { it.readBytes() } } }
-            out.start()
-            err.start()
-            val exit = process.waitFor()
-            out.join(2_000)
-            err.join(2_000)
-            exit == 0 && waitForAdbTcpPort(targetPort)
-        } catch (e: Throwable) {
-            Log.e(TAG, "bindAdbTcp failed", e)
-            false
-        }
-    }
-
-    private fun waitForAdbTcpPort(port: Int): Boolean {
-        repeat(10) {
-            val live = runCatching {
-                Socket().use { socket ->
-                    socket.connect(InetSocketAddress("127.0.0.1", port), 700)
-                }
-                true
-            }.getOrDefault(false)
-            if (live) return true
-
-            try {
-                Thread.sleep(500)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return false
-            }
-        }
-        return false
     }
 
     companion object {
