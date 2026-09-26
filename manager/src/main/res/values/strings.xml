@@ -443,4 +443,10 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_show_details">Show details</string>
     <string name="persistence_hide_details">Hide details</string>
     <string name="persistence_control_short">Control</string>
+    <string name="starter_adb_key_error_short">Could not access the saved ADB key.</string>
+    <string name="starter_adb_endpoint_stale">The previous ADB port is no longer available.</string>
+    <string name="starter_adb_reactivating_temporarily">Temporarily re-enabling ADB for recovery…</string>
+    <string name="starter_adb_searching_new_port">Searching for a new local ADB port…</string>
+    <string name="starter_adb_recovered_short">ADB transport recovered. Starting Nightzuku…</string>
+    <string name="starter_adb_failed_short">Could not recover ADB: %1$s</string>
 </resources>
