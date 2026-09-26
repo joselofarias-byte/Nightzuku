@@ -189,6 +189,16 @@ object DeveloperOptionsController {
             )
         }
 
+        val before = snapshot(context)
+        val preferences = ShizukuSettings.getPreferences()
+        if (!preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)) {
+            preferences.edit()
+                .putBoolean(PREF_TRANSPORT_PREVIOUS_ADB, before.adbEnabled)
+                .putBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, before.wirelessDebuggingEnabled)
+                .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, true)
+                .apply()
+        }
+
         val resolver = context.contentResolver
         return@withContext runCatching {
             // Deliberately DO NOT write development_settings_enabled here.
@@ -220,6 +230,58 @@ object DeveloperOptionsController {
             Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
         }
     }
+
+    /**
+     * Restores only the ADB transport switches changed by automatic recovery.
+     * Developer options itself is never modified here.
+     */
+    suspend fun restoreAdbTransportAfterRecovery(context: Context): Result =
+        withContext(Dispatchers.IO) {
+            if (!hasWriteSecureSettings(context)) {
+                return@withContext Result(
+                    false,
+                    snapshot(context),
+                    "WRITE_SECURE_SETTINGS is not granted"
+                )
+            }
+
+            val preferences = ShizukuSettings.getPreferences()
+            if (!preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)) {
+                return@withContext Result(true, snapshot(context), "no_transport_restore_pending")
+            }
+
+            val adbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false)
+            val wirelessEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, false)
+            val resolver = context.contentResolver
+
+            return@withContext runCatching {
+                Settings.Global.putInt(resolver, ADB_WIFI_ENABLED, if (wirelessEnabled) 1 else 0)
+                Settings.Global.putInt(resolver, ADB_ENABLED, if (adbEnabled) 1 else 0)
+                if (wirelessEnabled) {
+                    Settings.Global.putLong(resolver, ADB_ALLOWED_CONNECTION_TIME, 0L)
+                }
+
+                delay(350L)
+                val after = snapshot(context)
+                val success = after.adbEnabled == adbEnabled &&
+                    after.wirelessDebuggingEnabled == wirelessEnabled
+
+                if (success) {
+                    preferences.edit()
+                        .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+                        .apply()
+                }
+
+                Result(
+                    success,
+                    after,
+                    if (success) "transport_restored_after_recovery"
+                    else "Android did not restore the previous ADB transport state"
+                )
+            }.getOrElse { error ->
+                Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
+            }
+        }
 
     suspend fun enableForRecovery(context: Context): Result = withContext(Dispatchers.IO) {
         if (!hasWriteSecureSettings(context)) {
@@ -342,6 +404,10 @@ object DeveloperOptionsController {
     private const val ADB_ENABLED = "adb_enabled"
     private const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
     private const val ADB_ALLOWED_CONNECTION_TIME = "adb_allowed_connection_time"
+
+    private const val PREF_TRANSPORT_RESTORE_PENDING = "adb_transport_restore_pending"
+    private const val PREF_TRANSPORT_PREVIOUS_ADB = "adb_transport_previous_enabled"
+    private const val PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB = "adb_transport_previous_wireless_enabled"
 
     private const val PREF_RESTORE_PENDING = "developer_mode_restore_pending"
     private const val PREF_PREVIOUS_DEVELOPER = "developer_mode_previous_enabled"
