@@ -1,43 +1,19 @@
 package moe.shizuku.manager.receiver
 
-import android.Manifest.permission.WRITE_SECURE_SETTINGS
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
-import android.provider.Settings
 import android.util.Log
-import androidx.annotation.RequiresApi
-import com.topjohnwu.superuser.Shell
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants
-import moe.shizuku.manager.ShizukuSettings
-import moe.shizuku.manager.ShizukuSettings.LaunchMethod
-import moe.shizuku.manager.adb.AdbClient
-import moe.shizuku.manager.adb.AdbKey
-import moe.shizuku.manager.adb.AdbMdns
-import moe.shizuku.manager.adb.AdbTransportResolver
-import moe.shizuku.manager.adb.PreferenceAdbKeyStore
-import moe.shizuku.manager.starter.Starter
+import moe.shizuku.manager.startup.BootStartWorker
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 class BootCompleteReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (Intent.ACTION_LOCKED_BOOT_COMPLETED != intent.action
-            && Intent.ACTION_BOOT_COMPLETED != intent.action) {
-            return
-        }
+        if (Intent.ACTION_BOOT_COMPLETED != intent.action) return
 
-        // Safe Mode deliberately suppresses third-party recovery paths. Trying to
-        // recreate a privileged service there works against Android's recovery
-        // semantics and can make troubleshooting harder.
         if (context.packageManager.isSafeMode) {
             Log.w(AppConstants.TAG, "Skip start on boot while Android is in Safe Mode")
             return
@@ -45,110 +21,8 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
         if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
 
-        if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
-            rootStart(context)
-            return
-        }
-
-        val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                recoverAfterBoot(context)
-            } finally {
-                pending.finish()
-            }
-        }
-    }
-
-    private fun recoverAfterBoot(context: Context) {
-        if (Shizuku.pingBinder()) return
-
-        val tcpEndpoint = AdbTransportResolver.persistentTcpEndpoint()
-        if (tcpEndpoint != null) {
-            if (tryAuthenticatedStart(tcpEndpoint.host, tcpEndpoint.port)) {
-                ShizukuSettings.setAdbReactivationRequired(false)
-                Log.i(AppConstants.TAG, "Persistent local TCP was still usable after reboot")
-                return
-            }
-            ShizukuSettings.setAdbReactivationRequired(true)
-            Log.w(
-                AppConstants.TAG,
-                "Persistent local TCP is not usable after reboot; Wireless debugging reactivation required"
-            )
-        } else if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB) {
-            ShizukuSettings.setAdbReactivationRequired(true)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-            && context.checkSelfPermission(WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
-            && ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB
-        ) {
-            adbStart(context)
-            if (Shizuku.pingBinder()) {
-                ShizukuSettings.setAdbReactivationRequired(false)
-            }
-            return
-        }
-
-        if (tcpEndpoint == null) {
-            Log.w(AppConstants.TAG, "No support start on boot")
-        }
-    }
-
-    private fun rootStart(context: Context) {
-        if (!Shell.getShell().isRoot) {
-
-            Shell.getCachedShell()?.close()
-            return
-        }
-
-        Shell.cmd(Starter.internalCommand).exec()
-    }
-
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun adbStart(context: Context) {
-        val cr = context.contentResolver
-        Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
-        Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
-        Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
-        val latch = CountDownLatch(1)
-        val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
-            if (port <= 0) return@AdbMdns
-            try {
-                val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                val key = AdbKey(keystore, "shizuku")
-                // AdbMdns already resolved the real interface address. Reuse it
-                // instead of assuming loopback, which is not valid on every
-                // Android wireless-debugging implementation.
-                val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-                val host = endpoint?.host ?: "127.0.0.1"
-                val resolvedPort = endpoint?.port ?: port
-                if (tryAuthenticatedStart(host, resolvedPort)) {
-                    ShizukuSettings.setAdbReactivationRequired(false)
-                }
-            } catch (error: Exception) {
-                Log.w(AppConstants.TAG, "ADB start on boot failed", error)
-            }
-            latch.countDown()
-        }
-        if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
-            adbMdns.start()
-            latch.await(3, TimeUnit.SECONDS)
-            adbMdns.stop()
-        }
-    }
-
-    private fun tryAuthenticatedStart(host: String, port: Int): Boolean {
-        return runCatching {
-            val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-            val key = AdbKey(keystore, "shizuku")
-            AdbClient(host, port, key).use { client ->
-                client.connect()
-                client.shellCommand(Starter.internalCommand, null)
-            }
-            true
-        }.onFailure { error ->
-            Log.w(AppConstants.TAG, "Authenticated ADB start failed at $host:$port", error)
-        }.getOrDefault(false)
+        // Keep BroadcastReceiver work intentionally short. WorkManager owns the
+        // retry lifecycle and can survive the receiver/process being reclaimed.
+        BootStartWorker.enqueue(context.applicationContext)
     }
 }
