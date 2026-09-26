@@ -464,7 +464,7 @@ private fun PersistenceCardBody(
                     )
                 }
                 Fact(
-                    R.string.persistence_developer_control,
+                    R.string.persistence_control_short,
                     stringResource(
                         if (developerState.writeSecureSettingsGranted) {
                             R.string.persistence_developer_control_ready
@@ -578,13 +578,15 @@ private fun PersistenceCardBody(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        enabled = !busy,
-                        onClick = onRecoverNow,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_server_restart)
-                        Text(stringResource(R.string.persistence_action_recover_now))
+                    if (model.service != PersistenceServiceState.RUNNING) {
+                        Button(
+                            enabled = !busy,
+                            onClick = onRecoverNow,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_server_restart)
+                            Text(stringResource(R.string.persistence_action_recover_now))
+                        }
                     }
                     if (showDetails) {
                     FilledTonalButton(
