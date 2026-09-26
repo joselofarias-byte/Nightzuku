@@ -20,6 +20,7 @@ import androidx.lifecycle.viewModelScope
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.R
@@ -30,6 +31,7 @@ import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.persistence.DeveloperOptionsController
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
@@ -321,28 +323,77 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {
-                e.printStackTrace()
-                appendLine("\n${Log.getStackTraceString(e)}")
-
+                Log.e("NightzukuStarter", "ADB key error", e)
+                appendLine(context.getString(R.string.starter_adb_key_error_short))
                 postResult(AdbKeyException(e))
                 return@launch
             }
 
-            AdbClient(host, port, key).runCatching {
-                connect()
-                shellCommand(Starter.internalCommand) {
-                    synchronized(outputLock) {
-                        sb.append(String(it))
+            suspend fun tryStart(targetHost: String, targetPort: Int): Throwable? {
+                return AdbClient(targetHost, targetPort, key).runCatching {
+                    connect()
+                    shellCommand(Starter.internalCommand) {
+                        synchronized(outputLock) {
+                            sb.append(String(it))
+                        }
+                        postResult()
                     }
-                    postResult()
-                }
-                close()
-            }.onFailure {
-                it.printStackTrace()
-
-                appendLine("\n${Log.getStackTraceString(it)}")
-                postResult(it)
+                    close()
+                }.exceptionOrNull()
             }
+
+            var failure = tryStart(host, port)
+            if (failure == null) return@launch
+
+            Log.w("NightzukuStarter", "Initial ADB endpoint failed: $host:$port", failure)
+            appendLine(context.getString(R.string.starter_adb_endpoint_stale))
+
+            val state = DeveloperOptionsController.snapshot(context)
+            if (state.writeSecureSettingsGranted) {
+                appendLine(context.getString(R.string.starter_adb_reactivating_temporarily))
+
+                var enabled = DeveloperOptionsController.enableAdbTransportForRecovery(
+                    context,
+                    enableWireless = false
+                )
+
+                delay(700L)
+                var resolved = moe.shizuku.manager.adb.AdbTransportResolver.resolve(null, 0)
+
+                if (resolved.port !in 1..65535 || tryStart(resolved.host, resolved.port).also { failure = it } != null) {
+                    appendLine(context.getString(R.string.starter_adb_searching_new_port))
+
+                    enabled = DeveloperOptionsController.enableAdbTransportForRecovery(
+                        context,
+                        enableWireless = true
+                    )
+                    delay(1_300L)
+                    resolved = moe.shizuku.manager.adb.AdbTransportResolver.resolve(null, 0)
+
+                    if (resolved.port in 1..65535) {
+                        failure = tryStart(resolved.host, resolved.port)
+                    }
+                }
+
+                if (failure == null) {
+                    appendLine(context.getString(R.string.starter_adb_recovered_short))
+                    return@launch
+                }
+
+                if (!enabled.success) {
+                    Log.w("NightzukuStarter", "Temporary ADB reactivation failed: ${enabled.detail}")
+                }
+            }
+
+            val finalError = failure ?: ConnectException("ADB endpoint unavailable")
+            Log.e("NightzukuStarter", "ADB start failed after recovery attempt", finalError)
+            appendLine(
+                context.getString(
+                    R.string.starter_adb_failed_short,
+                    finalError.message ?: finalError.javaClass.simpleName
+                )
+            )
+            postResult(finalError)
         }
     }
 }
