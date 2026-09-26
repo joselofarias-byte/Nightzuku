@@ -99,36 +99,6 @@ object DhizukuAdbRecovery {
         }
     }
 
-    suspend fun bindPersistentTcp(
-        context: Context,
-        port: Int = 5555
-    ): Result<DhizukuAdbState> {
-        require(port in 1..65535) { "Puerto ADB inválido." }
-        val appContext = context.applicationContext
-
-        return runCatching {
-            check(runCatching { Dhizuku.init(appContext) }.getOrDefault(false)) {
-                "Dhizuku no está disponible o no está activo."
-            }
-
-            ensurePermission()
-
-            val bound = bindService(appContext)
-                ?: error("No se pudo conectar al servicio Device Owner de Dhizuku.")
-
-            try {
-                check(bound.remote.bindAdbTcp(port)) {
-                    "Dhizuku no pudo abrir ADB TCP en el puerto $port."
-                }
-            } finally {
-                closeService(bound)
-            }
-
-            delay(500)
-            readState(appContext)
-        }
-    }
-
     private suspend fun ensurePermission() {
         if (Dhizuku.isPermissionGranted()) return
 
