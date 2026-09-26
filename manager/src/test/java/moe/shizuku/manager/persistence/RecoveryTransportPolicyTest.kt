@@ -102,6 +102,72 @@ class RecoveryTransportPolicyTest {
     }
 
     @Test
+    fun fallbackOrderIsPersistentThenWirelessThenDynamicThenSystemTcp() {
+        // No root path and no permanent Developer options switch live in this policy.
+        // Port 5555 is only a configured persistent endpoint, not an automatic enable.
+        val dynamic = TransportCandidate(
+            kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+            host = "127.0.0.1",
+            port = 39921,
+            socketReachable = true,
+            authenticated = true
+        )
+        assertEquals(
+            RecoveryTransport.BINDER_ALIVE,
+            RecoveryTransportPolicy.selectForDisplay(true, persistent, mdns, systemTcp, dynamic).kind
+        )
+        assertEquals(
+            RecoveryTransport.PERSISTENT_LOCAL_TCP,
+            RecoveryTransportPolicy.selectForDisplay(false, persistent, mdns, systemTcp, dynamic).kind
+        )
+        val reachableButUnauthenticated = persistent.copy(authenticated = false, socketReachable = true)
+        assertEquals(
+            RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+            RecoveryTransportPolicy.selectForDisplay(
+                false,
+                reachableButUnauthenticated,
+                mdns,
+                systemTcp,
+                dynamic
+            ).kind
+        )
+        assertEquals(
+            RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+            RecoveryTransportPolicy.selectForDisplay(false, null, mdns, systemTcp, dynamic).kind
+        )
+        assertEquals(
+            RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+            RecoveryTransportPolicy.selectForDisplay(false, null, null, systemTcp, dynamic).kind
+        )
+        assertEquals(
+            RecoveryTransport.SYSTEM_ADB_TCP,
+            RecoveryTransportPolicy.selectForDisplay(false, null, null, systemTcp, null).kind
+        )
+
+        assertEquals(
+            RecoveryTransport.PERSISTENT_LOCAL_TCP,
+            RecoveryTransportPolicy.selectForRecoveryAttempt(persistent, mdns, systemTcp, dynamic).kind
+        )
+        assertEquals(
+            RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+            RecoveryTransportPolicy.selectForRecoveryAttempt(
+                persistent.copy(socketReachable = false),
+                mdns,
+                systemTcp,
+                dynamic
+            ).kind
+        )
+        assertEquals(
+            RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+            RecoveryTransportPolicy.selectForRecoveryAttempt(null, null, systemTcp, dynamic).kind
+        )
+        assertEquals(
+            RecoveryTransport.SYSTEM_ADB_TCP,
+            RecoveryTransportPolicy.selectForRecoveryAttempt(null, null, systemTcp, null).kind
+        )
+    }
+
+    @Test
     fun recoveryAttemptWaitsWhenNothingIsUsable() {
         val selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
             persistent.copy(socketReachable = false),

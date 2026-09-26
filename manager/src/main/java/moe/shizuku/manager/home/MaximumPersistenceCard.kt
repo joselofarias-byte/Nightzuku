@@ -578,7 +578,7 @@ private fun PersistenceCardBody(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (model.service != PersistenceServiceState.RUNNING) {
+                    if (PersistenceUiMapper.showRecoverNow(model.service)) {
                         Button(
                             enabled = !busy,
                             onClick = onRecoverNow,

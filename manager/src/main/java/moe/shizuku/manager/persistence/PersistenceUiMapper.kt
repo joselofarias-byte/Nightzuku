@@ -45,6 +45,14 @@ object PersistenceUiMapper {
         return PersistenceServiceState.RECOVERING
     }
 
+    /**
+     * MaximumPersistenceCard shows "Recuperar ahora" only while the service is
+     * not healthy. A live Binder maps to [PersistenceServiceState.RUNNING].
+     */
+    fun showRecoverNow(service: PersistenceServiceState): Boolean {
+        return service != PersistenceServiceState.RUNNING
+    }
+
     fun map(
         desiredRunning: Boolean,
         binderAlive: Boolean,

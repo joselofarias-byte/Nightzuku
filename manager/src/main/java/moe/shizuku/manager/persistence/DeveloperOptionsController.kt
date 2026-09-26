@@ -191,11 +191,22 @@ object DeveloperOptionsController {
 
         val before = snapshot(context)
         val preferences = ShizukuSettings.getPreferences()
-        if (!preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)) {
+        val transportPending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+        if (TransportRestorePolicy.shouldCaptureTransportSnapshot(transportPending)) {
+            val captured = TransportRestorePolicy.captureTransportSnapshot(
+                pending = transportPending,
+                previousAdbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false),
+                previousWirelessEnabled = preferences.getBoolean(
+                    PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB,
+                    false
+                ),
+                currentAdbEnabled = before.adbEnabled,
+                currentWirelessEnabled = before.wirelessDebuggingEnabled
+            )
             preferences.edit()
-                .putBoolean(PREF_TRANSPORT_PREVIOUS_ADB, before.adbEnabled)
-                .putBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, before.wirelessDebuggingEnabled)
-                .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, true)
+                .putBoolean(PREF_TRANSPORT_PREVIOUS_ADB, captured.previousAdbEnabled)
+                .putBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, captured.previousWirelessEnabled)
+                .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, captured.pending)
                 .apply()
         }
 
@@ -203,12 +214,14 @@ object DeveloperOptionsController {
         return@withContext runCatching {
             // Deliberately DO NOT write development_settings_enabled here.
             // Banking apps may require Developer options to remain visibly OFF.
-            Settings.Global.putInt(resolver, ADB_ENABLED, 1)
-            Settings.Global.putLong(resolver, ADB_ALLOWED_CONNECTION_TIME, 0L)
-
-            if (enableWireless && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                Settings.Global.putInt(resolver, ADB_WIFI_ENABLED, 1)
-            }
+            applyStellarTransportWrites(
+                resolver,
+                TransportRestorePolicy.stellarEnableWrites(
+                    enableWireless = enableWireless,
+                    wirelessDebuggingApiAvailable =
+                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+                )
+            )
 
             delay(if (enableWireless) 700L else 400L)
 
@@ -247,41 +260,38 @@ object DeveloperOptionsController {
 
             val preferences = ShizukuSettings.getPreferences()
             val current = snapshot(context)
-            val restorePending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+            val decision = TransportRestorePolicy.decideDesiredTransportRestore(
+                developerOptionsEnabled = current.developerOptionsEnabled,
+                transportRestorePending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false),
+                previousAdbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false),
+                previousWirelessEnabled = preferences.getBoolean(
+                    PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB,
+                    false
+                )
+            )
 
             // Stellar-compatible cleanup:
             // keep the internal ADB transport enabled while Developer options
             // remain visually OFF, and disable only Wireless debugging after
             // Binder recovery. This is the behavior proven stable on the HONOR 200.
+            if (!decision.apply) {
+                return@withContext Result(true, current, decision.skipDetail)
+            }
+
+            val resolver = context.contentResolver
             val developerOptionsOff = !current.developerOptionsEnabled
 
-            if (!restorePending && !developerOptionsOff) {
-                return@withContext Result(true, current, "no_transport_restore_pending")
-            }
-
-            val adbEnabled = if (developerOptionsOff) {
-                true
-            } else {
-                preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false)
-            }
-            val wirelessEnabled = if (developerOptionsOff) {
-                false
-            } else {
-                preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, false)
-            }
-            val resolver = context.contentResolver
-
             return@withContext runCatching {
-                Settings.Global.putInt(resolver, ADB_WIFI_ENABLED, if (wirelessEnabled) 1 else 0)
-                Settings.Global.putInt(resolver, ADB_ENABLED, if (adbEnabled) 1 else 0)
-                if (wirelessEnabled) {
-                    Settings.Global.putLong(resolver, ADB_ALLOWED_CONNECTION_TIME, 0L)
-                }
+                applyStellarTransportWrites(resolver, decision.writes)
 
                 delay(350L)
                 val after = snapshot(context)
-                val success = after.adbEnabled == adbEnabled &&
-                    after.wirelessDebuggingEnabled == wirelessEnabled
+                val success = TransportRestorePolicy.shouldClearTransportPending(
+                    desiredAdbEnabled = decision.adbEnabled,
+                    desiredWirelessEnabled = decision.wirelessEnabled,
+                    observedAdbEnabled = after.adbEnabled,
+                    observedWirelessEnabled = after.wirelessDebuggingEnabled
+                )
 
                 if (success) {
                     preferences.edit()
@@ -292,9 +302,7 @@ object DeveloperOptionsController {
                 Result(
                     success,
                     after,
-                    if (success && developerOptionsOff) "stellar_transport_ready_after_recovery"
-                    else if (success) "transport_restored_after_recovery"
-                    else "Android did not restore the requested ADB transport state"
+                    TransportRestorePolicy.restoreResultDetail(success, developerOptionsOff)
                 )
             }.getOrElse { error ->
                 Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
@@ -402,6 +410,21 @@ object DeveloperOptionsController {
             )
         }.getOrElse { error ->
             Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
+        }
+    }
+
+    private fun applyStellarTransportWrites(
+        resolver: android.content.ContentResolver,
+        writes: List<TransportRestorePolicy.GlobalWrite>
+    ) {
+        for (write in writes) {
+            check(write.key != TransportRestorePolicy.DEVELOPMENT_SETTINGS_ENABLED) {
+                "Stellar transport path must not write development_settings_enabled"
+            }
+            when {
+                write.intValue != null -> Settings.Global.putInt(resolver, write.key, write.intValue)
+                write.longValue != null -> Settings.Global.putLong(resolver, write.key, write.longValue)
+            }
         }
     }
 
