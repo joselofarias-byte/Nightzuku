@@ -25,12 +25,38 @@ object AdbTcpController {
             return@withContext Result(false, "Invalid TCP host or port")
         }
 
-        val source = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-            ?: return@withContext Result(false, "Wireless debugging endpoint is not available")
+        val sources = linkedSetOf<AdbEndpoint>().apply {
+            AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)?.let(::add)
+            AdbTransportResolver.systemAdbTcpEndpoint()?.let(::add)
+            AdbLocalWirelessDiscovery.lastKnownEndpoint()?.let(::add)
+            AdbLocalWirelessDiscovery.discover()?.let(::add)
+        }
+
+        if (sources.isEmpty()) {
+            return@withContext Result(false, "No authenticated ADB endpoint is available")
+        }
 
         // adbd closes the authenticated connection while switching transport.
-        // Reachability of the requested endpoint is the authoritative result.
-        runCatching { executeService(source, "tcpip:$port") }
+        // Try every known local endpoint; only persist the target after the new
+        // fixed port is actually reachable.
+        var switched = false
+        var lastError: Throwable? = null
+        for (source in sources) {
+            val attempt = runCatching { executeService(source, "tcpip:$port") }
+            if (attempt.isSuccess) {
+                switched = true
+                break
+            }
+            lastError = attempt.exceptionOrNull()
+        }
+
+        if (!switched) {
+            return@withContext Result(
+                false,
+                "Could not switch adbd to TCP: " +
+                    (lastError?.message ?: lastError?.javaClass?.simpleName ?: "authentication failed")
+            )
+        }
 
         if (!awaitReachable(normalizedHost, port)) {
             return@withContext Result(
