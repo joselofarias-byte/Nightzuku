@@ -5,15 +5,32 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
@@ -197,7 +214,15 @@ class StarterActivity : AppActivity() {
                                     }
                                 }
                             }
-                            if (!pairRequired) {
+                            item {
+                                StarterProgressTimeline(
+                                    output = output,
+                                    startedWithRoot = startedWithRoot,
+                                    failed = failed,
+                                    pairRequired = pairRequired
+                                )
+                            }
+                            if (failed) {
                                 item {
                                     MonospaceLog(
                                         text = output.ifBlank { stringResource(R.string.starting_root_shell) }
@@ -223,6 +248,196 @@ class StarterActivity : AppActivity() {
         const val EXTRA_IS_ROOT = "$EXTRA.IS_ROOT"
         const val EXTRA_HOST = "$EXTRA.HOST"
         const val EXTRA_PORT = "$EXTRA.PORT"
+    }
+}
+
+
+private enum class StarterStepStatus {
+    PENDING,
+    RUNNING,
+    COMPLETED,
+    WARNING,
+    ERROR
+}
+
+private data class StarterVisualStep(
+    val title: String,
+    val status: StarterStepStatus
+)
+
+@Composable
+private fun StarterProgressTimeline(
+    output: String,
+    startedWithRoot: Boolean,
+    failed: Boolean,
+    pairRequired: Boolean
+) {
+    val waitingText = stringResource(R.string.starter_waiting_for_service)
+    val startedText = stringResource(R.string.starter_service_started)
+    val staleText = stringResource(R.string.starter_adb_endpoint_stale)
+    val reactivatingText = stringResource(R.string.starter_adb_reactivating_temporarily)
+    val searchingText = stringResource(R.string.starter_adb_searching_new_port)
+    val recoveredText = stringResource(R.string.starter_adb_recovered_short)
+    val prepareTitle = stringResource(R.string.starter_step_prepare)
+    val rootTitle = stringResource(R.string.starter_step_check_root)
+    val adbTitle = stringResource(R.string.starter_step_connect_adb)
+    val recoveryTitle = stringResource(R.string.starter_step_recover_adb)
+    val launchTitle = stringResource(R.string.starter_step_launch)
+    val waitTitle = stringResource(R.string.starter_step_wait)
+    val readyTitle = stringResource(R.string.starter_step_ready)
+
+    val waitingForService = output.contains(waitingText)
+    val serviceStarted = output.contains(startedText)
+    val staleEndpoint = output.contains(staleText)
+    val starterCommandActive = output.contains("info:") || output.contains("shizuku_starter")
+    val recoverySeen = staleEndpoint ||
+        output.contains(reactivatingText) ||
+        output.contains(searchingText) ||
+        output.contains(recoveredText)
+    val recoveryCompleted = output.contains(recoveredText) ||
+        starterCommandActive ||
+        waitingForService ||
+        serviceStarted
+
+    val steps = buildList {
+        add(
+            StarterVisualStep(
+                title = prepareTitle,
+                status = StarterStepStatus.COMPLETED
+            )
+        )
+
+        if (startedWithRoot) {
+            val rootStatus = when {
+                failed && !starterCommandActive && !waitingForService && !serviceStarted ->
+                    StarterStepStatus.ERROR
+                starterCommandActive || waitingForService || serviceStarted ->
+                    StarterStepStatus.COMPLETED
+                else -> StarterStepStatus.RUNNING
+            }
+            add(StarterVisualStep(title = rootTitle, status = rootStatus))
+        } else {
+            val adbStatus = when {
+                pairRequired -> StarterStepStatus.WARNING
+                failed && !recoverySeen -> StarterStepStatus.ERROR
+                staleEndpoint && !recoveryCompleted -> StarterStepStatus.WARNING
+                starterCommandActive || recoveryCompleted || waitingForService || serviceStarted ->
+                    StarterStepStatus.COMPLETED
+                else -> StarterStepStatus.RUNNING
+            }
+            add(StarterVisualStep(title = adbTitle, status = adbStatus))
+
+            if (recoverySeen) {
+                val recoveryStatus = when {
+                    recoveryCompleted -> StarterStepStatus.COMPLETED
+                    failed -> StarterStepStatus.ERROR
+                    else -> StarterStepStatus.RUNNING
+                }
+                add(StarterVisualStep(title = recoveryTitle, status = recoveryStatus))
+            }
+        }
+
+        val launchStatus = when {
+            waitingForService || serviceStarted -> StarterStepStatus.COMPLETED
+            pairRequired -> StarterStepStatus.PENDING
+            failed -> StarterStepStatus.PENDING
+            recoverySeen && !recoveryCompleted -> StarterStepStatus.PENDING
+            starterCommandActive -> StarterStepStatus.RUNNING
+            else -> StarterStepStatus.PENDING
+        }
+        add(StarterVisualStep(title = launchTitle, status = launchStatus))
+
+        if (waitingForService || serviceStarted) {
+            add(
+                StarterVisualStep(
+                    title = if (serviceStarted) readyTitle else waitTitle,
+                    status = if (serviceStarted) {
+                        StarterStepStatus.COMPLETED
+                    } else {
+                        StarterStepStatus.RUNNING
+                    }
+                )
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        steps.forEach { step ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StarterStepIndicator(step.status)
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = step.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (step.status == StarterStepStatus.RUNNING) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Normal
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StarterStepIndicator(status: StarterStepStatus) {
+    when (status) {
+        StarterStepStatus.RUNNING -> {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.5.dp
+            )
+        }
+
+        StarterStepStatus.COMPLETED,
+        StarterStepStatus.WARNING,
+        StarterStepStatus.ERROR,
+        StarterStepStatus.PENDING -> {
+            val containerColor = when (status) {
+                StarterStepStatus.COMPLETED -> MaterialTheme.colorScheme.primaryContainer
+                StarterStepStatus.WARNING -> MaterialTheme.colorScheme.tertiaryContainer
+                StarterStepStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
+                StarterStepStatus.PENDING -> MaterialTheme.colorScheme.surfaceVariant
+                StarterStepStatus.RUNNING -> MaterialTheme.colorScheme.surfaceVariant
+            }
+            val contentColor = when (status) {
+                StarterStepStatus.COMPLETED -> MaterialTheme.colorScheme.onPrimaryContainer
+                StarterStepStatus.WARNING -> MaterialTheme.colorScheme.onTertiaryContainer
+                StarterStepStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+                StarterStepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+                StarterStepStatus.RUNNING -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            val symbol = when (status) {
+                StarterStepStatus.COMPLETED -> "✓"
+                StarterStepStatus.WARNING -> "!"
+                StarterStepStatus.ERROR -> "!"
+                StarterStepStatus.PENDING -> "•"
+                StarterStepStatus.RUNNING -> ""
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(containerColor, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = symbol,
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 
