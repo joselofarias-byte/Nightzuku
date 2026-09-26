@@ -246,12 +246,29 @@ object DeveloperOptionsController {
             }
 
             val preferences = ShizukuSettings.getPreferences()
-            if (!preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)) {
-                return@withContext Result(true, snapshot(context), "no_transport_restore_pending")
+            val current = snapshot(context)
+            val restorePending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+
+            // Bank-safe cleanup: when the user keeps Developer options OFF,
+            // never leave ADB or Wireless debugging enabled after Binder recovery.
+            // WRITE_SECURE_SETTINGS lets Nightzuku bring the transport back
+            // temporarily on the next recovery attempt.
+            val forceDebugTransportOff = !current.developerOptionsEnabled
+
+            if (!restorePending && !forceDebugTransportOff) {
+                return@withContext Result(true, current, "no_transport_restore_pending")
             }
 
-            val adbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false)
-            val wirelessEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, false)
+            val adbEnabled = if (forceDebugTransportOff) {
+                false
+            } else {
+                preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false)
+            }
+            val wirelessEnabled = if (forceDebugTransportOff) {
+                false
+            } else {
+                preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, false)
+            }
             val resolver = context.contentResolver
 
             return@withContext runCatching {
@@ -275,8 +292,9 @@ object DeveloperOptionsController {
                 Result(
                     success,
                     after,
-                    if (success) "transport_restored_after_recovery"
-                    else "Android did not restore the previous ADB transport state"
+                    if (success && forceDebugTransportOff) "debug_transport_disabled_after_recovery"
+                    else if (success) "transport_restored_after_recovery"
+                    else "Android did not restore the requested ADB transport state"
                 )
             }.getOrElse { error ->
                 Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
