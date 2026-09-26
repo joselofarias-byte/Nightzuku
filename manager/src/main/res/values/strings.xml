@@ -392,6 +392,8 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_developer_control_not_ready">Not prepared yet</string>
     <string name="persistence_developer_options">Developer options</string>
     <string name="persistence_adb_global">ADB</string>
+    <string name="persistence_indicator_developer">Developer</string>
+    <string name="persistence_indicator_wireless">Wireless</string>
     <string name="persistence_wireless_debugging_state">Wireless debugging</string>
     <string name="persistence_developer_restore_state">Saved restore state</string>
     <string name="persistence_developer_restore_pending">Pending · previous state preserved</string>
