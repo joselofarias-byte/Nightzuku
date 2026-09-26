@@ -86,6 +86,7 @@ fun MaximumPersistenceCard() {
     var confirmRecoveryTest by remember { mutableStateOf(false) }
     var confirmDeveloperOff by remember { mutableStateOf(false) }
     var showAndroidSettings by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
 
     LaunchedEffect(snapshot.stage, snapshot.lastAttemptElapsedRealtime, snapshot.desiredRunning) {
         nowElapsed = SystemClock.elapsedRealtime()
@@ -157,6 +158,8 @@ fun MaximumPersistenceCard() {
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
         busy = busy,
+        showDetails = showDetails,
+        onToggleDetails = { showDetails = !showDetails },
         onDesiredChange = { desired ->
             if (!desired) confirmStopKeepRunning = true
             else PersistenceActions.setDesiredRunning(context, true)
@@ -383,6 +386,8 @@ private fun PersistenceCardBody(
     lastResultText: String,
     actionStatus: String?,
     busy: Boolean,
+    showDetails: Boolean,
+    onToggleDetails: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -431,7 +436,10 @@ private fun PersistenceCardBody(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Fact(R.string.persistence_service, serviceLabel(model.service))
+                QuickStatusOverview(
+                    model = model,
+                    developerState = developerState
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -459,7 +467,7 @@ private fun PersistenceCardBody(
                     )
                 }
                 Fact(
-                    R.string.persistence_developer_control,
+                    R.string.persistence_control_short,
                     stringResource(
                         if (developerState.writeSecureSettingsGranted) {
                             R.string.persistence_developer_control_ready
@@ -469,63 +477,99 @@ private fun PersistenceCardBody(
                     )
                 )
                 Fact(
-                    R.string.persistence_developer_options,
+                    R.string.persistence_recovery_status,
                     stringResource(
-                        if (developerState.developerOptionsEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
+                        when {
+                            model.service == PersistenceServiceState.RUNNING ->
+                                R.string.persistence_recovery_ready
+                            model.service == PersistenceServiceState.RECOVERING ->
+                                R.string.persistence_service_recovering
+                            model.service == PersistenceServiceState.WAITING_FOR_ADB ->
+                                R.string.persistence_service_waiting_adb
+                            else ->
+                                R.string.persistence_recovery_attention
                         }
                     )
                 )
-                Fact(
-                    R.string.persistence_adb_global,
-                    stringResource(
-                        if (developerState.adbEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                Fact(
-                    R.string.persistence_wireless_debugging_state,
-                    stringResource(
-                        if (developerState.wirelessDebuggingEnabled) {
-                            R.string.persistence_toggle_enabled
-                        } else {
-                            R.string.persistence_toggle_disabled
-                        }
-                    )
-                )
-                if (developerState.restorePending) {
-                    Fact(
-                        R.string.persistence_developer_restore_state,
-                        stringResource(R.string.persistence_developer_restore_pending)
+
+                TextButton(
+                    onClick = onToggleDetails,
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        stringResource(
+                            if (showDetails) R.string.persistence_hide_details
+                            else R.string.persistence_show_details
+                        )
                     )
                 }
-                Fact(R.string.persistence_transport, transportLabel(model.transport))
-                Fact(
-                    R.string.persistence_endpoint,
-                    model.endpoint?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_endpoint_none)
-                )
-                Fact(R.string.persistence_tcp_state, tcpStateLabel(model.tcp))
-                Fact(R.string.persistence_pid, model.serverPid?.toString() ?: stringResource(R.string.persistence_pid_unknown))
-                Fact(R.string.persistence_recovery_count, model.recoveryCount.toString())
-                Fact(R.string.persistence_last_result, lastResultText)
-                Fact(
-                    R.string.persistence_last_failure,
-                    model.lastFailure?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
-                )
-                Fact(
-                    R.string.persistence_retry,
-                    if (model.retryRemainingMs > 0L) {
-                        stringResource(R.string.persistence_retry_in, ((model.retryRemainingMs + 999) / 1000).toInt())
-                    } else {
-                        stringResource(R.string.persistence_retry_now)
+
+                if (showDetails) {
+                    Fact(
+                        R.string.persistence_developer_options,
+                        stringResource(
+                            if (developerState.developerOptionsEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_adb_global,
+                        stringResource(
+                            if (developerState.adbEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_wireless_debugging_state,
+                        stringResource(
+                            if (developerState.wirelessDebuggingEnabled) {
+                                R.string.persistence_toggle_enabled
+                            } else {
+                                R.string.persistence_toggle_disabled
+                            }
+                        )
+                    )
+                    if (developerState.restorePending) {
+                        Fact(
+                            R.string.persistence_developer_restore_state,
+                            stringResource(R.string.persistence_developer_restore_pending)
+                        )
                     }
-                )
-                HonestyBanner(model)
+                    Fact(R.string.persistence_transport, transportLabel(model.transport))
+                    Fact(
+                        R.string.persistence_endpoint,
+                        model.endpoint?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_endpoint_none)
+                    )
+                    Fact(R.string.persistence_tcp_state, tcpStateLabel(model.tcp))
+                    Fact(
+                        R.string.persistence_pid,
+                        model.serverPid?.toString() ?: stringResource(R.string.persistence_pid_unknown)
+                    )
+                    Fact(R.string.persistence_recovery_count, model.recoveryCount.toString())
+                    Fact(R.string.persistence_last_result, lastResultText)
+                    Fact(
+                        R.string.persistence_last_failure,
+                        model.lastFailure?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
+                    )
+                    Fact(
+                        R.string.persistence_retry,
+                        if (model.retryRemainingMs > 0L) {
+                            stringResource(
+                                R.string.persistence_retry_in,
+                                ((model.retryRemainingMs + 999) / 1000).toInt()
+                            )
+                        } else {
+                            stringResource(R.string.persistence_retry_now)
+                        }
+                    )
+                    HonestyBanner(model)
+                }
                 if (!actionStatus.isNullOrBlank()) {
                     Text(
                         actionStatus,
@@ -537,14 +581,17 @@ private fun PersistenceCardBody(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        enabled = !busy,
-                        onClick = onRecoverNow,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        ButtonIcon(R.drawable.ic_server_restart)
-                        Text(stringResource(R.string.persistence_action_recover_now))
+                    if (PersistenceUiMapper.showRecoverNow(model.service)) {
+                        Button(
+                            enabled = !busy,
+                            onClick = onRecoverNow,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_server_restart)
+                            Text(stringResource(R.string.persistence_action_recover_now))
+                        }
                     }
+                    if (showDetails) {
                     FilledTonalButton(
                         enabled = !busy,
                         onClick = onEnableTcp,
@@ -611,8 +658,114 @@ private fun PersistenceCardBody(
                         ButtonIcon(R.drawable.ic_settings_outline_24dp)
                         Text(stringResource(R.string.persistence_action_open_settings))
                     }
+                    }
                 }
             }
+        }
+    }
+}
+
+private enum class QuickStatusTone {
+    ACTIVE,
+    INACTIVE,
+    ATTENTION,
+    ERROR
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickStatusOverview(
+    model: PersistenceUiModel,
+    developerState: DeveloperOptionsController.Snapshot
+) {
+    val enabled = stringResource(R.string.persistence_toggle_enabled)
+    val disabled = stringResource(R.string.persistence_toggle_disabled)
+
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_service),
+            value = serviceLabel(model.service),
+            tone = when (model.service) {
+                PersistenceServiceState.RUNNING -> QuickStatusTone.ACTIVE
+                PersistenceServiceState.RECOVERING,
+                PersistenceServiceState.WAITING_FOR_ADB -> QuickStatusTone.ATTENTION
+                PersistenceServiceState.ERROR -> QuickStatusTone.ERROR
+                PersistenceServiceState.MANUALLY_STOPPED -> QuickStatusTone.INACTIVE
+            }
+        )
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_indicator_developer),
+            value = if (developerState.developerOptionsEnabled) enabled else disabled,
+            tone = if (developerState.developerOptionsEnabled) {
+                QuickStatusTone.ACTIVE
+            } else {
+                QuickStatusTone.INACTIVE
+            }
+        )
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_adb_global),
+            value = if (developerState.adbEnabled) enabled else disabled,
+            tone = if (developerState.adbEnabled) {
+                QuickStatusTone.ACTIVE
+            } else {
+                QuickStatusTone.INACTIVE
+            }
+        )
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_indicator_wireless),
+            value = if (developerState.wirelessDebuggingEnabled) enabled else disabled,
+            tone = if (developerState.wirelessDebuggingEnabled) {
+                QuickStatusTone.ACTIVE
+            } else {
+                QuickStatusTone.INACTIVE
+            }
+        )
+    }
+}
+
+@Composable
+private fun QuickStatusChip(
+    label: String,
+    value: String,
+    tone: QuickStatusTone
+) {
+    val containerColor = when (tone) {
+        QuickStatusTone.ACTIVE -> MaterialTheme.colorScheme.primaryContainer
+        QuickStatusTone.INACTIVE -> MaterialTheme.colorScheme.surfaceVariant
+        QuickStatusTone.ATTENTION -> MaterialTheme.colorScheme.tertiaryContainer
+        QuickStatusTone.ERROR -> MaterialTheme.colorScheme.errorContainer
+    }
+    val contentColor = when (tone) {
+        QuickStatusTone.ACTIVE -> MaterialTheme.colorScheme.onPrimaryContainer
+        QuickStatusTone.INACTIVE -> MaterialTheme.colorScheme.onSurfaceVariant
+        QuickStatusTone.ATTENTION -> MaterialTheme.colorScheme.onTertiaryContainer
+        QuickStatusTone.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = containerColor,
+        contentColor = contentColor
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = contentColor
+            ) {}
+            Text(
+                "$label · $value",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }

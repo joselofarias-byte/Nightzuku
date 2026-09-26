@@ -126,6 +126,15 @@ object NightDogRecovery {
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         applicationContext?.let { context ->
             preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+
+            // If NightDog temporarily enabled ADB only to recover the service,
+            // return ADB / wireless debugging to the exact previous state once
+            // Binder proves that Nightzuku is alive. Developer options itself
+            // is intentionally never changed by this cleanup.
+            scope.launch {
+                delay(500L)
+                DeveloperOptionsController.restoreAdbTransportAfterRecovery(context)
+            }
         }
         ShizukuSettings.setAdbReactivationRequired(false)
         val now = SystemClock.elapsedRealtime()
@@ -477,41 +486,56 @@ object NightDogRecovery {
 
             var candidate = resolveCandidate()
 
-            // If Nightzuku itself temporarily disabled Developer options / ADB,
-            // recover the transport before giving up. WRITE_SECURE_SETTINGS is
-            // package-scoped and survives toggling these settings off, so this
-            // path does not need an already-running ADB connection.
+            // Stellar-style self recovery:
+            // WRITE_SECURE_SETTINGS survives turning Developer options off.
+            // First bring back only adbd so a prepared local TCP endpoint can
+            // be reused while the visible Developer options switch stays OFF.
+            // Wireless debugging is requested only as a second-stage fallback.
             if (candidate.kind == RecoveryTransport.NONE) {
                 val debugState = DeveloperOptionsController.snapshot(context)
-                if (DeveloperOptionsController.shouldRestoreForRecovery(debugState)) {
+                if (debugState.writeSecureSettingsGranted) {
                     publish(
                         Stage.DISCOVERING_ADB,
                         RESULT_DEBUG_SETTINGS_RESTORING,
-                        "No ADB endpoint; restoring Developer options, USB debugging and wireless debugging",
+                        "No ADB endpoint; re-enabling ADB transport without changing Developer options",
                         transportKind = RecoveryTransport.NONE,
                         endpoint = null
                     )
 
-                    val restored = DeveloperOptionsController.enableForRecovery(context)
-                    if (restored.success) {
+                    val adbOnly = DeveloperOptionsController.enableAdbTransportForRecovery(
+                        context,
+                        enableWireless = false
+                    )
+                    if (adbOnly.success) {
                         ShizukuSettings.setAdbReactivationRequired(false)
+                        delay(700L)
+                        candidate = resolveCandidate()
+                    } else {
+                        lastFailure = adbOnly.detail ?: "Could not re-enable ADB transport"
+                    }
+
+                    if (candidate.kind == RecoveryTransport.NONE &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    ) {
+                        val wireless = DeveloperOptionsController.enableAdbTransportForRecovery(
+                            context,
+                            enableWireless = true
+                        )
+                        if (wireless.success) {
+                            delay(1_200L)
+                            candidate = resolveCandidate()
+                        } else {
+                            lastFailure = wireless.detail ?: lastFailure
+                        }
+                    }
+
+                    if (candidate.kind != RecoveryTransport.NONE) {
                         publish(
                             Stage.DISCOVERING_ADB,
                             RESULT_DEBUG_SETTINGS_RESTORED,
-                            "Debug settings restored; waiting for adbd and rediscovering transport",
-                            transportKind = RecoveryTransport.NONE,
-                            endpoint = null
-                        )
-                        delay(1_500L)
-                        candidate = resolveCandidate()
-                    } else {
-                        lastFailure = restored.detail ?: "Could not restore debug settings"
-                        publish(
-                            Stage.ERROR,
-                            RESULT_DEBUG_SETTINGS_RESTORE_FAILED,
-                            "Could not restore Developer options / ADB: ${lastFailure}",
-                            transportKind = RecoveryTransport.NONE,
-                            endpoint = null
+                            "ADB transport recovered while Developer options remained unchanged",
+                            transportKind = candidate.kind,
+                            endpoint = candidate.endpoint
                         )
                     }
                 }

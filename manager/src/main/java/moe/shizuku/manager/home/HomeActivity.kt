@@ -64,6 +64,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -82,12 +83,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.management.ApplicationManagementActivity
+import moe.shizuku.manager.dhizuku.DhizukuAdbRecovery
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.module.AdbModuleManager
@@ -623,6 +626,9 @@ private fun PhoneHomeScreen(
                 val rootRestart = running && status.uid == 0
                 if (isRooted) item { RootCard(rootRestart, onStartRoot) }
                 if (canUseWirelessAdb) item { WirelessAdbCard(running, localNetworkPermissionState, onStartWirelessAdb, onPairWirelessAdb, onOpenWirelessGuide) }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    item { DhizukuAdbRecoveryCard() }
+                }
                 item { AdbCommandCard(onShowAdbCommand, onOpenAdbHelp) }
             }
             if (localNetworkPermissionState.required && !localNetworkPermissionState.granted) item { LocalNetworkPermissionCard(localNetworkPermissionState, onRequestLocalNetworkPermission) }
@@ -748,6 +754,152 @@ private fun WirelessAdbCard(
             buttons += HomeButtonSpec(R.string.adb_pairing, R.drawable.ic_numeric_1_circle_outline_24, onClick = onPairWirelessAdb)
             buttons += HomeButtonSpec(R.string.home_wireless_adb_view_guide_button, R.drawable.ic_help_outline_24dp, onClick = onOpenWirelessGuide)
         }
+        HomeButtons(buttons)
+    }
+}
+
+@Composable
+private fun DhizukuAdbRecoveryCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf(DhizukuAdbRecovery.readState(context)) }
+    var working by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        state = DhizukuAdbRecovery.readState(context)
+    }
+
+    fun authorizeDhizuku() {
+        if (working) return
+        working = true
+        scope.launch {
+            DhizukuAdbRecovery.authorize(context)
+                .onSuccess { updated ->
+                    state = updated
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.home_dhizuku_adb_permission_ok),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .onFailure { error ->
+                    refresh()
+                    Toast.makeText(
+                        context,
+                        context.getString(
+                            R.string.home_dhizuku_adb_failed,
+                            error.message ?: error.javaClass.simpleName
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            working = false
+        }
+    }
+
+    fun applyAdb(enabled: Boolean) {
+        if (working) return
+        working = true
+        scope.launch {
+            val result = if (enabled) {
+                DhizukuAdbRecovery.enableAdbAndWaitForWireless(context)
+            } else {
+                DhizukuAdbRecovery.setAdbEnabled(context, false)
+            }
+
+            result
+                .onSuccess { updated ->
+                    state = updated
+                    val message = if (enabled) {
+                        if (updated.wirelessDebuggingEnabled) {
+                            context.getString(R.string.home_dhizuku_adb_success_on)
+                        } else {
+                            context.getString(R.string.home_dhizuku_adb_success_on) + " " +
+                                context.getString(R.string.home_dhizuku_adb_wireless_note)
+                        }
+                    } else {
+                        context.getString(R.string.home_dhizuku_adb_success_off)
+                    }
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+                .onFailure { error ->
+                    refresh()
+                    Toast.makeText(
+                        context,
+                        context.getString(
+                            R.string.home_dhizuku_adb_failed,
+                            error.message ?: error.javaClass.simpleName
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+
+            working = false
+        }
+    }
+
+    val lines = buildList {
+        add(
+            stringResource(
+                if (state.dhizukuAvailable) R.string.home_dhizuku_adb_available
+                else R.string.home_dhizuku_adb_unavailable
+            )
+        )
+        add(
+            stringResource(
+                if (state.permissionGranted) R.string.home_dhizuku_adb_permission_ok
+                else R.string.home_dhizuku_adb_permission_missing
+            )
+        )
+        add(
+            stringResource(
+                if (state.adbEnabled) R.string.home_dhizuku_adb_status_on
+                else R.string.home_dhizuku_adb_status_off
+            )
+        )
+        add(
+            stringResource(
+                if (state.wirelessDebuggingEnabled) R.string.home_dhizuku_wireless_on
+                else R.string.home_dhizuku_wireless_off
+            )
+        )
+        if (state.port > 0) add(stringResource(R.string.home_dhizuku_adb_port, state.port))
+        if (working) add(stringResource(R.string.home_dhizuku_adb_working))
+    }
+
+    HomeCard(
+        R.drawable.ic_adb_24dp,
+        stringResource(R.string.home_dhizuku_adb_title),
+        stringResource(R.string.home_dhizuku_adb_description) + "\n\n" + lines.joinToString("\n"),
+        collapsedBody = lines.drop(2).joinToString(" · "),
+        expandable = true
+    ) {
+        val buttons = mutableListOf<HomeButtonSpec>()
+        if (!state.permissionGranted) {
+            buttons += HomeButtonSpec(
+                label = R.string.home_dhizuku_authorize,
+                icon = R.drawable.ic_system_icon,
+                primary = true,
+                enabled = state.dhizukuAvailable && !working,
+                onClick = { authorizeDhizuku() }
+            )
+        } else {
+            buttons += HomeButtonSpec(
+                label = if (state.adbEnabled) R.string.home_dhizuku_adb_disable
+                else R.string.home_dhizuku_adb_enable,
+                icon = if (state.adbEnabled) R.drawable.ic_close_24
+                else R.drawable.ic_server_start_24dp,
+                primary = !state.adbEnabled,
+                enabled = !working,
+                onClick = { applyAdb(!state.adbEnabled) }
+            )
+        }
+        buttons += HomeButtonSpec(
+            label = R.string.home_dhizuku_adb_refresh,
+            icon = R.drawable.ic_server_restart,
+            enabled = !working,
+            onClick = { refresh() }
+        )
         HomeButtons(buttons)
     }
 }

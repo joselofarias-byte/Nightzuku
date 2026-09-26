@@ -5,21 +5,39 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.R
@@ -30,6 +48,7 @@ import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.persistence.DeveloperOptionsController
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
@@ -195,7 +214,15 @@ class StarterActivity : AppActivity() {
                                     }
                                 }
                             }
-                            if (!pairRequired) {
+                            item {
+                                StarterProgressTimeline(
+                                    output = output,
+                                    startedWithRoot = startedWithRoot,
+                                    failed = failed,
+                                    pairRequired = pairRequired
+                                )
+                            }
+                            if (failed) {
                                 item {
                                     MonospaceLog(
                                         text = output.ifBlank { stringResource(R.string.starting_root_shell) }
@@ -221,6 +248,196 @@ class StarterActivity : AppActivity() {
         const val EXTRA_IS_ROOT = "$EXTRA.IS_ROOT"
         const val EXTRA_HOST = "$EXTRA.HOST"
         const val EXTRA_PORT = "$EXTRA.PORT"
+    }
+}
+
+
+private enum class StarterStepStatus {
+    PENDING,
+    RUNNING,
+    COMPLETED,
+    WARNING,
+    ERROR
+}
+
+private data class StarterVisualStep(
+    val title: String,
+    val status: StarterStepStatus
+)
+
+@Composable
+private fun StarterProgressTimeline(
+    output: String,
+    startedWithRoot: Boolean,
+    failed: Boolean,
+    pairRequired: Boolean
+) {
+    val waitingText = stringResource(R.string.starter_waiting_for_service)
+    val startedText = stringResource(R.string.starter_service_started)
+    val staleText = stringResource(R.string.starter_adb_endpoint_stale)
+    val reactivatingText = stringResource(R.string.starter_adb_reactivating_temporarily)
+    val searchingText = stringResource(R.string.starter_adb_searching_new_port)
+    val recoveredText = stringResource(R.string.starter_adb_recovered_short)
+    val prepareTitle = stringResource(R.string.starter_step_prepare)
+    val rootTitle = stringResource(R.string.starter_step_check_root)
+    val adbTitle = stringResource(R.string.starter_step_connect_adb)
+    val recoveryTitle = stringResource(R.string.starter_step_recover_adb)
+    val launchTitle = stringResource(R.string.starter_step_launch)
+    val waitTitle = stringResource(R.string.starter_step_wait)
+    val readyTitle = stringResource(R.string.starter_step_ready)
+
+    val waitingForService = output.contains(waitingText)
+    val serviceStarted = output.contains(startedText)
+    val staleEndpoint = output.contains(staleText)
+    val starterCommandActive = output.contains("info:") || output.contains("shizuku_starter")
+    val recoverySeen = staleEndpoint ||
+        output.contains(reactivatingText) ||
+        output.contains(searchingText) ||
+        output.contains(recoveredText)
+    val recoveryCompleted = output.contains(recoveredText) ||
+        starterCommandActive ||
+        waitingForService ||
+        serviceStarted
+
+    val steps = buildList {
+        add(
+            StarterVisualStep(
+                title = prepareTitle,
+                status = StarterStepStatus.COMPLETED
+            )
+        )
+
+        if (startedWithRoot) {
+            val rootStatus = when {
+                failed && !starterCommandActive && !waitingForService && !serviceStarted ->
+                    StarterStepStatus.ERROR
+                starterCommandActive || waitingForService || serviceStarted ->
+                    StarterStepStatus.COMPLETED
+                else -> StarterStepStatus.RUNNING
+            }
+            add(StarterVisualStep(title = rootTitle, status = rootStatus))
+        } else {
+            val adbStatus = when {
+                pairRequired -> StarterStepStatus.WARNING
+                failed && !recoverySeen -> StarterStepStatus.ERROR
+                staleEndpoint && !recoveryCompleted -> StarterStepStatus.WARNING
+                starterCommandActive || recoveryCompleted || waitingForService || serviceStarted ->
+                    StarterStepStatus.COMPLETED
+                else -> StarterStepStatus.RUNNING
+            }
+            add(StarterVisualStep(title = adbTitle, status = adbStatus))
+
+            if (recoverySeen) {
+                val recoveryStatus = when {
+                    recoveryCompleted -> StarterStepStatus.COMPLETED
+                    failed -> StarterStepStatus.ERROR
+                    else -> StarterStepStatus.RUNNING
+                }
+                add(StarterVisualStep(title = recoveryTitle, status = recoveryStatus))
+            }
+        }
+
+        val launchStatus = when {
+            waitingForService || serviceStarted -> StarterStepStatus.COMPLETED
+            pairRequired -> StarterStepStatus.PENDING
+            failed -> StarterStepStatus.PENDING
+            recoverySeen && !recoveryCompleted -> StarterStepStatus.PENDING
+            starterCommandActive -> StarterStepStatus.RUNNING
+            else -> StarterStepStatus.PENDING
+        }
+        add(StarterVisualStep(title = launchTitle, status = launchStatus))
+
+        if (waitingForService || serviceStarted) {
+            add(
+                StarterVisualStep(
+                    title = if (serviceStarted) readyTitle else waitTitle,
+                    status = if (serviceStarted) {
+                        StarterStepStatus.COMPLETED
+                    } else {
+                        StarterStepStatus.RUNNING
+                    }
+                )
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        steps.forEach { step ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StarterStepIndicator(step.status)
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = step.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (step.status == StarterStepStatus.RUNNING) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Normal
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StarterStepIndicator(status: StarterStepStatus) {
+    when (status) {
+        StarterStepStatus.RUNNING -> {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.5.dp
+            )
+        }
+
+        StarterStepStatus.COMPLETED,
+        StarterStepStatus.WARNING,
+        StarterStepStatus.ERROR,
+        StarterStepStatus.PENDING -> {
+            val containerColor = when (status) {
+                StarterStepStatus.COMPLETED -> MaterialTheme.colorScheme.primaryContainer
+                StarterStepStatus.WARNING -> MaterialTheme.colorScheme.tertiaryContainer
+                StarterStepStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
+                StarterStepStatus.PENDING -> MaterialTheme.colorScheme.surfaceVariant
+                StarterStepStatus.RUNNING -> MaterialTheme.colorScheme.surfaceVariant
+            }
+            val contentColor = when (status) {
+                StarterStepStatus.COMPLETED -> MaterialTheme.colorScheme.onPrimaryContainer
+                StarterStepStatus.WARNING -> MaterialTheme.colorScheme.onTertiaryContainer
+                StarterStepStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+                StarterStepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+                StarterStepStatus.RUNNING -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            val symbol = when (status) {
+                StarterStepStatus.COMPLETED -> "✓"
+                StarterStepStatus.WARNING -> "!"
+                StarterStepStatus.ERROR -> "!"
+                StarterStepStatus.PENDING -> "•"
+                StarterStepStatus.RUNNING -> ""
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(containerColor, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = symbol,
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 
@@ -321,28 +538,77 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {
-                e.printStackTrace()
-                appendLine("\n${Log.getStackTraceString(e)}")
-
+                Log.e("NightzukuStarter", "ADB key error", e)
+                appendLine(context.getString(R.string.starter_adb_key_error_short))
                 postResult(AdbKeyException(e))
                 return@launch
             }
 
-            AdbClient(host, port, key).runCatching {
-                connect()
-                shellCommand(Starter.internalCommand) {
-                    synchronized(outputLock) {
-                        sb.append(String(it))
+            suspend fun tryStart(targetHost: String, targetPort: Int): Throwable? {
+                return AdbClient(targetHost, targetPort, key).runCatching {
+                    connect()
+                    shellCommand(Starter.internalCommand) {
+                        synchronized(outputLock) {
+                            sb.append(String(it))
+                        }
+                        postResult()
                     }
-                    postResult()
-                }
-                close()
-            }.onFailure {
-                it.printStackTrace()
-
-                appendLine("\n${Log.getStackTraceString(it)}")
-                postResult(it)
+                    close()
+                }.exceptionOrNull()
             }
+
+            var failure = tryStart(host, port)
+            if (failure == null) return@launch
+
+            Log.w("NightzukuStarter", "Initial ADB endpoint failed: $host:$port", failure)
+            appendLine(context.getString(R.string.starter_adb_endpoint_stale))
+
+            val state = DeveloperOptionsController.snapshot(context)
+            if (state.writeSecureSettingsGranted) {
+                appendLine(context.getString(R.string.starter_adb_reactivating_temporarily))
+
+                var enabled = DeveloperOptionsController.enableAdbTransportForRecovery(
+                    context,
+                    enableWireless = false
+                )
+
+                delay(700L)
+                var resolved = moe.shizuku.manager.adb.AdbTransportResolver.resolve(null, 0)
+
+                if (resolved.port !in 1..65535 || tryStart(resolved.host, resolved.port).also { failure = it } != null) {
+                    appendLine(context.getString(R.string.starter_adb_searching_new_port))
+
+                    enabled = DeveloperOptionsController.enableAdbTransportForRecovery(
+                        context,
+                        enableWireless = true
+                    )
+                    delay(1_300L)
+                    resolved = moe.shizuku.manager.adb.AdbTransportResolver.resolve(null, 0)
+
+                    if (resolved.port in 1..65535) {
+                        failure = tryStart(resolved.host, resolved.port)
+                    }
+                }
+
+                if (failure == null) {
+                    appendLine(context.getString(R.string.starter_adb_recovered_short))
+                    return@launch
+                }
+
+                if (!enabled.success) {
+                    Log.w("NightzukuStarter", "Temporary ADB reactivation failed: ${enabled.detail}")
+                }
+            }
+
+            val finalError = failure ?: ConnectException("ADB endpoint unavailable")
+            Log.e("NightzukuStarter", "ADB start failed after recovery attempt", finalError)
+            appendLine(
+                context.getString(
+                    R.string.starter_adb_failed_short,
+                    finalError.message ?: finalError.javaClass.simpleName
+                )
+            )
+            postResult(finalError)
         }
     }
 }

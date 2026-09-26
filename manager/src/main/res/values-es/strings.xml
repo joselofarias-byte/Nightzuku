@@ -284,6 +284,13 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="start_with_root_failed">No se puede iniciar el servicio porque no se ha concedido el permiso de root o este dispositivo no tiene root.</string>
     <string name="starter_starting_wireless_adb">Iniciando con ADB inalámbrico en el puerto %s...</string>
     <string name="starter_waiting_for_service">Esperando el servicio...</string>
+    <string name="starter_step_prepare">Preparando el inicio</string>
+    <string name="starter_step_check_root">Comprobando acceso root</string>
+    <string name="starter_step_connect_adb">Conectando con ADB</string>
+    <string name="starter_step_recover_adb">Recuperando ADB</string>
+    <string name="starter_step_launch">Iniciando Nightzuku</string>
+    <string name="starter_step_wait">Esperando el servicio</string>
+    <string name="starter_step_ready">Servicio iniciado</string>
     <string name="starter_service_started">Servicio iniciado. Esta ventana se cerrará automáticamente en 3 segundos.</string>
 
     <!-- Misc -->
@@ -307,9 +314,9 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_service_waiting_adb">Esperando ADB</string>
     <string name="persistence_service_error">Error</string>
     <string name="persistence_service_stopped">Detenido manualmente</string>
-    <string name="persistence_keep_running">Seguir en ejecución</string>
-    <string name="persistence_keep_running_on">ACTIVADO · NightDog recuperará el servicio</string>
-    <string name="persistence_keep_running_off">DESACTIVADO · la recuperación automática está deshabilitada</string>
+    <string name="persistence_keep_running">Persistencia automática</string>
+    <string name="persistence_keep_running_on">Activada</string>
+    <string name="persistence_keep_running_off">Desactivada</string>
     <string name="persistence_keep_running_confirm_title">¿Desactivar Seguir en ejecución?</string>
     <string name="persistence_keep_running_confirm_message">Nightzuku no se recuperará automáticamente si el binder o el servidor mueren hasta que vuelvas a activarlo.</string>
     <string name="persistence_transport">Transporte de recuperación activo</string>
@@ -381,10 +388,12 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_enable_tcp_need_wadb">Activa primero Depuración inalámbrica y luego toca Activar TCP local.</string>
 
     <string name="persistence_developer_control">Control de desarrollo</string>
-    <string name="persistence_developer_control_ready">Preparado · sobrevive a Desarrollo OFF</string>
+    <string name="persistence_developer_control_ready">Preparado</string>
     <string name="persistence_developer_control_not_ready">Aún no preparado</string>
     <string name="persistence_developer_options">Opciones de desarrollador</string>
     <string name="persistence_adb_global">ADB</string>
+    <string name="persistence_indicator_developer">Desarrollo</string>
+    <string name="persistence_indicator_wireless">Inalámbrica</string>
     <string name="persistence_wireless_debugging_state">Depuración inalámbrica</string>
     <string name="persistence_developer_restore_state">Estado guardado para restaurar</string>
     <string name="persistence_developer_restore_pending">Pendiente · estado anterior preservado</string>
@@ -415,4 +424,38 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="unsafe_warning_title">Advertencia</string>
     <string name="unsafe_warning_message">Habilitar esta función NO ES SEGURO. ¿Estás seguro?</string>
     <string name="application_management_load_failed">No se pudieron cargar las aplicaciones.</string>
+    <!-- Recuperación ADB con Dhizuku -->
+    <string name="home_dhizuku_adb_title">Recuperación ADB con Dhizuku</string>
+    <string name="home_dhizuku_adb_description">Usa los privilegios de Propietario del dispositivo de Dhizuku para recuperar ADB sin necesitar una conexión ADB previa. La depuración inalámbrica se restaura sólo si Android lo permite.</string>
+    <string name="home_dhizuku_adb_available">Dhizuku: disponible</string>
+    <string name="home_dhizuku_adb_unavailable">Dhizuku: no disponible o inactivo</string>
+    <string name="home_dhizuku_adb_permission_ok">Permiso Dhizuku: concedido</string>
+    <string name="home_dhizuku_adb_permission_missing">Permiso Dhizuku: se solicitará en el primer uso</string>
+    <string name="home_dhizuku_adb_status_on">ADB: activado</string>
+    <string name="home_dhizuku_adb_status_off">ADB: desactivado</string>
+    <string name="home_dhizuku_wireless_on">Depuración inalámbrica: activada</string>
+    <string name="home_dhizuku_wireless_off">Depuración inalámbrica: desactivada</string>
+    <string name="home_dhizuku_adb_port">Puerto ADB inalámbrico: %1$d</string>
+    <string name="home_dhizuku_authorize">Autorizar Dhizuku</string>
+    <string name="home_dhizuku_adb_enable">Activar ADB</string>
+    <string name="home_dhizuku_adb_disable">Apagar ADB</string>
+    <string name="home_dhizuku_adb_refresh">Actualizar estado</string>
+    <string name="home_dhizuku_adb_working">Aplicando política de Propietario del dispositivo…</string>
+    <string name="home_dhizuku_adb_success_on">ADB activado mediante Dhizuku.</string>
+    <string name="home_dhizuku_adb_success_off">ADB apagado mediante Dhizuku.</string>
+    <string name="home_dhizuku_adb_failed">Dhizuku no pudo cambiar ADB: %1$s</string>
+    <string name="home_dhizuku_adb_wireless_note">ADB se recuperó, pero la Depuración inalámbrica sigue apagada. Podés activarla desde Opciones de desarrollador o volver a intentar si MagicOS permite restaurarla mediante Device Owner.</string>
+
+    <string name="persistence_recovery_status">Recuperación</string>
+    <string name="persistence_recovery_ready">Lista</string>
+    <string name="persistence_recovery_attention">Requiere atención</string>
+    <string name="persistence_show_details">Ver detalles</string>
+    <string name="persistence_hide_details">Ocultar detalles</string>
+    <string name="persistence_control_short">Control</string>
+    <string name="starter_adb_key_error_short">No se pudo acceder a la clave ADB guardada.</string>
+    <string name="starter_adb_endpoint_stale">El puerto ADB anterior ya no está disponible.</string>
+    <string name="starter_adb_reactivating_temporarily">Reactivando ADB temporalmente para recuperar…</string>
+    <string name="starter_adb_searching_new_port">Buscando un nuevo puerto ADB local…</string>
+    <string name="starter_adb_recovered_short">Transporte ADB recuperado. Iniciando Nightzuku…</string>
+    <string name="starter_adb_failed_short">No se pudo recuperar ADB: %1$s</string>
 </resources>

@@ -23,6 +23,7 @@ android {
         buildConfig true
         compose true
         prefab true
+        aidl true
     }
     sourceSets {
         debug.assets.srcDir(file("$buildDir/generated/rish/debug/assets"))
@@ -230,6 +231,9 @@ dependencies {
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
 
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.84'
+
+    // Device Owner bridge used to recover ADB after it is disabled.
+    implementation 'io.github.iamr0s:Dhizuku-API:2.5.4'
 
     implementation 'me.zhanghai.android.appiconloader:appiconloader:1.5.0'
 

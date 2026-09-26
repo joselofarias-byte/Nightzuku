@@ -284,6 +284,13 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="start_with_root_failed">Can\'t start service because root permission is not granted or this device is not rooted.</string>
     <string name="starter_starting_wireless_adb">Starting with wireless adb in port %s...</string>
     <string name="starter_waiting_for_service">Waiting for service...</string>
+    <string name="starter_step_prepare">Preparing startup</string>
+    <string name="starter_step_check_root">Checking root access</string>
+    <string name="starter_step_connect_adb">Connecting to ADB</string>
+    <string name="starter_step_recover_adb">Recovering ADB</string>
+    <string name="starter_step_launch">Starting Nightzuku</string>
+    <string name="starter_step_wait">Waiting for service</string>
+    <string name="starter_step_ready">Service started</string>
     <string name="starter_service_started">Service started, this window will be automatically closed in 3 seconds</string>
 
     <!-- Misc -->
@@ -307,9 +314,9 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_service_waiting_adb">Waiting for ADB</string>
     <string name="persistence_service_error">Error</string>
     <string name="persistence_service_stopped">Manually stopped</string>
-    <string name="persistence_keep_running">Keep running</string>
-    <string name="persistence_keep_running_on">ON · NightDog will recover the service</string>
-    <string name="persistence_keep_running_off">OFF · automatic recovery is disabled</string>
+    <string name="persistence_keep_running">Automatic persistence</string>
+    <string name="persistence_keep_running_on">Enabled</string>
+    <string name="persistence_keep_running_off">Disabled</string>
     <string name="persistence_keep_running_confirm_title">Turn off Keep running?</string>
     <string name="persistence_keep_running_confirm_message">Nightzuku will not recover automatically after binder or server death until you turn this back on.</string>
     <string name="persistence_transport">Active recovery transport</string>
@@ -381,10 +388,12 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_enable_tcp_need_wadb">Enable Wireless debugging first, then tap Enable local TCP.</string>
 
     <string name="persistence_developer_control">Developer control</string>
-    <string name="persistence_developer_control_ready">Prepared · survives Developer options OFF</string>
+    <string name="persistence_developer_control_ready">Prepared</string>
     <string name="persistence_developer_control_not_ready">Not prepared yet</string>
     <string name="persistence_developer_options">Developer options</string>
     <string name="persistence_adb_global">ADB</string>
+    <string name="persistence_indicator_developer">Developer</string>
+    <string name="persistence_indicator_wireless">Wireless</string>
     <string name="persistence_wireless_debugging_state">Wireless debugging</string>
     <string name="persistence_developer_restore_state">Saved restore state</string>
     <string name="persistence_developer_restore_pending">Pending · previous state preserved</string>
@@ -415,4 +424,38 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="unsafe_warning_title">Warning</string>
     <string name="unsafe_warning_message">Enabling this feature is UNSAFE. Are you sure?</string>
     <string name="application_management_load_failed">Could not load applications.</string>
+    <!-- Dhizuku ADB recovery -->
+    <string name="home_dhizuku_adb_title">ADB recovery with Dhizuku</string>
+    <string name="home_dhizuku_adb_description">Uses Dhizuku Device Owner privileges to restore ADB without requiring an existing ADB connection. Wireless debugging is restored only when Android allows it.</string>
+    <string name="home_dhizuku_adb_available">Dhizuku: available</string>
+    <string name="home_dhizuku_adb_unavailable">Dhizuku: unavailable or inactive</string>
+    <string name="home_dhizuku_adb_permission_ok">Dhizuku permission: granted</string>
+    <string name="home_dhizuku_adb_permission_missing">Dhizuku permission: required on first use</string>
+    <string name="home_dhizuku_adb_status_on">ADB: enabled</string>
+    <string name="home_dhizuku_adb_status_off">ADB: disabled</string>
+    <string name="home_dhizuku_wireless_on">Wireless debugging: enabled</string>
+    <string name="home_dhizuku_wireless_off">Wireless debugging: disabled</string>
+    <string name="home_dhizuku_adb_port">Wireless ADB port: %1$d</string>
+    <string name="home_dhizuku_authorize">Authorize Dhizuku</string>
+    <string name="home_dhizuku_adb_enable">Enable ADB</string>
+    <string name="home_dhizuku_adb_disable">Disable ADB</string>
+    <string name="home_dhizuku_adb_refresh">Refresh status</string>
+    <string name="home_dhizuku_adb_working">Applying Device Owner policy…</string>
+    <string name="home_dhizuku_adb_success_on">ADB enabled through Dhizuku.</string>
+    <string name="home_dhizuku_adb_success_off">ADB disabled through Dhizuku.</string>
+    <string name="home_dhizuku_adb_failed">Dhizuku could not change ADB: %1$s</string>
+    <string name="home_dhizuku_adb_wireless_note">ADB was restored, but Wireless debugging is still off. You can enable it from Developer options or try again if MagicOS allows Device Owner to restore it.</string>
+
+    <string name="persistence_recovery_status">Recovery</string>
+    <string name="persistence_recovery_ready">Ready</string>
+    <string name="persistence_recovery_attention">Needs attention</string>
+    <string name="persistence_show_details">Show details</string>
+    <string name="persistence_hide_details">Hide details</string>
+    <string name="persistence_control_short">Control</string>
+    <string name="starter_adb_key_error_short">Could not access the saved ADB key.</string>
+    <string name="starter_adb_endpoint_stale">The previous ADB port is no longer available.</string>
+    <string name="starter_adb_reactivating_temporarily">Temporarily re-enabling ADB for recovery…</string>
+    <string name="starter_adb_searching_new_port">Searching for a new local ADB port…</string>
+    <string name="starter_adb_recovered_short">ADB transport recovered. Starting Nightzuku…</string>
+    <string name="starter_adb_failed_short">Could not recover ADB: %1$s</string>
 </resources>

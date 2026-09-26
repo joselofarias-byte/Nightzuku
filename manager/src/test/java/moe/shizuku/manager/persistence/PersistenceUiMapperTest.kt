@@ -30,6 +30,26 @@ class PersistenceUiMapperTest {
     }
 
     @Test
+    fun healthyBinderHidesRecoverNow() {
+        // MaximumPersistenceCard shows "Recuperar ahora" only when showRecoverNow is true.
+        val healthy = PersistenceUiMapper.mapService(
+            desiredRunning = true,
+            binderAlive = true,
+            stage = "CHECKING_BINDER"
+        )
+        assertEquals(PersistenceServiceState.RUNNING, healthy)
+        assertFalse(PersistenceUiMapper.showRecoverNow(healthy))
+
+        val recovering = PersistenceUiMapper.mapService(
+            desiredRunning = true,
+            binderAlive = false,
+            stage = "DISCOVERING_ADB"
+        )
+        assertEquals(PersistenceServiceState.RECOVERING, recovering)
+        assertTrue(PersistenceUiMapper.showRecoverNow(recovering))
+    }
+
+    @Test
     fun mapsWaitingRecoveringAndError() {
         assertEquals(
             PersistenceServiceState.WAITING_FOR_ADB,

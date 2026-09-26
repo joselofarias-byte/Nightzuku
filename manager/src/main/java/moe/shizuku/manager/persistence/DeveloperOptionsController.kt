@@ -169,6 +169,146 @@ object DeveloperOptionsController {
         }
     }
 
+    /**
+     * Re-enables the ADB transport without touching the visible Developer options switch.
+     *
+     * This mirrors the recovery path proven by Stellar: WRITE_SECURE_SETTINGS survives
+     * disabling Developer options, so Nightzuku can bring adbd back first and reuse a
+     * previously authenticated local TCP endpoint. Wireless debugging is only requested
+     * as a second-stage fallback.
+     */
+    suspend fun enableAdbTransportForRecovery(
+        context: Context,
+        enableWireless: Boolean = false
+    ): Result = withContext(Dispatchers.IO) {
+        if (!hasWriteSecureSettings(context)) {
+            return@withContext Result(
+                false,
+                snapshot(context),
+                "WRITE_SECURE_SETTINGS is not granted"
+            )
+        }
+
+        val before = snapshot(context)
+        val preferences = ShizukuSettings.getPreferences()
+        val transportPending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+        if (TransportRestorePolicy.shouldCaptureTransportSnapshot(transportPending)) {
+            val captured = TransportRestorePolicy.captureTransportSnapshot(
+                pending = transportPending,
+                previousAdbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false),
+                previousWirelessEnabled = preferences.getBoolean(
+                    PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB,
+                    false
+                ),
+                currentAdbEnabled = before.adbEnabled,
+                currentWirelessEnabled = before.wirelessDebuggingEnabled
+            )
+            preferences.edit()
+                .putBoolean(PREF_TRANSPORT_PREVIOUS_ADB, captured.previousAdbEnabled)
+                .putBoolean(PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB, captured.previousWirelessEnabled)
+                .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, captured.pending)
+                .apply()
+        }
+
+        val resolver = context.contentResolver
+        return@withContext runCatching {
+            // Deliberately DO NOT write development_settings_enabled here.
+            // Banking apps may require Developer options to remain visibly OFF.
+            applyStellarTransportWrites(
+                resolver,
+                TransportRestorePolicy.stellarEnableWrites(
+                    enableWireless = enableWireless,
+                    wirelessDebuggingApiAvailable =
+                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+                )
+            )
+
+            delay(if (enableWireless) 700L else 400L)
+
+            val after = snapshot(context)
+            val success = after.adbEnabled &&
+                (!enableWireless || after.wirelessDebuggingEnabled)
+
+            Result(
+                success,
+                after,
+                when {
+                    success && enableWireless -> "adb_and_wireless_enabled_without_developer_options"
+                    success -> "adb_enabled_without_developer_options"
+                    enableWireless -> "Android did not retain ADB / wireless debugging"
+                    else -> "Android did not retain ADB_ENABLED"
+                }
+            )
+        }.getOrElse { error ->
+            Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
+        }
+    }
+
+    /**
+     * Restores only the ADB transport switches changed by automatic recovery.
+     * Developer options itself is never modified here.
+     */
+    suspend fun restoreAdbTransportAfterRecovery(context: Context): Result =
+        withContext(Dispatchers.IO) {
+            if (!hasWriteSecureSettings(context)) {
+                return@withContext Result(
+                    false,
+                    snapshot(context),
+                    "WRITE_SECURE_SETTINGS is not granted"
+                )
+            }
+
+            val preferences = ShizukuSettings.getPreferences()
+            val current = snapshot(context)
+            val decision = TransportRestorePolicy.decideDesiredTransportRestore(
+                developerOptionsEnabled = current.developerOptionsEnabled,
+                transportRestorePending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false),
+                previousAdbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false),
+                previousWirelessEnabled = preferences.getBoolean(
+                    PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB,
+                    false
+                )
+            )
+
+            // Stellar-compatible cleanup:
+            // keep the internal ADB transport enabled while Developer options
+            // remain visually OFF, and disable only Wireless debugging after
+            // Binder recovery. This is the behavior proven stable on the HONOR 200.
+            if (!decision.apply) {
+                return@withContext Result(true, current, decision.skipDetail)
+            }
+
+            val resolver = context.contentResolver
+            val developerOptionsOff = !current.developerOptionsEnabled
+
+            return@withContext runCatching {
+                applyStellarTransportWrites(resolver, decision.writes)
+
+                delay(350L)
+                val after = snapshot(context)
+                val success = TransportRestorePolicy.shouldClearTransportPending(
+                    desiredAdbEnabled = decision.adbEnabled,
+                    desiredWirelessEnabled = decision.wirelessEnabled,
+                    observedAdbEnabled = after.adbEnabled,
+                    observedWirelessEnabled = after.wirelessDebuggingEnabled
+                )
+
+                if (success) {
+                    preferences.edit()
+                        .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+                        .apply()
+                }
+
+                Result(
+                    success,
+                    after,
+                    TransportRestorePolicy.restoreResultDetail(success, developerOptionsOff)
+                )
+            }.getOrElse { error ->
+                Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
+            }
+        }
+
     suspend fun enableForRecovery(context: Context): Result = withContext(Dispatchers.IO) {
         if (!hasWriteSecureSettings(context)) {
             return@withContext Result(
@@ -273,6 +413,21 @@ object DeveloperOptionsController {
         }
     }
 
+    private fun applyStellarTransportWrites(
+        resolver: android.content.ContentResolver,
+        writes: List<TransportRestorePolicy.GlobalWrite>
+    ) {
+        for (write in writes) {
+            check(write.key != TransportRestorePolicy.DEVELOPMENT_SETTINGS_ENABLED) {
+                "Stellar transport path must not write development_settings_enabled"
+            }
+            when {
+                write.intValue != null -> Settings.Global.putInt(resolver, write.key, write.intValue)
+                write.longValue != null -> Settings.Global.putLong(resolver, write.key, write.longValue)
+            }
+        }
+    }
+
     private fun hasWriteSecureSettings(context: Context): Boolean {
         return context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
             PackageManager.PERMISSION_GRANTED
@@ -290,6 +445,10 @@ object DeveloperOptionsController {
     private const val ADB_ENABLED = "adb_enabled"
     private const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
     private const val ADB_ALLOWED_CONNECTION_TIME = "adb_allowed_connection_time"
+
+    private const val PREF_TRANSPORT_RESTORE_PENDING = "adb_transport_restore_pending"
+    private const val PREF_TRANSPORT_PREVIOUS_ADB = "adb_transport_previous_enabled"
+    private const val PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB = "adb_transport_previous_wireless_enabled"
 
     private const val PREF_RESTORE_PENDING = "developer_mode_restore_pending"
     private const val PREF_PREVIOUS_DEVELOPER = "developer_mode_previous_enabled"
