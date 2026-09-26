@@ -436,7 +436,10 @@ private fun PersistenceCardBody(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Fact(R.string.persistence_service, serviceLabel(model.service))
+                QuickStatusOverview(
+                    model = model,
+                    developerState = developerState
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -658,6 +661,111 @@ private fun PersistenceCardBody(
                     }
                 }
             }
+        }
+    }
+}
+
+private enum class QuickStatusTone {
+    ACTIVE,
+    INACTIVE,
+    ATTENTION,
+    ERROR
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickStatusOverview(
+    model: PersistenceUiModel,
+    developerState: DeveloperOptionsController.Snapshot
+) {
+    val enabled = stringResource(R.string.persistence_toggle_enabled)
+    val disabled = stringResource(R.string.persistence_toggle_disabled)
+
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_service),
+            value = serviceLabel(model.service),
+            tone = when (model.service) {
+                PersistenceServiceState.RUNNING -> QuickStatusTone.ACTIVE
+                PersistenceServiceState.RECOVERING,
+                PersistenceServiceState.WAITING_FOR_ADB -> QuickStatusTone.ATTENTION
+                PersistenceServiceState.ERROR -> QuickStatusTone.ERROR
+                PersistenceServiceState.MANUALLY_STOPPED -> QuickStatusTone.INACTIVE
+            }
+        )
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_indicator_developer),
+            value = if (developerState.developerOptionsEnabled) enabled else disabled,
+            tone = if (developerState.developerOptionsEnabled) {
+                QuickStatusTone.ACTIVE
+            } else {
+                QuickStatusTone.INACTIVE
+            }
+        )
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_adb_global),
+            value = if (developerState.adbEnabled) enabled else disabled,
+            tone = if (developerState.adbEnabled) {
+                QuickStatusTone.ACTIVE
+            } else {
+                QuickStatusTone.INACTIVE
+            }
+        )
+        QuickStatusChip(
+            label = stringResource(R.string.persistence_indicator_wireless),
+            value = if (developerState.wirelessDebuggingEnabled) enabled else disabled,
+            tone = if (developerState.wirelessDebuggingEnabled) {
+                QuickStatusTone.ACTIVE
+            } else {
+                QuickStatusTone.INACTIVE
+            }
+        )
+    }
+}
+
+@Composable
+private fun QuickStatusChip(
+    label: String,
+    value: String,
+    tone: QuickStatusTone
+) {
+    val containerColor = when (tone) {
+        QuickStatusTone.ACTIVE -> MaterialTheme.colorScheme.primaryContainer
+        QuickStatusTone.INACTIVE -> MaterialTheme.colorScheme.surfaceVariant
+        QuickStatusTone.ATTENTION -> MaterialTheme.colorScheme.tertiaryContainer
+        QuickStatusTone.ERROR -> MaterialTheme.colorScheme.errorContainer
+    }
+    val contentColor = when (tone) {
+        QuickStatusTone.ACTIVE -> MaterialTheme.colorScheme.onPrimaryContainer
+        QuickStatusTone.INACTIVE -> MaterialTheme.colorScheme.onSurfaceVariant
+        QuickStatusTone.ATTENTION -> MaterialTheme.colorScheme.onTertiaryContainer
+        QuickStatusTone.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = containerColor,
+        contentColor = contentColor
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = contentColor
+            ) {}
+            Text(
+                "$label · $value",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
