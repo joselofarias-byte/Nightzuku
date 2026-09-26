@@ -443,4 +443,10 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_show_details">Ver detalles</string>
     <string name="persistence_hide_details">Ocultar detalles</string>
     <string name="persistence_control_short">Control</string>
+    <string name="starter_adb_key_error_short">No se pudo acceder a la clave ADB guardada.</string>
+    <string name="starter_adb_endpoint_stale">El puerto ADB anterior ya no está disponible.</string>
+    <string name="starter_adb_reactivating_temporarily">Reactivando ADB temporalmente para recuperar…</string>
+    <string name="starter_adb_searching_new_port">Buscando un nuevo puerto ADB local…</string>
+    <string name="starter_adb_recovered_short">Transporte ADB recuperado. Iniciando Nightzuku…</string>
+    <string name="starter_adb_failed_short">No se pudo recuperar ADB: %1$s</string>
 </resources>
