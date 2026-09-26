@@ -442,4 +442,5 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_recovery_attention">Requiere atención</string>
     <string name="persistence_show_details">Ver detalles</string>
     <string name="persistence_hide_details">Ocultar detalles</string>
+    <string name="persistence_control_short">Control</string>
 </resources>
