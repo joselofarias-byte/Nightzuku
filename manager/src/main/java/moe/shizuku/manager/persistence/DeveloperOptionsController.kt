@@ -169,6 +169,58 @@ object DeveloperOptionsController {
         }
     }
 
+    /**
+     * Re-enables the ADB transport without touching the visible Developer options switch.
+     *
+     * This mirrors the recovery path proven by Stellar: WRITE_SECURE_SETTINGS survives
+     * disabling Developer options, so Nightzuku can bring adbd back first and reuse a
+     * previously authenticated local TCP endpoint. Wireless debugging is only requested
+     * as a second-stage fallback.
+     */
+    suspend fun enableAdbTransportForRecovery(
+        context: Context,
+        enableWireless: Boolean = false
+    ): Result = withContext(Dispatchers.IO) {
+        if (!hasWriteSecureSettings(context)) {
+            return@withContext Result(
+                false,
+                snapshot(context),
+                "WRITE_SECURE_SETTINGS is not granted"
+            )
+        }
+
+        val resolver = context.contentResolver
+        return@withContext runCatching {
+            // Deliberately DO NOT write development_settings_enabled here.
+            // Banking apps may require Developer options to remain visibly OFF.
+            Settings.Global.putInt(resolver, ADB_ENABLED, 1)
+            Settings.Global.putLong(resolver, ADB_ALLOWED_CONNECTION_TIME, 0L)
+
+            if (enableWireless && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Settings.Global.putInt(resolver, ADB_WIFI_ENABLED, 1)
+            }
+
+            delay(if (enableWireless) 700L else 400L)
+
+            val after = snapshot(context)
+            val success = after.adbEnabled &&
+                (!enableWireless || after.wirelessDebuggingEnabled)
+
+            Result(
+                success,
+                after,
+                when {
+                    success && enableWireless -> "adb_and_wireless_enabled_without_developer_options"
+                    success -> "adb_enabled_without_developer_options"
+                    enableWireless -> "Android did not retain ADB / wireless debugging"
+                    else -> "Android did not retain ADB_ENABLED"
+                }
+            )
+        }.getOrElse { error ->
+            Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
+        }
+    }
+
     suspend fun enableForRecovery(context: Context): Result = withContext(Dispatchers.IO) {
         if (!hasWriteSecureSettings(context)) {
             return@withContext Result(
