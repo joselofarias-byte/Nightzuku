@@ -437,4 +437,9 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="home_dhizuku_adb_failed">Dhizuku could not change ADB: %1$s</string>
     <string name="home_dhizuku_adb_wireless_note">ADB was restored, but Wireless debugging is still off. You can enable it from Developer options or try again if MagicOS allows Device Owner to restore it.</string>
 
+    <string name="persistence_recovery_status">Recovery</string>
+    <string name="persistence_recovery_ready">Ready</string>
+    <string name="persistence_recovery_attention">Needs attention</string>
+    <string name="persistence_show_details">Show details</string>
+    <string name="persistence_hide_details">Hide details</string>
 </resources>
