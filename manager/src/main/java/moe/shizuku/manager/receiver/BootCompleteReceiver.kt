@@ -4,8 +4,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants
-import moe.shizuku.manager.startup.BootStartWorker
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
 
@@ -21,8 +25,20 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
         if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
 
-        // Keep BroadcastReceiver work intentionally short. WorkManager owns the
-        // retry lifecycle and can survive the receiver/process being reclaimed.
-        BootStartWorker.enqueue(context.applicationContext)
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                // Application.onCreate starts NightDog before this receiver runs.
+                // Give Android a brief post-unlock settle window, then request the
+                // same recovery path already validated manually on the HONOR 200.
+                delay(1_500L)
+                NightDogRecovery.requestImmediateRecovery(context.applicationContext)
+                Log.i(AppConstants.TAG, "Boot recovery delegated to NightDog")
+            } catch (error: Throwable) {
+                Log.w(AppConstants.TAG, "Boot recovery request failed", error)
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }
