@@ -284,6 +284,13 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="start_with_root_failed">No se puede iniciar el servicio porque no se ha concedido el permiso de root o este dispositivo no tiene root.</string>
     <string name="starter_starting_wireless_adb">Iniciando con ADB inalámbrico en el puerto %s...</string>
     <string name="starter_waiting_for_service">Esperando el servicio...</string>
+    <string name="starter_step_prepare">Preparando el inicio</string>
+    <string name="starter_step_check_root">Comprobando acceso root</string>
+    <string name="starter_step_connect_adb">Conectando con ADB</string>
+    <string name="starter_step_recover_adb">Recuperando ADB</string>
+    <string name="starter_step_launch">Iniciando Nightzuku</string>
+    <string name="starter_step_wait">Esperando el servicio</string>
+    <string name="starter_step_ready">Servicio iniciado</string>
     <string name="starter_service_started">Servicio iniciado. Esta ventana se cerrará automáticamente en 3 segundos.</string>
 
     <!-- Misc -->
