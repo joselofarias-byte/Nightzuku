@@ -437,4 +437,9 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="home_dhizuku_adb_failed">Dhizuku no pudo cambiar ADB: %1$s</string>
     <string name="home_dhizuku_adb_wireless_note">ADB se recuperó, pero la Depuración inalámbrica sigue apagada. Podés activarla desde Opciones de desarrollador o volver a intentar si MagicOS permite restaurarla mediante Device Owner.</string>
 
+    <string name="persistence_recovery_status">Recuperación</string>
+    <string name="persistence_recovery_ready">Lista</string>
+    <string name="persistence_recovery_attention">Requiere atención</string>
+    <string name="persistence_show_details">Ver detalles</string>
+    <string name="persistence_hide_details">Ocultar detalles</string>
 </resources>
