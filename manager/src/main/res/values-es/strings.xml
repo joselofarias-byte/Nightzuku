@@ -307,9 +307,9 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_service_waiting_adb">Esperando ADB</string>
     <string name="persistence_service_error">Error</string>
     <string name="persistence_service_stopped">Detenido manualmente</string>
-    <string name="persistence_keep_running">Seguir en ejecución</string>
-    <string name="persistence_keep_running_on">ACTIVADO · NightDog recuperará el servicio</string>
-    <string name="persistence_keep_running_off">DESACTIVADO · la recuperación automática está deshabilitada</string>
+    <string name="persistence_keep_running">Persistencia automática</string>
+    <string name="persistence_keep_running_on">Activada</string>
+    <string name="persistence_keep_running_off">Desactivada</string>
     <string name="persistence_keep_running_confirm_title">¿Desactivar Seguir en ejecución?</string>
     <string name="persistence_keep_running_confirm_message">Nightzuku no se recuperará automáticamente si el binder o el servidor mueren hasta que vuelvas a activarlo.</string>
     <string name="persistence_transport">Transporte de recuperación activo</string>
@@ -381,7 +381,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_enable_tcp_need_wadb">Activa primero Depuración inalámbrica y luego toca Activar TCP local.</string>
 
     <string name="persistence_developer_control">Control de desarrollo</string>
-    <string name="persistence_developer_control_ready">Preparado · sobrevive a Desarrollo OFF</string>
+    <string name="persistence_developer_control_ready">Preparado</string>
     <string name="persistence_developer_control_not_ready">Aún no preparado</string>
     <string name="persistence_developer_options">Opciones de desarrollador</string>
     <string name="persistence_adb_global">ADB</string>
