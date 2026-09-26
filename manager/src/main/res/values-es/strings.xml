@@ -392,6 +392,8 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_developer_control_not_ready">Aún no preparado</string>
     <string name="persistence_developer_options">Opciones de desarrollador</string>
     <string name="persistence_adb_global">ADB</string>
+    <string name="persistence_indicator_developer">Desarrollo</string>
+    <string name="persistence_indicator_wireless">Inalámbrica</string>
     <string name="persistence_wireless_debugging_state">Depuración inalámbrica</string>
     <string name="persistence_developer_restore_state">Estado guardado para restaurar</string>
     <string name="persistence_developer_restore_pending">Pendiente · estado anterior preservado</string>
