@@ -28,6 +28,7 @@ import moe.shizuku.manager.persistence.NightDogBackoff
 import moe.shizuku.manager.persistence.RecoveryTransport
 import moe.shizuku.manager.persistence.RecoveryTransportPolicy
 import moe.shizuku.manager.persistence.TransportCandidate
+import moe.shizuku.manager.dhizuku.DhizukuAdbRecovery
 import moe.shizuku.manager.starter.Starter
 import android.util.Log
 import moe.shizuku.manager.AppConstants
@@ -544,6 +545,22 @@ object NightDogRecovery {
                             endpoint = candidate.endpoint
                         )
                     }
+                }
+            }
+
+            // Device Owner is a second transport recovery path on this HONOR.
+            // Only use a permission already granted in the UI. A boot receiver
+            // must never request Dhizuku permission or open an authorization screen.
+            if (candidate.kind == RecoveryTransport.NONE &&
+                DhizukuAdbRecovery.readState(context).permissionGranted
+            ) {
+                val dhizuku = DhizukuAdbRecovery.recoverAdbIfAuthorized(context)
+                if (dhizuku.isSuccess) {
+                    delay(1_200L)
+                    candidate = resolveCandidate()
+                } else {
+                    Log.w(AppConstants.TAG, "Device Owner ADB recovery failed", dhizuku.exceptionOrNull())
+                    lastFailure = dhizuku.exceptionOrNull()?.message ?: lastFailure
                 }
             }
 

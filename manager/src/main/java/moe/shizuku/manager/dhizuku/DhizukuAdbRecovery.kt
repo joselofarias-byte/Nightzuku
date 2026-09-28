@@ -58,6 +58,19 @@ object DhizukuAdbRecovery {
     }
 
     suspend fun setAdbEnabled(context: Context, enabled: Boolean): Result<DhizukuAdbState> {
+        return setAdbEnabledInternal(context, enabled, requestPermissionIfNeeded = true)
+    }
+
+    /** Background recovery may use an existing grant, but must never open a permission UI. */
+    suspend fun recoverAdbIfAuthorized(context: Context): Result<DhizukuAdbState> {
+        return setAdbEnabledInternal(context, true, requestPermissionIfNeeded = false)
+    }
+
+    private suspend fun setAdbEnabledInternal(
+        context: Context,
+        enabled: Boolean,
+        requestPermissionIfNeeded: Boolean
+    ): Result<DhizukuAdbState> {
         val appContext = context.applicationContext
 
         return runCatching {
@@ -65,7 +78,13 @@ object DhizukuAdbRecovery {
                 "Dhizuku no está disponible o no está activo."
             }
 
-            ensurePermission()
+            if (requestPermissionIfNeeded) {
+                ensurePermission()
+            } else {
+                check(Dhizuku.isPermissionGranted()) {
+                    "Nightzuku no tiene un permiso Dhizuku concedido previamente."
+                }
+            }
 
             val bound = bindService(appContext)
                 ?: error("No se pudo conectar al servicio Device Owner de Dhizuku.")
