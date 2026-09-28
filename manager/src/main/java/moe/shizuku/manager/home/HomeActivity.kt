@@ -272,6 +272,10 @@ abstract class HomeActivity : AppActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (NightDogRecovery.isDesiredRunning(this)) {
+            runCatching { moe.shizuku.manager.shizuku.NightDogForegroundService.start(this) }
+                .onFailure { android.util.Log.w("Nightzuku", "Persistence service start failed", it) }
+        }
         checkServerStatus()
         if (isInitialResume) isInitialResume = false else appsModel.load(onlyCount = true)
         permissionRefreshTick.intValue++

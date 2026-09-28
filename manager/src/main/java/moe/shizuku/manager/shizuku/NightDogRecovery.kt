@@ -1,7 +1,6 @@
 package moe.shizuku.manager.shizuku
 
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
 import androidx.lifecycle.Observer
@@ -29,7 +28,9 @@ import moe.shizuku.manager.persistence.NightDogBackoff
 import moe.shizuku.manager.persistence.RecoveryTransport
 import moe.shizuku.manager.persistence.RecoveryTransportPolicy
 import moe.shizuku.manager.persistence.TransportCandidate
-import moe.shizuku.manager.starter.StarterActivity
+import moe.shizuku.manager.starter.Starter
+import android.util.Log
+import moe.shizuku.manager.AppConstants
 import rikka.shizuku.Shizuku
 
 /** Process-level watchdog that keeps the service aligned with the persisted desired state. */
@@ -231,6 +232,8 @@ object NightDogRecovery {
     fun requestManualStart(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        runCatching { NightDogForegroundService.start(context) }
+            .onFailure { Log.w(AppConstants.TAG, "Persistence service start failed", it) }
         failedAttempts = 0
         lastAttemptAt = 0L
         publish(
@@ -245,6 +248,8 @@ object NightDogRecovery {
     fun requestImmediateRecovery(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        runCatching { NightDogForegroundService.start(context) }
+            .onFailure { Log.w(AppConstants.TAG, "Persistence service start failed", it) }
         failedAttempts = 0
         lastAttemptAt = 0L
         recoveryJob?.cancel()
@@ -265,6 +270,7 @@ object NightDogRecovery {
     fun prepareForManualStop(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, false).apply()
+        NightDogForegroundService.stop(context)
         recoveryJob?.cancel()
         recoveryJob = null
         failedAttempts = 0
@@ -566,13 +572,6 @@ object NightDogRecovery {
                 endpoint = candidate.endpoint
             )
 
-            val intent = Intent(context, StarterActivity::class.java).apply {
-                putExtra(StarterActivity.EXTRA_IS_ROOT, false)
-                putExtra(StarterActivity.EXTRA_HOST, host)
-                putExtra(StarterActivity.EXTRA_PORT, port)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            }
-
             if (!tryBeginStarterAttempt()) {
                 publish(
                     Stage.STARTING_SERVICE,
@@ -581,15 +580,34 @@ object NightDogRecovery {
                 )
                 return@launch
             }
-            runCatching {
-                context.startActivity(intent)
-            }.onFailure { error ->
-                clearStarterAttempt()
-                lastFailure = error.javaClass.simpleName
+            // Background Activity launches are restricted after boot. Run the
+            // authenticated ADB start directly in NightDog's IO coroutine.
+            val started = runCatching {
+                val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
+                AdbClient(host, port, key).use { client ->
+                    client.connect()
+                    client.shellCommand(Starter.internalCommand, null)
+                }
+                repeat(24) {
+                    if (Shizuku.pingBinder()) return@runCatching true
+                    delay(250L)
+                }
+                Shizuku.pingBinder()
+            }
+            clearStarterAttempt()
+            if (started.getOrDefault(false) || Shizuku.pingBinder()) {
+                failedAttempts = 0
+                lastAttemptAt = 0L
+                lastFailure = null
+                publishRunning(RESULT_BINDER_RECEIVED, "Service started in background")
+            } else {
+                val error = started.exceptionOrNull()
+                Log.w(AppConstants.TAG, "Background ADB recovery failed at $host:$port", error)
+                lastFailure = error?.javaClass?.simpleName ?: "Binder did not arrive"
                 publish(
-                    Stage.ERROR,
+                    Stage.WAITING_FOR_ADB,
                     RESULT_STARTER_FAILED,
-                    "Could not open the starter: ${error.javaClass.simpleName}",
+                    "ADB start failed; NightDog will retry",
                     transportKind = candidate.kind,
                     endpoint = candidate.endpoint
                 )
