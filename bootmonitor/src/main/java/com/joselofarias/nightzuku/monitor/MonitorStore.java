@@ -24,11 +24,11 @@ final class MonitorStore {
 
     static void boot(Context c, long when) {
         SharedPreferences p = prefs(c);
-        long bootEpoch = when - SystemClock.elapsedRealtime();
+        long bootEpoch = MonitorTimeline.bootEpoch(when, SystemClock.elapsedRealtime());
         SharedPreferences.Editor edit = p.edit().putLong(BOOT, when);
         // The listener can observe NightDog before our BOOT_COMPLETED receiver runs.
         if (p.getLong(CONNECTED, 0) < bootEpoch) edit.remove(CONNECTED);
-        if (p.getLong(POSTED, 0) < bootEpoch - 2_000L) {
+        if (!MonitorTimeline.belongsToCurrentBoot(p.getLong(POSTED, 0), bootEpoch)) {
             edit.remove(POSTED).remove(OBSERVED).remove(REMOVED);
         }
         edit.commit();
@@ -41,10 +41,11 @@ final class MonitorStore {
     static void posted(Context c, long postTime) {
         SharedPreferences p = prefs(c);
         // Use the actual system boot epoch, independent of receiver ordering.
-        long bootEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime();
-        if (postTime < bootEpoch - 2_000L) return;
+        long bootEpoch = MonitorTimeline.bootEpoch(
+            System.currentTimeMillis(), SystemClock.elapsedRealtime());
+        if (!MonitorTimeline.belongsToCurrentBoot(postTime, bootEpoch)) return;
         long existing = p.getLong(POSTED, 0);
-        if (existing == 0 || postTime < existing) {
+        if (MonitorTimeline.shouldRecordEarlierPost(existing, postTime)) {
             p.edit().putLong(POSTED, postTime)
                 .putLong(OBSERVED, System.currentTimeMillis()).apply();
         }

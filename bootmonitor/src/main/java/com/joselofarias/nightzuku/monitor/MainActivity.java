@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.widget.Button;
@@ -89,6 +90,8 @@ public final class MainActivity extends Activity {
         long observed = MonitorStore.observedTime(this);
         long connected = MonitorStore.connectedTime(this);
         long removed = MonitorStore.removedTime(this);
+        long systemBootEpoch = MonitorTimeline.bootEpoch(
+            System.currentTimeMillis(), SystemClock.elapsedRealtime());
         String verdict = boot == 0 ? "Aún no se registró BOOT_COMPLETED en este monitor."
             : !listenerEnabled() ? "Falta conceder acceso a notificaciones; no se puede evaluar Nightzuku."
             : post == 0 ? "El monitor arrancó, pero no observó la notificación persistente de Nightzuku."
@@ -102,7 +105,10 @@ public final class MainActivity extends Activity {
             + "Notificación NightDog publicada: " + time(post) + "\n"
             + "Notificación observada: " + time(observed) + "\n"
             + "Notificación retirada: " + time(removed) + "\n"
-            + (boot > 0 && post >= boot ? "Demora desde arranque: " + ((post - boot) / 1000) + " segundos\n" : "")
+            + (MonitorTimeline.belongsToCurrentBoot(post, systemBootEpoch)
+                ? "Demora desde arranque del sistema: "
+                    + MonitorTimeline.secondsSinceBoot(post, systemBootEpoch) + " segundos\n"
+                : "")
             + "\nLa notificación demuestra que se cargó el proceso de Nightzuku y arrancó su servicio persistente. No demuestra por sí sola que el Binder/RISH esté operativo. Abrir Nightzuku antes de guardar el informe altera la prueba.\n";
     }
 

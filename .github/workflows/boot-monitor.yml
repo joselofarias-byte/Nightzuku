@@ -26,11 +26,11 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36.1" "build-tools;36.0.0"
-      - name: Assemble monitor
+      - name: Test and assemble monitor
         run: |
           cp api/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
-          ./gradlew --no-daemon :bootmonitor:assembleDebug
+          ./gradlew --no-daemon :bootmonitor:testDebugUnitTest :bootmonitor:assembleDebug
       - name: Verify package
         run: |
           APK="$(find bootmonitor/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
