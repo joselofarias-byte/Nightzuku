@@ -1,0 +1,46 @@
+name: Nightzuku boot monitor APK
+
+on:
+  push:
+    branches:
+      - 'monitor/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Android SDK 36.1
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36.1" "build-tools;36.0.0"
+      - name: Test and assemble monitor
+        run: |
+          cp api/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+          ./gradlew --no-daemon :bootmonitor:testDebugUnitTest :bootmonitor:assembleDebug
+      - name: Verify package
+        run: |
+          APK="$(find bootmonitor/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 1 | tee monitor-badging.txt
+          grep -F "name='com.joselofarias.nightzuku.monitor'" monitor-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightzuku-boot-monitor-${{ github.sha }}
+          path: |
+            bootmonitor/build/outputs/apk/debug/*.apk
+            monitor-badging.txt
+          retention-days: 14
