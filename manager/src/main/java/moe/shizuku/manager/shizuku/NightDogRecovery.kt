@@ -629,6 +629,7 @@ object NightDogRecovery {
                         enableWireless = false
                     )
                     if (adbOnly.success) {
+                        clearFailure()
                         ShizukuSettings.setAdbReactivationRequired(false)
                         delay(700L)
                         candidate = resolveCandidate()
@@ -648,6 +649,7 @@ object NightDogRecovery {
                             enableWireless = true
                         )
                         if (wireless.success) {
+                            clearFailure()
                             delay(1_200L)
                             candidate = resolveCandidate()
                         } else {
@@ -689,6 +691,7 @@ object NightDogRecovery {
                 if (dhizukuState.permissionGranted) {
                     val dhizuku = DhizukuAdbRecovery.recoverAdbIfAuthorized(context)
                     if (dhizuku.isSuccess) {
+                        clearFailure()
                         delay(1_200L)
                         candidate = resolveCandidate()
                     } else {
