@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.os.UserManager
 import androidx.lifecycle.Observer
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +28,8 @@ import moe.shizuku.manager.adb.AdbTransportResolver
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.persistence.DeveloperOptionsController
 import moe.shizuku.manager.persistence.NightDogBackoff
+import moe.shizuku.manager.persistence.RecoveryFailureDiagnostic
+import moe.shizuku.manager.persistence.RecoveryFailureReason
 import moe.shizuku.manager.persistence.RecoveryTransport
 import moe.shizuku.manager.persistence.RecoveryTransportPolicy
 import moe.shizuku.manager.persistence.TransportCandidate
@@ -69,6 +72,7 @@ object NightDogRecovery {
         val lastResult: String = "No checks yet",
         val lastResultKey: String = RESULT_NO_CHECKS,
         val lastFailure: String? = null,
+        val lastFailureCode: RecoveryFailureReason? = null,
         val lastAttemptElapsedRealtime: Long = 0L,
         val nextRetryElapsedRealtime: Long = 0L,
         val runningSinceElapsedRealtime: Long = 0L,
@@ -116,6 +120,7 @@ object NightDogRecovery {
     @Volatile private var lastBinderLostAt = 0L
     @Volatile private var lastRecoveryAt = 0L
     @Volatile private var lastFailure: String? = null
+    @Volatile private var lastFailureCode: RecoveryFailureReason? = null
     @Volatile private var starterInFlightUntil = 0L
 
     private val _snapshot = MutableStateFlow(Snapshot())
@@ -175,10 +180,17 @@ object NightDogRecovery {
                     DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context)
                 }.onFailure {
                     Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", it)
+                    val detail = it.message ?: it.javaClass.simpleName
+                    recordFailure(
+                        context = context,
+                        reason = RecoveryFailureReason.WIRELESS_CLEANUP_FAILED,
+                        detail = detail,
+                        transport = RecoveryTransport.BINDER_ALIVE
+                    )
                     NightDogBootTrace.note(
                         context,
                         "dhizuku_wireless_cleanup_failed",
-                        it.message ?: it.javaClass.simpleName
+                        detail
                     )
                 }
 
@@ -190,7 +202,12 @@ object NightDogRecovery {
                         "binder alive after cleanup"
                     )
                 } else {
-                    lastFailure = "Binder died after transport cleanup"
+                    recordFailure(
+                        context = context,
+                        reason = RecoveryFailureReason.TRANSPORT_CLEANUP_DESTABILIZED,
+                        detail = "Binder died after transport cleanup",
+                        transport = RecoveryTransport.BINDER_ALIVE
+                    )
                     NightDogBootTrace.note(
                         context,
                         "transport_cleanup_destabilized",
@@ -209,7 +226,7 @@ object NightDogRecovery {
         }
         failedAttempts = 0
         lastAttemptAt = 0L
-        lastFailure = null
+        clearFailure()
         starterInFlightUntil = 0L
         recoveryJob?.cancel()
         recoveryJob = null
@@ -252,7 +269,7 @@ object NightDogRecovery {
                     if (runningSinceAt == 0L) runningSinceAt = SystemClock.elapsedRealtime()
                     failedAttempts = 0
                     lastAttemptAt = 0L
-                    lastFailure = null
+                    clearFailure()
                     publishRunning(RESULT_BINDER_RESPONDING, "Binder is responding")
                     if (currentServerPid == null) refreshServerPid()
                 } else if (isDesiredRunning()) {
@@ -384,7 +401,7 @@ object NightDogRecovery {
         recoveryCount = 0
         lastBinderLostAt = 0L
         lastRecoveryAt = 0L
-        lastFailure = null
+        clearFailure()
         starterInFlightUntil = 0L
         _snapshot.value = Snapshot(
             stage = Stage.IDLE,
@@ -582,6 +599,7 @@ object NightDogRecovery {
             if (Shizuku.pingBinder() || !isDesiredRunning()) return@launch
 
             val context = applicationContext ?: return@launch
+            clearFailure()
             publish(
                 Stage.DISCOVERING_ADB,
                 RESULT_DISCOVERING,
@@ -615,7 +633,11 @@ object NightDogRecovery {
                         delay(700L)
                         candidate = resolveCandidate()
                     } else {
-                        lastFailure = adbOnly.detail ?: "Could not re-enable ADB transport"
+                        recordFailure(
+                            context = context,
+                            reason = RecoveryFailureReason.ADB_REENABLE_FAILED,
+                            detail = adbOnly.detail ?: "Could not re-enable ADB transport"
+                        )
                     }
 
                     if (candidate.kind == RecoveryTransport.NONE &&
@@ -629,7 +651,11 @@ object NightDogRecovery {
                             delay(1_200L)
                             candidate = resolveCandidate()
                         } else {
-                            lastFailure = wireless.detail ?: lastFailure
+                            recordFailure(
+                                context = context,
+                                reason = RecoveryFailureReason.WIRELESS_REENABLE_FAILED,
+                                detail = wireless.detail ?: "Could not re-enable wireless ADB"
+                            )
                         }
                     }
 
@@ -648,16 +674,33 @@ object NightDogRecovery {
             // Device Owner is a second transport recovery path on this HONOR.
             // Only use a permission already granted in the UI. A boot receiver
             // must never request Dhizuku permission or open an authorization screen.
-            if (candidate.kind == RecoveryTransport.NONE &&
-                DhizukuAdbRecovery.readState(context).permissionGranted
-            ) {
-                val dhizuku = DhizukuAdbRecovery.recoverAdbIfAuthorized(context)
-                if (dhizuku.isSuccess) {
-                    delay(1_200L)
-                    candidate = resolveCandidate()
-                } else {
-                    Log.w(AppConstants.TAG, "Device Owner ADB recovery failed", dhizuku.exceptionOrNull())
-                    lastFailure = dhizuku.exceptionOrNull()?.message ?: lastFailure
+            if (candidate.kind == RecoveryTransport.NONE) {
+                val dhizukuState = DhizukuAdbRecovery.readState(context)
+                if (dhizukuState.dhizukuAvailable && !dhizukuState.permissionGranted &&
+                    lastFailureCode == null
+                ) {
+                    recordFailure(
+                        context = context,
+                        reason = RecoveryFailureReason.DHIZUKU_NOT_AUTHORIZED,
+                        detail = "Dhizuku is available but Nightzuku has no previously granted permission"
+                    )
+                }
+
+                if (dhizukuState.permissionGranted) {
+                    val dhizuku = DhizukuAdbRecovery.recoverAdbIfAuthorized(context)
+                    if (dhizuku.isSuccess) {
+                        delay(1_200L)
+                        candidate = resolveCandidate()
+                    } else {
+                        val error = dhizuku.exceptionOrNull()
+                        Log.w(AppConstants.TAG, "Device Owner ADB recovery failed", error)
+                        recordFailure(
+                            context = context,
+                            reason = RecoveryFailureReason.DHIZUKU_RECOVERY_FAILED,
+                            detail = error?.message ?: error?.javaClass?.simpleName
+                                ?: "Dhizuku Device Owner recovery failed"
+                        )
+                    }
                 }
             }
 
@@ -665,7 +708,13 @@ object NightDogRecovery {
             lastAttemptAt = SystemClock.elapsedRealtime()
 
             if (candidate.kind == RecoveryTransport.NONE) {
-                lastFailure = lastFailure ?: "No usable ADB endpoint"
+                if (lastFailureCode == null) {
+                    recordFailure(
+                        context = context,
+                        reason = RecoveryFailureReason.NO_TRANSPORT,
+                        detail = "No usable ADB endpoint"
+                    )
+                }
                 publish(
                     Stage.WAITING_FOR_ADB,
                     RESULT_NO_USABLE_ENDPOINT,
@@ -696,11 +745,22 @@ object NightDogRecovery {
             }
             // Background Activity launches are restricted after boot. Run the
             // authenticated ADB start directly in NightDog's IO coroutine.
+            var startFailureReason = RecoveryFailureReason.BINDER_TIMEOUT
             val started = runCatching {
                 val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
                 AdbClient(host, port, key).use { client ->
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
+                    try {
+                        client.connect()
+                    } catch (error: Throwable) {
+                        startFailureReason = RecoveryFailureReason.ADB_CONNECT_FAILED
+                        throw error
+                    }
+                    try {
+                        client.shellCommand(Starter.internalCommand, null)
+                    } catch (error: Throwable) {
+                        startFailureReason = RecoveryFailureReason.SERVER_START_FAILED
+                        throw error
+                    }
                 }
                 repeat(24) {
                     if (Shizuku.pingBinder()) return@runCatching true
@@ -709,15 +769,26 @@ object NightDogRecovery {
                 Shizuku.pingBinder()
             }
             clearStarterAttempt()
+            started.exceptionOrNull()?.let { error ->
+                if (error is CancellationException) throw error
+            }
             if (started.getOrDefault(false) || Shizuku.pingBinder()) {
                 failedAttempts = 0
                 lastAttemptAt = 0L
-                lastFailure = null
+                clearFailure()
                 publishRunning(RESULT_BINDER_RECEIVED, "Service started in background")
             } else {
                 val error = started.exceptionOrNull()
                 Log.w(AppConstants.TAG, "Background ADB recovery failed at $host:$port", error)
-                lastFailure = error?.javaClass?.simpleName ?: "Binder did not arrive"
+                val detail = error?.message ?: error?.javaClass?.simpleName
+                    ?: "Binder did not arrive after the ADB start command"
+                recordFailure(
+                    context = context,
+                    reason = startFailureReason,
+                    detail = detail,
+                    transport = candidate.kind,
+                    endpoint = candidate.endpoint
+                )
                 publish(
                     Stage.WAITING_FOR_ADB,
                     RESULT_STARTER_FAILED,
@@ -758,6 +829,27 @@ object NightDogRecovery {
         )
     }
 
+    private fun clearFailure() {
+        lastFailure = null
+        lastFailureCode = null
+    }
+
+    private fun recordFailure(
+        context: Context,
+        reason: RecoveryFailureReason,
+        detail: String?,
+        transport: RecoveryTransport = RecoveryTransport.NONE,
+        endpoint: String? = null
+    ) {
+        lastFailureCode = reason
+        lastFailure = detail?.takeIf { it.isNotBlank() } ?: reason.name
+        NightDogBootTrace.note(
+            context,
+            "recovery_failure",
+            RecoveryFailureDiagnostic(reason, lastFailure, transport, endpoint).traceDetail()
+        )
+    }
+
     private fun publish(
         stage: Stage,
         resultKey: String,
@@ -778,6 +870,7 @@ object NightDogRecovery {
             lastResult = result,
             lastResultKey = resultKey,
             lastFailure = lastFailure,
+            lastFailureCode = lastFailureCode,
             lastAttemptElapsedRealtime = lastAttemptAt,
             nextRetryElapsedRealtime = NightDogBackoff.nextRetryElapsedRealtime(
                 now,
