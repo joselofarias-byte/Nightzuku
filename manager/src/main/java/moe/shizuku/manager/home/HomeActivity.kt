@@ -768,6 +768,7 @@ private fun DhizukuAdbRecoveryCard() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = lifecycleOwner.lifecycleScope
+    val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
     var state by remember { mutableStateOf(DhizukuAdbRecovery.readState(context)) }
     var working by remember { mutableStateOf(false) }
 
@@ -807,6 +808,13 @@ private fun DhizukuAdbRecoveryCard() {
         if (working) return
         working = true
         scope.launch {
+            val persistenceWasOn = !enabled && NightDogRecovery.isDesiredRunning(context)
+            if (persistenceWasOn) {
+                // HONOR 200: ADB-off and self-healing are conflicting goals.
+                // Pause NightDog first so it does not immediately re-enable ADB.
+                NightDogRecovery.prepareForManualStop(context)
+            }
+
             val result = if (enabled) {
                 DhizukuAdbRecovery.enableAdbAndWaitForWireless(context)
             } else {
@@ -823,12 +831,18 @@ private fun DhizukuAdbRecoveryCard() {
                             context.getString(R.string.home_dhizuku_adb_success_on) + " " +
                                 context.getString(R.string.home_dhizuku_adb_wireless_note)
                         }
+                    } else if (persistenceWasOn) {
+                        context.getString(R.string.home_dhizuku_adb_success_off_persistence_paused)
                     } else {
                         context.getString(R.string.home_dhizuku_adb_success_off)
                     }
                     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
                 .onFailure { error ->
+                    if (persistenceWasOn) {
+                        // Roll back the pause if Device Owner failed to honor ADB-off.
+                        NightDogRecovery.requestImmediateRecovery(context)
+                    }
                     refresh()
                     Toast.makeText(
                         context,
@@ -891,8 +905,15 @@ private fun DhizukuAdbRecoveryCard() {
             )
         } else {
             buttons += HomeButtonSpec(
-                label = if (state.adbEnabled) R.string.home_dhizuku_adb_disable
-                else R.string.home_dhizuku_adb_enable,
+                label = if (state.adbEnabled) {
+                    if (recoverySnapshot.desiredRunning) {
+                        R.string.home_dhizuku_adb_disable_pause
+                    } else {
+                        R.string.home_dhizuku_adb_disable
+                    }
+                } else {
+                    R.string.home_dhizuku_adb_enable
+                },
                 icon = if (state.adbEnabled) R.drawable.ic_close_24
                 else R.drawable.ic_server_start_24dp,
                 primary = !state.adbEnabled,
