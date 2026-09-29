@@ -55,6 +55,7 @@ import moe.shizuku.manager.persistence.TcpHealth
 import moe.shizuku.manager.persistence.TcpHealthClassifier
 import moe.shizuku.manager.persistence.TcpHealthState
 import moe.shizuku.manager.persistence.TransportCandidate
+import moe.shizuku.manager.shizuku.NightDogBootTrace
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 
@@ -152,8 +153,11 @@ fun MaximumPersistenceCard() {
         displayTransport = displayTransport
     )
 
+    val bootTrace = NightDogBootTrace.summary(context)
+
     PersistenceCardBody(
         model = model,
+        bootTrace = bootTrace,
         developerState = developerState,
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
@@ -382,6 +386,7 @@ fun MaximumPersistenceCard() {
 @Composable
 private fun PersistenceCardBody(
     model: PersistenceUiModel,
+    bootTrace: String,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
     actionStatus: String?,
@@ -569,6 +574,16 @@ private fun PersistenceCardBody(
                         }
                     )
                     HonestyBanner(model)
+                    Text(
+                        "Registro reciente de arranque",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        bootTrace,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 if (!actionStatus.isNullOrBlank()) {
                     Text(
