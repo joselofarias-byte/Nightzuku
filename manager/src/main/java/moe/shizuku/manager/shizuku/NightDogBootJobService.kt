@@ -39,8 +39,8 @@ class NightDogBootJobService : JobService() {
                 "job_fgs_requested",
                 "failed:${error.javaClass.simpleName}:${error.message.orEmpty()}"
             )
-            // Ask JobScheduler for another opportunity; system backoff applies.
-            true
+            // Periodic persisted job remains armed for the next OEM recovery window.
+            false
         }
     }
 
