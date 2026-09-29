@@ -439,6 +439,8 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="home_dhizuku_adb_port">Puerto ADB inalámbrico: %1$d</string>
     <string name="home_dhizuku_authorize">Autorizar Dhizuku</string>
     <string name="home_dhizuku_adb_enable">Activar ADB</string>
+    <string name="home_dhizuku_adb_disable_pause">Apagar ADB y pausar persistencia</string>
+    <string name="home_dhizuku_adb_success_off_persistence_paused">ADB apagado mediante Dhizuku. La persistencia automática quedó pausada para que Nightzuku no vuelva a activar ADB enseguida.</string>
     <string name="home_dhizuku_adb_disable">Apagar ADB</string>
     <string name="home_dhizuku_adb_refresh">Actualizar estado</string>
     <string name="home_dhizuku_adb_working">Aplicando política de Propietario del dispositivo…</string>
