@@ -171,11 +171,21 @@ object NightDogRecovery {
 
                 val restored = DeveloperOptionsController
                     .restoreAdbTransportAfterRecovery(context)
+                val transportCleanupDetail =
+                    restored.detail ?: if (restored.success) "ok" else "failed"
                 NightDogBootTrace.note(
                     context,
                     "transport_cleanup_applied",
-                    restored.detail ?: if (restored.success) "ok" else "failed"
+                    transportCleanupDetail
                 )
+                if (!restored.success) {
+                    recordFailure(
+                        context = context,
+                        reason = RecoveryFailureReason.TRANSPORT_CLEANUP_FAILED,
+                        detail = transportCleanupDetail,
+                        transport = RecoveryTransport.BINDER_ALIVE
+                    )
+                }
 
                 try {
                     val wirelessCleanup =
