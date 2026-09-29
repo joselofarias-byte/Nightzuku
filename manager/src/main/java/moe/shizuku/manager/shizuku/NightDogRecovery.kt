@@ -863,6 +863,10 @@ object NightDogRecovery {
     private fun clearFailure() {
         lastFailure = null
         lastFailureCode = null
+        val current = _snapshot.value
+        if (current.lastFailure != null || current.lastFailureCode != null) {
+            _snapshot.value = current.copy(lastFailure = null, lastFailureCode = null)
+        }
     }
 
     private fun recordFailure(
@@ -874,6 +878,10 @@ object NightDogRecovery {
     ) {
         lastFailureCode = reason
         lastFailure = detail?.takeIf { it.isNotBlank() } ?: reason.name
+        _snapshot.value = _snapshot.value.copy(
+            lastFailure = lastFailure,
+            lastFailureCode = lastFailureCode
+        )
         NightDogBootTrace.note(
             context,
             "recovery_failure",
