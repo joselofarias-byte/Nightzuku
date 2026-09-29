@@ -45,10 +45,10 @@ class TransportRestorePolicyTest {
             restore.writes
         )
 
-        val devOnExact = restore(captured, developerOptionsEnabled = true)
-        assertFalse(devOnExact.adbEnabled)
-        assertFalse(devOnExact.wirelessEnabled)
-        assertEquals(0, devOnExact.writes.single { it.key == TransportRestorePolicy.ADB_ENABLED }.intValue)
+        val devOnStable = restore(captured, developerOptionsEnabled = true)
+        assertTrue(devOnStable.adbEnabled)
+        assertFalse(devOnStable.wirelessEnabled)
+        assertEquals(1, devOnStable.writes.single { it.key == TransportRestorePolicy.ADB_ENABLED }.intValue)
 
         assertTrue(
             TransportRestorePolicy.shouldClearTransportPending(
@@ -73,7 +73,7 @@ class TransportRestorePolicyTest {
     }
 
     @Test
-    fun priorAdbOnWirelessOff_devOnRestoresExactSnapshot() {
+    fun priorAdbOnWirelessOff_devOnKeepsStableAdbAndRestoresWireless() {
         val captured = captureOnce(currentAdb = true, currentWireless = false)
         assertTrue(captured.previousAdbEnabled)
         assertFalse(captured.previousWirelessEnabled)
@@ -216,6 +216,8 @@ class TransportRestorePolicyTest {
             previousAdbEnabled = false,
             previousWirelessEnabled = false
         )
+        assertTrue(devOn.adbEnabled)
+        assertEquals(1, devOn.writes.single { it.key == TransportRestorePolicy.ADB_ENABLED }.intValue)
         listOf(adbOnly, withWireless, wirelessUnavailable, devOff.writes, devOn.writes).forEach { writes ->
             assertFalse(TransportRestorePolicy.writesDevelopmentSettings(writes))
             assertTrue(writes.none { it.key == TransportRestorePolicy.DEVELOPMENT_SETTINGS_ENABLED })
