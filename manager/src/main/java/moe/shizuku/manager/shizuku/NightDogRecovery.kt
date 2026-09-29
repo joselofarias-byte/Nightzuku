@@ -1,8 +1,10 @@
 package moe.shizuku.manager.shizuku
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.SystemClock
+import android.os.UserManager
 import androidx.lifecycle.Observer
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
@@ -128,6 +130,8 @@ object NightDogRecovery {
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         applicationContext?.let { context ->
             preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+            NightDogBootScheduler.schedule(context)
+            NightDogBootTrace.note(context, "binder_received", "server alive")
 
             // If NightDog temporarily enabled ADB only to recover the service,
             // return ADB / wireless debugging to the exact previous state once
@@ -174,6 +178,8 @@ object NightDogRecovery {
     fun start(context: Context) {
         applicationContext = context.applicationContext
         ensureDesiredStateInitialized(context)
+        NightDogBootScheduler.sync(context)
+        NightDogBootTrace.note(context, "recovery_start", "desired=${isDesiredRunning(context)}")
         if (pollingJob?.isActive == true) return
 
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
@@ -235,6 +241,8 @@ object NightDogRecovery {
     fun requestManualStart(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        NightDogBootScheduler.schedule(context)
+        NightDogBootTrace.note(context, "manual_start", "desired=on")
         runCatching { NightDogForegroundService.start(context) }
             .onFailure { Log.w(AppConstants.TAG, "Persistence service start failed", it) }
         failedAttempts = 0
@@ -251,6 +259,8 @@ object NightDogRecovery {
     fun requestImmediateRecovery(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        NightDogBootScheduler.schedule(context)
+        NightDogBootTrace.note(context, "recover_now", "desired=on")
         runCatching { NightDogForegroundService.start(context) }
             .onFailure { Log.w(AppConstants.TAG, "Persistence service start failed", it) }
         failedAttempts = 0
@@ -273,6 +283,8 @@ object NightDogRecovery {
     fun prepareForManualStop(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, false).apply()
+        NightDogBootScheduler.cancel(context)
+        NightDogBootTrace.note(context, "manual_stop", "desired=off")
         NightDogForegroundService.stop(context)
         recoveryJob?.cancel()
         recoveryJob = null
@@ -355,8 +367,35 @@ object NightDogRecovery {
         }
     }
 
-    private fun preferences(context: Context) =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private fun preferences(context: Context): SharedPreferences {
+        val app = context.applicationContext
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+
+        val deviceContext = app.createDeviceProtectedStorageContext()
+        val devicePrefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // One-time migration from the pre-direct-boot preference. Never touch
+        // credential-encrypted storage while the user is still locked.
+        if (!devicePrefs.contains(KEY_DESIRED_RUNNING)) {
+            val unlocked = app.getSystemService(UserManager::class.java)?.isUserUnlocked == true
+            if (unlocked) {
+                runCatching {
+                    val legacy = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    if (legacy.contains(KEY_DESIRED_RUNNING)) {
+                        devicePrefs.edit()
+                            .putBoolean(
+                                KEY_DESIRED_RUNNING,
+                                legacy.getBoolean(KEY_DESIRED_RUNNING, true)
+                            )
+                            .commit()
+                    }
+                }
+            }
+        }
+        return devicePrefs
+    }
 
     private fun resolveCandidate(): TransportCandidate {
         val persistent = AdbTransportResolver.persistentTcpEndpoint()?.let { endpoint ->
