@@ -142,6 +142,7 @@ object NightDogRecovery {
             preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
             NightDogBootScheduler.schedule(context)
             NightDogBootTrace.note(context, "binder_received", "server alive")
+            clearFailure()
 
             // Do not touch the recovery transport immediately after Binder.
             // Physical HONOR 200 evidence showed that cleaning ADB too early
@@ -226,7 +227,6 @@ object NightDogRecovery {
         }
         failedAttempts = 0
         lastAttemptAt = 0L
-        clearFailure()
         starterInFlightUntil = 0L
         recoveryJob?.cancel()
         recoveryJob = null
