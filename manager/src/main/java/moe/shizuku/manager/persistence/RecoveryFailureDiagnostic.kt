@@ -36,5 +36,14 @@ data class RecoveryFailureDiagnostic(
     }
 
     private fun sanitize(value: String): String =
-        value.replace('\n', ' ').replace('\r', ' ').trim()
+        value
+            .replace('\n', ' ')
+            .replace('\r', ' ')
+            .replace('|', '/')
+            .trim()
+            .take(MAX_TRACE_FIELD_LENGTH)
+
+    private companion object {
+        const val MAX_TRACE_FIELD_LENGTH = 240
+    }
 }
