@@ -308,6 +308,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <!-- Maximum persistence -->
     <string name="persistence_title">Persistencia máxima</string>
     <string name="persistence_summary">Mantén Nightzuku en ejecución y recupéralo si el binder o el servidor mueren.</string>
+    <string name="persistence_watchdog">Persistencia</string>
     <string name="persistence_service">Servicio</string>
     <string name="persistence_service_running">En ejecución</string>
     <string name="persistence_service_recovering">Recuperando</string>
