@@ -165,6 +165,7 @@ fun MaximumPersistenceCard() {
         batteryExempt = batteryExempt,
         developerState = developerState,
         lastResultText = lastResultText(model),
+        failureCode = snapshot.lastFailureCode?.name,
         actionStatus = actionStatus,
         busy = busy,
         showDetails = showDetails,
@@ -402,6 +403,7 @@ private fun PersistenceCardBody(
     batteryExempt: Boolean,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
+    failureCode: String?,
     actionStatus: String?,
     busy: Boolean,
     showDetails: Boolean,
@@ -582,6 +584,10 @@ private fun PersistenceCardBody(
                     Fact(
                         R.string.persistence_last_failure,
                         model.lastFailure?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
+                    )
+                    Fact(
+                        R.string.persistence_failure_code,
+                        failureCode?.takeIf { it.isNotBlank() } ?: stringResource(R.string.persistence_last_failure_none)
                     )
                     Fact(
                         R.string.persistence_retry,
