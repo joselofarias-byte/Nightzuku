@@ -133,15 +133,66 @@ object NightDogRecovery {
             NightDogBootScheduler.schedule(context)
             NightDogBootTrace.note(context, "binder_received", "server alive")
 
-            // If NightDog temporarily enabled ADB only to recover the service,
-            // return ADB / wireless debugging to the exact previous state once
-            // Binder proves that Nightzuku is alive. Developer options itself
-            // is intentionally never changed by this cleanup.
+            // Do not touch the recovery transport immediately after Binder.
+            // Physical HONOR 200 evidence showed that cleaning ADB too early
+            // can kill the freshly started server and create a recovery loop.
             scope.launch {
-                delay(500L)
-                DeveloperOptionsController.restoreAdbTransportAfterRecovery(context)
-                runCatching { DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context) }
-                    .onFailure { Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", it) }
+                NightDogBootTrace.note(
+                    context,
+                    "transport_cleanup_wait",
+                    "${TRANSPORT_CLEANUP_STABILITY_MS}ms"
+                )
+
+                val checks = (TRANSPORT_CLEANUP_STABILITY_MS / TRANSPORT_STABILITY_POLL_MS)
+                    .toInt()
+                    .coerceAtLeast(1)
+                repeat(checks) {
+                    delay(TRANSPORT_STABILITY_POLL_MS)
+                    if (!Shizuku.pingBinder()) {
+                        NightDogBootTrace.note(
+                            context,
+                            "transport_cleanup_skipped",
+                            "binder lost before cleanup"
+                        )
+                        return@launch
+                    }
+                }
+
+                val restored = DeveloperOptionsController
+                    .restoreAdbTransportAfterRecovery(context)
+                NightDogBootTrace.note(
+                    context,
+                    "transport_cleanup_applied",
+                    restored.detail ?: if (restored.success) "ok" else "failed"
+                )
+
+                runCatching {
+                    DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context)
+                }.onFailure {
+                    Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", it)
+                    NightDogBootTrace.note(
+                        context,
+                        "dhizuku_wireless_cleanup_failed",
+                        it.message ?: it.javaClass.simpleName
+                    )
+                }
+
+                delay(TRANSPORT_POST_CLEANUP_VERIFY_MS)
+                if (Shizuku.pingBinder()) {
+                    NightDogBootTrace.note(
+                        context,
+                        "transport_cleanup_stable",
+                        "binder alive after cleanup"
+                    )
+                } else {
+                    lastFailure = "Binder died after transport cleanup"
+                    NightDogBootTrace.note(
+                        context,
+                        "transport_cleanup_destabilized",
+                        "binder died after cleanup"
+                    )
+                    requestRecovery()
+                }
             }
         }
         ShizukuSettings.setAdbReactivationRequired(false)
