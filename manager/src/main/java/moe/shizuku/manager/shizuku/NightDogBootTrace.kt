@@ -49,10 +49,16 @@ object NightDogBootTrace {
             .commit()
     }
 
-    fun summary(context: Context): String {
+    fun summary(context: Context, maxLines: Int = 8): String {
         val p = prefs(context)
         val history = p.getString(KEY_HISTORY, "").orEmpty()
-        if (history.isNotBlank()) return history
+        if (history.isNotBlank()) {
+            return history.lineSequence()
+                .filter { it.isNotBlank() }
+                .toList()
+                .takeLast(maxLines.coerceAtLeast(1))
+                .joinToString("\n")
+        }
         val event = p.getString(KEY_EVENT, "sin registro") ?: "sin registro"
         val detail = p.getString(KEY_DETAIL, "") ?: ""
         val wall = p.getLong(KEY_WALL, 0L)
