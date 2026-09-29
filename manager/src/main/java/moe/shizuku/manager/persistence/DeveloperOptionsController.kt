@@ -253,19 +253,13 @@ object DeveloperOptionsController {
      */
     suspend fun restoreAdbTransportAfterRecovery(context: Context): Result =
         withContext(Dispatchers.IO) {
-            if (!hasWriteSecureSettings(context)) {
-                return@withContext Result(
-                    false,
-                    snapshot(context),
-                    "WRITE_SECURE_SETTINGS is not granted"
-                )
-            }
-
             val preferences = ShizukuSettings.getPreferences()
+            val transportPending =
+                preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
             val current = snapshot(context)
             val decision = TransportRestorePolicy.decideDesiredTransportRestore(
                 developerOptionsEnabled = current.developerOptionsEnabled,
-                transportRestorePending = preferences.getBoolean(PREF_TRANSPORT_RESTORE_PENDING, false),
+                transportRestorePending = transportPending,
                 previousAdbEnabled = preferences.getBoolean(PREF_TRANSPORT_PREVIOUS_ADB, false),
                 previousWirelessEnabled = preferences.getBoolean(
                     PREF_TRANSPORT_PREVIOUS_WIRELESS_ADB,
@@ -281,9 +275,35 @@ object DeveloperOptionsController {
                 return@withContext Result(true, current, decision.skipDetail)
             }
 
-            val resolver = context.contentResolver
             val developerOptionsOff = !current.developerOptionsEnabled
+            val alreadyStable = TransportRestorePolicy.shouldClearTransportPending(
+                desiredAdbEnabled = decision.adbEnabled,
+                desiredWirelessEnabled = decision.wirelessEnabled,
+                observedAdbEnabled = current.adbEnabled,
+                observedWirelessEnabled = current.wirelessDebuggingEnabled
+            )
+            if (alreadyStable) {
+                if (transportPending) {
+                    preferences.edit()
+                        .putBoolean(PREF_TRANSPORT_RESTORE_PENDING, false)
+                        .apply()
+                }
+                return@withContext Result(
+                    true,
+                    current,
+                    TransportRestorePolicy.restoreResultDetail(true, developerOptionsOff)
+                )
+            }
 
+            if (!hasWriteSecureSettings(context)) {
+                return@withContext Result(
+                    false,
+                    current,
+                    "WRITE_SECURE_SETTINGS is not granted and transport cleanup is still required"
+                )
+            }
+
+            val resolver = context.contentResolver
             return@withContext try {
                 applyStellarTransportWrites(resolver, decision.writes)
 
