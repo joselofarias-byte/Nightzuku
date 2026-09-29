@@ -179,7 +179,7 @@ class TransportRestorePolicyTest {
             TransportRestorePolicy.restoreResultDetail(verified = false, developerOptionsOff = true)
         )
         assertEquals(
-            TransportRestorePolicy.DETAIL_TRANSPORT_RESTORED,
+            TransportRestorePolicy.DETAIL_TRANSPORT_STABILIZED,
             TransportRestorePolicy.restoreResultDetail(verified = true, developerOptionsOff = false)
         )
     }
