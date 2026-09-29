@@ -25,11 +25,12 @@ class RecoveryFailureDiagnosticTest {
     fun traceDetailIsSingleLine() {
         val detail = RecoveryFailureDiagnostic(
             reason = RecoveryFailureReason.SERVER_START_FAILED,
-            detail = "line one\nline two\rline three"
+            detail = "line one\nline two\rline three|pipe"
         ).traceDetail()
 
         assertFalse(detail.contains('\n'))
         assertFalse(detail.contains('\r'))
-        assertTrue(detail.contains("line one line two line three"))
+        assertFalse(detail.contains('|'))
+        assertTrue(detail.contains("line one line two line three/pipe"))
     }
 }
