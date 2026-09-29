@@ -22,6 +22,17 @@ class RecoveryFailureDiagnosticTest {
     }
 
     @Test
+    fun traceDetailBoundsLongFields() {
+        val detail = RecoveryFailureDiagnostic(
+            reason = RecoveryFailureReason.NO_TRANSPORT,
+            detail = "x".repeat(500)
+        ).traceDetail()
+
+        val detailField = detail.substringAfter("detail=")
+        assertTrue(detailField.length <= 240)
+    }
+
+    @Test
     fun traceDetailIsSingleLine() {
         val detail = RecoveryFailureDiagnostic(
             reason = RecoveryFailureReason.SERVER_START_FAILED,
