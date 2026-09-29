@@ -733,7 +733,7 @@ private fun QuickStatusOverview(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         QuickStatusChip(
-            label = stringResource(R.string.persistence_service),
+            label = stringResource(R.string.persistence_watchdog),
             value = serviceLabel(model.service),
             tone = when (model.service) {
                 PersistenceServiceState.RUNNING -> QuickStatusTone.ACTIVE
