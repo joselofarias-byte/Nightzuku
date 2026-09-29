@@ -9,6 +9,7 @@ import android.provider.Settings
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import com.rosan.dhizuku.api.DhizukuUserServiceArgs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -47,13 +48,17 @@ object DhizukuAdbRecovery {
 
     suspend fun authorize(context: Context): Result<DhizukuAdbState> {
         val appContext = context.applicationContext
-        return runCatching {
+        return try {
             check(runCatching { Dhizuku.init(appContext) }.getOrDefault(false)) {
                 "Dhizuku no está disponible o no está activo."
             }
             ensurePermission()
             delay(250)
-            readState(appContext)
+            Result.success(readState(appContext))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
     }
 
@@ -101,7 +106,7 @@ object DhizukuAdbRecovery {
     ): Result<DhizukuAdbState> {
         val appContext = context.applicationContext
 
-        return runCatching {
+        return try {
             check(runCatching { Dhizuku.init(appContext) }.getOrDefault(false)) {
                 "Dhizuku no está disponible o no está activo."
             }
@@ -130,19 +135,32 @@ object DhizukuAdbRecovery {
             check(state.adbEnabled == enabled) {
                 "Android no conservó el estado de ADB solicitado."
             }
-            state
+            Result.success(state)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
     }
 
     suspend fun enableAdbAndWaitForWireless(context: Context): Result<DhizukuAdbState> {
-        return setAdbEnabled(context, true).mapCatching { initial ->
-            var current = initial
+        val initial = setAdbEnabled(context, true)
+        if (initial.isFailure) return initial
+
+        return try {
+            var current = initial.getOrThrow()
             repeat(WIRELESS_VERIFY_ATTEMPTS) {
-                if (current.wirelessDebuggingEnabled) return@mapCatching current
+                if (current.wirelessDebuggingEnabled) {
+                    return Result.success(current)
+                }
                 delay(WIRELESS_VERIFY_INTERVAL_MS)
                 current = readState(context)
             }
-            current
+            Result.success(current)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
     }
 
