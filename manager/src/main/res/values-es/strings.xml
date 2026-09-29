@@ -468,4 +468,10 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_battery_exempt_action">Excluir de optimización de batería</string>
     <string name="persistence_battery_exempt_requested">Se abrieron los ajustes de batería de Android. Aceptá la exclusión para Nightzuku.</string>
     <string name="persistence_battery_settings_failed">No se pudieron abrir los ajustes de optimización de batería.</string>
+    <string name="persistence_honor_autostart">Inicio de aplicaciones HONOR / MagicOS</string>
+    <string name="persistence_honor_autostart_required">Requiere permiso manual</string>
+    <string name="persistence_honor_autostart_action">Abrir inicio de aplicaciones HONOR</string>
+    <string name="persistence_honor_autostart_help">Desactivá la administración automática de Nightzuku y activá Inicio automático, Inicio secundario y Ejecutar en segundo plano.</string>
+    <string name="persistence_honor_autostart_opened">Se abrieron los ajustes de inicio de aplicaciones de HONOR.</string>
+    <string name="persistence_honor_autostart_failed">No se pudieron abrir los ajustes de inicio de aplicaciones de HONOR.</string>
 </resources>
