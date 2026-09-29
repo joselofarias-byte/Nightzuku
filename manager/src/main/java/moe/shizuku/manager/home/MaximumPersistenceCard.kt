@@ -158,10 +158,12 @@ fun MaximumPersistenceCard() {
     )
 
     val bootTrace = NightDogBootTrace.summary(context)
+    val honorDevice = PersistenceActions.isHonorMagicOsDevice()
 
     PersistenceCardBody(
         model = model,
         bootTrace = bootTrace,
+        honorDevice = honorDevice,
         batteryExempt = batteryExempt,
         developerState = developerState,
         lastResultText = lastResultText(model),
@@ -174,6 +176,13 @@ fun MaximumPersistenceCard() {
             actionStatus = context.getString(
                 if (opened) R.string.persistence_battery_exempt_requested
                 else R.string.persistence_battery_settings_failed
+            )
+        },
+        onOpenHonorAutostart = {
+            val opened = PersistenceActions.openHonorAppLaunchSettings(context)
+            actionStatus = context.getString(
+                if (opened) R.string.persistence_honor_autostart_opened
+                else R.string.persistence_honor_autostart_failed
             )
         },
         onDesiredChange = { desired ->
@@ -399,6 +408,7 @@ fun MaximumPersistenceCard() {
 private fun PersistenceCardBody(
     model: PersistenceUiModel,
     bootTrace: String,
+    honorDevice: Boolean,
     batteryExempt: Boolean,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
@@ -407,6 +417,7 @@ private fun PersistenceCardBody(
     showDetails: Boolean,
     onToggleDetails: () -> Unit,
     onRequestBatteryExemption: () -> Unit,
+    onOpenHonorAutostart: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -531,6 +542,17 @@ private fun PersistenceCardBody(
                             else R.string.persistence_battery_restricted
                         )
                     )
+                    if (honorDevice) {
+                        Fact(
+                            R.string.persistence_honor_autostart,
+                            stringResource(R.string.persistence_honor_autostart_required)
+                        )
+                        Text(
+                            stringResource(R.string.persistence_honor_autostart_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Fact(
                         R.string.persistence_developer_options,
                         stringResource(
@@ -628,6 +650,16 @@ private fun PersistenceCardBody(
                         }
                     }
                     if (showDetails) {
+                    if (honorDevice) {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onOpenHonorAutostart,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_settings_outline_24dp)
+                            Text(stringResource(R.string.persistence_honor_autostart_action))
+                        }
+                    }
                     if (!batteryExempt) {
                         FilledTonalButton(
                             enabled = !busy,
