@@ -343,6 +343,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_recovery_count">Recuperaciones</string>
     <string name="persistence_last_result">Último resultado de recuperación</string>
     <string name="persistence_last_failure">Último fallo</string>
+    <string name="persistence_failure_code">Código de diagnóstico</string>
     <string name="persistence_last_failure_none">Ninguno</string>
     <string name="persistence_retry">Próximo reintento</string>
     <string name="persistence_retry_now">Ahora</string>
