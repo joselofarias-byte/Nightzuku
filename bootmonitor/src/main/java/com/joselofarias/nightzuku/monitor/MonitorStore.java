@@ -2,6 +2,7 @@ package com.joselofarias.nightzuku.monitor;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 
 final class MonitorStore {
     static final String TARGET = "com.joselofarias.nightzuku";
@@ -22,10 +23,15 @@ final class MonitorStore {
     }
 
     static void boot(Context c, long when) {
-        prefs(c).edit()
-            .putLong(BOOT, when)
-            .remove(CONNECTED).remove(POSTED).remove(OBSERVED).remove(REMOVED)
-            .commit();
+        SharedPreferences p = prefs(c);
+        long bootEpoch = when - SystemClock.elapsedRealtime();
+        SharedPreferences.Editor edit = p.edit().putLong(BOOT, when);
+        // The listener can observe NightDog before our BOOT_COMPLETED receiver runs.
+        if (p.getLong(CONNECTED, 0) < bootEpoch) edit.remove(CONNECTED);
+        if (p.getLong(POSTED, 0) < bootEpoch - 2_000L) {
+            edit.remove(POSTED).remove(OBSERVED).remove(REMOVED);
+        }
+        edit.commit();
     }
 
     static void listenerConnected(Context c) {
@@ -34,9 +40,9 @@ final class MonitorStore {
 
     static void posted(Context c, long postTime) {
         SharedPreferences p = prefs(c);
-        long boot = p.getLong(BOOT, 0);
-        // Ignore a notification carried over from before this boot event.
-        if (boot == 0 || postTime < boot - 60_000L) return;
+        // Use the actual system boot epoch, independent of receiver ordering.
+        long bootEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime();
+        if (postTime < bootEpoch - 2_000L) return;
         long existing = p.getLong(POSTED, 0);
         if (existing == 0 || postTime < existing) {
             p.edit().putLong(POSTED, postTime)
