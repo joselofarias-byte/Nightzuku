@@ -3,8 +3,11 @@ package moe.shizuku.manager.dhizuku
 import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.IBinder
+import android.os.UserManager
 import android.provider.Settings
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
@@ -68,7 +71,7 @@ object DhizukuAdbRecovery {
 
     /** Background recovery may use an existing grant, but must never open a permission UI. */
     suspend fun recoverAdbIfAuthorized(context: Context): Result<DhizukuAdbState> {
-        val prefs = context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+        val prefs = recoveryPreferences(context)
         if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false) &&
             !readState(context).wirelessDebuggingEnabled) {
             // Capture before Dhizuku may enable wireless debugging. Persist this
@@ -78,35 +81,65 @@ object DhizukuAdbRecovery {
         return setAdbEnabledInternal(context, true, requestPermissionIfNeeded = false)
     }
 
-    suspend fun restoreWirelessAfterRecoveryIfNeeded(context: Context) {
+    suspend fun restoreWirelessAfterRecoveryIfNeeded(context: Context): Result<Unit> {
         val appContext = context.applicationContext
-        val prefs = appContext.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false)) return
+        val prefs = recoveryPreferences(appContext)
+        if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false)) {
+            return Result.success(Unit)
+        }
         if (!readState(appContext).wirelessDebuggingEnabled) {
             prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
-            return
+            return Result.success(Unit)
         }
         if (!runCatching { Dhizuku.init(appContext) && Dhizuku.isPermissionGranted() }
-                .getOrDefault(false)) return
+                .getOrDefault(false)) {
+            return Result.failure(
+                IllegalStateException("Wireless cleanup is pending but Dhizuku is not authorized")
+            )
+        }
+
         val direct = DhizukuDeviceOwnerBridge
             .setWirelessDebuggingEnabled(appContext, false)
+        var directDetail = direct.exceptionOrNull()?.message
 
         if (direct.isSuccess) {
             delay(350)
             if (!readState(appContext).wirelessDebuggingEnabled) {
                 prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
-                return
+                return Result.success(Unit)
             }
+            directDetail = "Android kept wireless debugging enabled after the direct Device Owner write"
         }
 
         // Compatibility fallback for Dhizuku builds where the direct DPM
         // wrapper path is unavailable.
-        val bound = bindService(appContext) ?: return
-        try {
-            if (bound.remote.setWirelessDebuggingEnabled(false) &&
-                !readState(appContext).wirelessDebuggingEnabled) {
-                prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+        val bound = bindService(appContext)
+            ?: return Result.failure(
+                IllegalStateException(
+                    "Wireless cleanup failed through Device Owner direct path" +
+                        (directDetail?.let { ": $it" } ?: "") +
+                        " and Dhizuku UserService did not connect"
+                )
+            )
+        return try {
+            val requested = bound.remote.setWirelessDebuggingEnabled(false)
+            if (requested) {
+                delay(350)
             }
+            if (requested && !readState(appContext).wirelessDebuggingEnabled) {
+                prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+                Result.success(Unit)
+            } else {
+                Result.failure(
+                    IllegalStateException(
+                        "Dhizuku UserService did not leave wireless debugging disabled"
+                    )
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         } finally {
             closeService(bound)
         }
@@ -194,6 +227,33 @@ object DhizukuAdbRecovery {
         } catch (error: Throwable) {
             Result.failure(error)
         }
+    }
+
+    private fun recoveryPreferences(context: Context): SharedPreferences {
+        val app = context.applicationContext
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return app.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+        }
+
+        val deviceContext = app.createDeviceProtectedStorageContext()
+        val devicePrefs = deviceContext.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+
+        // Migrate the pre-direct-boot flag only after credential storage is available.
+        if (!devicePrefs.contains(WIRELESS_RESTORE_PENDING)) {
+            val unlocked = app.getSystemService(UserManager::class.java)?.isUserUnlocked == true
+            if (unlocked) {
+                val legacy = app.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+                if (legacy.contains(WIRELESS_RESTORE_PENDING)) {
+                    devicePrefs.edit()
+                        .putBoolean(
+                            WIRELESS_RESTORE_PENDING,
+                            legacy.getBoolean(WIRELESS_RESTORE_PENDING, false)
+                        )
+                        .commit()
+                }
+            }
+        }
+        return devicePrefs
     }
 
     private suspend fun ensurePermission() {
