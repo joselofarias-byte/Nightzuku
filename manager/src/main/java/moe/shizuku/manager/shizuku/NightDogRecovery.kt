@@ -42,6 +42,9 @@ object NightDogRecovery {
     private const val PREFS_NAME = "nightdog_recovery"
     private const val KEY_DESIRED_RUNNING = "desired_running"
     private const val STARTER_IN_FLIGHT_GUARD_MS = 15_000L
+    private const val TRANSPORT_CLEANUP_STABILITY_MS = 5_000L
+    private const val TRANSPORT_STABILITY_POLL_MS = 500L
+    private const val TRANSPORT_POST_CLEANUP_VERIFY_MS = 2_000L
 
     enum class Stage {
         IDLE,
