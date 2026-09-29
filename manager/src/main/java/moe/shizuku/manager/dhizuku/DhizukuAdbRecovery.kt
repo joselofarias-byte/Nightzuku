@@ -88,6 +88,19 @@ object DhizukuAdbRecovery {
         }
         if (!runCatching { Dhizuku.init(appContext) && Dhizuku.isPermissionGranted() }
                 .getOrDefault(false)) return
+        val direct = DhizukuDeviceOwnerBridge
+            .setWirelessDebuggingEnabled(appContext, false)
+
+        if (direct.isSuccess) {
+            delay(350)
+            if (!readState(appContext).wirelessDebuggingEnabled) {
+                prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+                return
+            }
+        }
+
+        // Compatibility fallback for Dhizuku builds where the direct DPM
+        // wrapper path is unavailable.
         val bound = bindService(appContext) ?: return
         try {
             if (bound.remote.setWirelessDebuggingEnabled(false) &&
@@ -119,12 +132,31 @@ object DhizukuAdbRecovery {
                 }
             }
 
+            val direct = DhizukuDeviceOwnerBridge.setAdbEnabled(appContext, enabled)
+            var directError = direct.exceptionOrNull()
+
+            if (direct.isSuccess) {
+                delay(700)
+                val directState = readState(appContext)
+                if (directState.adbEnabled == enabled) {
+                    return Result.success(directState)
+                }
+                directError = IllegalStateException(
+                    "Android no conservó ADB=${if (enabled) "ON" else "OFF"} por la ruta Device Owner directa."
+                )
+            }
+
+            // Keep the UserService route only as a compatibility fallback.
             val bound = bindService(appContext)
-                ?: error("No se pudo conectar al servicio Device Owner de Dhizuku.")
+                ?: error(
+                    "Dhizuku no pudo aplicar ADB por Device Owner directo" +
+                        (directError?.message?.let { ": $it" } ?: "") +
+                        " y tampoco conectó el UserService."
+                )
 
             try {
                 check(bound.remote.setAdbEnabled(enabled)) {
-                    "Dhizuku no pudo cambiar el estado de ADB."
+                    "Dhizuku UserService no pudo cambiar el estado de ADB."
                 }
             } finally {
                 closeService(bound)
