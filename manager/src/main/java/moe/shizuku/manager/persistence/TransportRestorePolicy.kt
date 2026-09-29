@@ -19,6 +19,9 @@ package moe.shizuku.manager.persistence
  *   action; it is not part of the self-healing path.
  *
  * Pending is cleared only when Android reflects this stable transport state.
+ *
+ * [CleanupMode] makes the post-Binder policy explicit: this is not a blind snapshot restore.
+ * ADB remains enabled on every automatic cleanup path; only the Wireless state varies.
  */
 object TransportRestorePolicy {
 
@@ -44,8 +47,15 @@ object TransportRestorePolicy {
         val previousWirelessEnabled: Boolean
     )
 
+    enum class CleanupMode {
+        NONE,
+        KEEP_ADB_DISABLE_WIRELESS,
+        KEEP_ADB_RESTORE_PREVIOUS_WIRELESS
+    }
+
     data class DesiredTransportRestore(
         val apply: Boolean,
+        val mode: CleanupMode,
         val adbEnabled: Boolean,
         val wirelessEnabled: Boolean,
         val writes: List<GlobalWrite>,
@@ -104,6 +114,7 @@ object TransportRestorePolicy {
         if (developerOptionsEnabled && !transportRestorePending) {
             return DesiredTransportRestore(
                 apply = false,
+                mode = CleanupMode.NONE,
                 adbEnabled = previousAdbEnabled,
                 wirelessEnabled = previousWirelessEnabled,
                 writes = emptyList(),
@@ -119,8 +130,14 @@ object TransportRestorePolicy {
         // recover -> start -> disable ADB -> die loop.
         val adbEnabled = true
         val wirelessEnabled = if (developerOptionsOff) false else previousWirelessEnabled
+        val mode = if (developerOptionsOff) {
+            CleanupMode.KEEP_ADB_DISABLE_WIRELESS
+        } else {
+            CleanupMode.KEEP_ADB_RESTORE_PREVIOUS_WIRELESS
+        }
         return DesiredTransportRestore(
             apply = true,
+            mode = mode,
             adbEnabled = adbEnabled,
             wirelessEnabled = wirelessEnabled,
             writes = restoreWrites(adbEnabled, wirelessEnabled)
