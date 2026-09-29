@@ -370,6 +370,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_open_wireless_debugging">Wireless debugging</string>
     <string name="persistence_result_no_checks">No checks yet</string>
     <string name="persistence_result_binder_received">Binder received; service is active</string>
+    <string name="persistence_result_binder_stabilizing">Binder detected; verifying stability</string>
     <string name="persistence_result_binder_responding">Binder is responding</string>
     <string name="persistence_result_binder_already_alive">Binder is already active</string>
     <string name="persistence_result_binder_lost">Binder lost; starting recovery</string>
