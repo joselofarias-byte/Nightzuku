@@ -439,6 +439,8 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="home_dhizuku_adb_port">Wireless ADB port: %1$d</string>
     <string name="home_dhizuku_authorize">Authorize Dhizuku</string>
     <string name="home_dhizuku_adb_enable">Enable ADB</string>
+    <string name="home_dhizuku_adb_disable_pause">Disable ADB and pause persistence</string>
+    <string name="home_dhizuku_adb_success_off_persistence_paused">ADB disabled through Dhizuku. Automatic persistence was paused so Nightzuku will not immediately enable ADB again.</string>
     <string name="home_dhizuku_adb_disable">Disable ADB</string>
     <string name="home_dhizuku_adb_refresh">Refresh status</string>
     <string name="home_dhizuku_adb_working">Applying Device Owner policy…</string>
