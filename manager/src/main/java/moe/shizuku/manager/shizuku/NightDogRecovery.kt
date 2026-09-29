@@ -45,6 +45,7 @@ object NightDogRecovery {
     private const val TRANSPORT_CLEANUP_STABILITY_MS = 5_000L
     private const val TRANSPORT_STABILITY_POLL_MS = 500L
     private const val TRANSPORT_POST_CLEANUP_VERIFY_MS = 2_000L
+    private const val RUNNING_STABILITY_MS = 3_000L
 
     enum class Stage {
         IDLE,
@@ -81,6 +82,7 @@ object NightDogRecovery {
     const val RESULT_NO_CHECKS = "no_checks"
     const val RESULT_BINDER_RECEIVED = "binder_received"
     const val RESULT_BINDER_RESPONDING = "binder_responding"
+    const val RESULT_BINDER_STABILIZING = "binder_stabilizing"
     const val RESULT_BINDER_ALREADY_ALIVE = "binder_already_alive"
     const val RESULT_BINDER_LOST = "binder_lost"
     const val RESULT_BINDER_UNRESPONSIVE = "binder_unresponsive"
@@ -728,7 +730,24 @@ object NightDogRecovery {
     }
 
     private fun publishRunning(resultKey: String, result: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (runningSinceAt == 0L) runningSinceAt = now
+
         val tcp = AdbTransportResolver.persistentTcpEndpoint()
+        val stableFor = now - runningSinceAt
+
+        if (stableFor < RUNNING_STABILITY_MS) {
+            publish(
+                Stage.STARTING_SERVICE,
+                RESULT_BINDER_STABILIZING,
+                "Binder detected; verifying stability",
+                binderAlive = true,
+                transportKind = RecoveryTransport.BINDER_ALIVE,
+                endpoint = tcp?.let { "${it.host}:${it.port}" }
+            )
+            return
+        }
+
         publish(
             Stage.RUNNING,
             resultKey,
