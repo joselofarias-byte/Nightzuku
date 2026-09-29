@@ -3,6 +3,9 @@ package moe.shizuku.manager.shizuku
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Bounded device-protected boot trace. It survives reboot and is readable
@@ -57,13 +60,33 @@ object NightDogBootTrace {
                 .filter { it.isNotBlank() }
                 .toList()
                 .takeLast(maxLines.coerceAtLeast(1))
-                .joinToString("\n")
+                .joinToString("\n") { formatLine(it) }
         }
         val event = p.getString(KEY_EVENT, "sin registro") ?: "sin registro"
         val detail = p.getString(KEY_DETAIL, "") ?: ""
         val wall = p.getLong(KEY_WALL, 0L)
         val elapsed = p.getLong(KEY_ELAPSED, 0L)
         return "$wall|$elapsed|$event|$detail"
+    }
+
+    private fun formatLine(raw: String): String {
+        val parts = raw.split('|', limit = 4)
+        if (parts.size < 4) return raw
+        val wall = parts[0].toLongOrNull() ?: return raw
+        val event = parts[2]
+        val detail = parts[3]
+        val time = runCatching {
+            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(wall))
+        }.getOrDefault(parts[0])
+        return buildString {
+            append(time)
+            append(" · ")
+            append(event)
+            if (detail.isNotBlank()) {
+                append(" · ")
+                append(detail)
+            }
+        }
     }
 
     fun clear(context: Context) {
