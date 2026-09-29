@@ -938,6 +938,7 @@ private fun lastResultText(model: PersistenceUiModel): String {
         NightDogRecovery.RESULT_NO_CHECKS -> R.string.persistence_result_no_checks
         NightDogRecovery.RESULT_BINDER_RECEIVED -> R.string.persistence_result_binder_received
         NightDogRecovery.RESULT_BINDER_RESPONDING -> R.string.persistence_result_binder_responding
+        NightDogRecovery.RESULT_BINDER_STABILIZING -> R.string.persistence_result_binder_stabilizing
         NightDogRecovery.RESULT_BINDER_ALREADY_ALIVE -> R.string.persistence_result_binder_already_alive
         NightDogRecovery.RESULT_BINDER_LOST -> R.string.persistence_result_binder_lost
         NightDogRecovery.RESULT_BINDER_UNRESPONSIVE -> R.string.persistence_result_binder_unresponsive
