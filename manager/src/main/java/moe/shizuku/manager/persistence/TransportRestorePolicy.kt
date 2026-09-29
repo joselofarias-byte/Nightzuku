@@ -32,8 +32,10 @@ object TransportRestorePolicy {
 
     const val NO_TRANSPORT_RESTORE_PENDING = "no_transport_restore_pending"
     const val DETAIL_STELLAR_READY = "stellar_transport_ready_after_recovery"
-    const val DETAIL_TRANSPORT_RESTORED = "transport_restored_after_recovery"
-    const val DETAIL_RESTORE_MISMATCH = "Android did not restore the requested ADB transport state"
+    const val DETAIL_TRANSPORT_STABILIZED = "transport_stabilized_after_recovery"
+    // Compatibility alias for older callers; automatic cleanup is stabilization, not an exact restore.
+    const val DETAIL_TRANSPORT_RESTORED = DETAIL_TRANSPORT_STABILIZED
+    const val DETAIL_RESTORE_MISMATCH = "Android did not stabilize the requested ADB transport state"
 
     data class GlobalWrite(
         val key: String,
@@ -157,7 +159,7 @@ object TransportRestorePolicy {
     fun restoreResultDetail(verified: Boolean, developerOptionsOff: Boolean): String {
         return when {
             verified && developerOptionsOff -> DETAIL_STELLAR_READY
-            verified -> DETAIL_TRANSPORT_RESTORED
+            verified -> DETAIL_TRANSPORT_STABILIZED
             else -> DETAIL_RESTORE_MISMATCH
         }
     }
