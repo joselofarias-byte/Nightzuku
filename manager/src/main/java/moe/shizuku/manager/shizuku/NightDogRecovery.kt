@@ -136,6 +136,8 @@ object NightDogRecovery {
             scope.launch {
                 delay(500L)
                 DeveloperOptionsController.restoreAdbTransportAfterRecovery(context)
+                runCatching { DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context) }
+                    .onFailure { Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", it) }
             }
         }
         ShizukuSettings.setAdbReactivationRequired(false)

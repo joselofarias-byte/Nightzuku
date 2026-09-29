@@ -63,7 +63,35 @@ object DhizukuAdbRecovery {
 
     /** Background recovery may use an existing grant, but must never open a permission UI. */
     suspend fun recoverAdbIfAuthorized(context: Context): Result<DhizukuAdbState> {
+        val prefs = context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false) &&
+            !readState(context).wirelessDebuggingEnabled) {
+            // Capture before Dhizuku may enable wireless debugging. Persist this
+            // across process death so a later Binder can finish the cleanup.
+            prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, true).apply()
+        }
         return setAdbEnabledInternal(context, true, requestPermissionIfNeeded = false)
+    }
+
+    suspend fun restoreWirelessAfterRecoveryIfNeeded(context: Context) {
+        val appContext = context.applicationContext
+        val prefs = appContext.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false)) return
+        if (!readState(appContext).wirelessDebuggingEnabled) {
+            prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+            return
+        }
+        if (!runCatching { Dhizuku.init(appContext) && Dhizuku.isPermissionGranted() }
+                .getOrDefault(false)) return
+        val bound = bindService(appContext) ?: return
+        try {
+            if (bound.remote.setWirelessDebuggingEnabled(false) &&
+                !readState(appContext).wirelessDebuggingEnabled) {
+                prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+            }
+        } finally {
+            closeService(bound)
+        }
     }
 
     private suspend fun setAdbEnabledInternal(
@@ -185,6 +213,8 @@ object DhizukuAdbRecovery {
     }
 
     private const val SERVICE_BIND_TIMEOUT_MS = 10_000L
+    private const val RECOVERY_PREFS = "nightzuku_dhizuku_recovery"
+    private const val WIRELESS_RESTORE_PENDING = "wireless_restore_pending"
     private const val WIRELESS_VERIFY_ATTEMPTS = 5
     private const val WIRELESS_VERIFY_INTERVAL_MS = 500L
 }
