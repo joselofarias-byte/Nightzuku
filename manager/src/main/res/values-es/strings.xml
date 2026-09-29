@@ -458,4 +458,10 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="starter_adb_searching_new_port">Buscando un nuevo puerto ADB local…</string>
     <string name="starter_adb_recovered_short">Transporte ADB recuperado. Iniciando Nightzuku…</string>
     <string name="starter_adb_failed_short">No se pudo recuperar ADB: %1$s</string>
+    <string name="persistence_battery_optimization">Optimización de batería</string>
+    <string name="persistence_battery_exempt">Excluida</string>
+    <string name="persistence_battery_restricted">Activa · puede retrasar el arranque en segundo plano</string>
+    <string name="persistence_battery_exempt_action">Excluir de optimización de batería</string>
+    <string name="persistence_battery_exempt_requested">Se abrieron los ajustes de batería de Android. Aceptá la exclusión para Nightzuku.</string>
+    <string name="persistence_battery_settings_failed">No se pudieron abrir los ajustes de optimización de batería.</string>
 </resources>
