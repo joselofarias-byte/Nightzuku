@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.Settings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -211,7 +212,7 @@ object DeveloperOptionsController {
         }
 
         val resolver = context.contentResolver
-        return@withContext runCatching {
+        return@withContext try {
             // Deliberately DO NOT write development_settings_enabled here.
             // Banking apps may require Developer options to remain visibly OFF.
             applyStellarTransportWrites(
@@ -239,7 +240,9 @@ object DeveloperOptionsController {
                     else -> "Android did not retain ADB_ENABLED"
                 }
             )
-        }.getOrElse { error ->
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
             Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
         }
     }
@@ -281,7 +284,7 @@ object DeveloperOptionsController {
             val resolver = context.contentResolver
             val developerOptionsOff = !current.developerOptionsEnabled
 
-            return@withContext runCatching {
+            return@withContext try {
                 applyStellarTransportWrites(resolver, decision.writes)
 
                 delay(350L)
@@ -304,7 +307,9 @@ object DeveloperOptionsController {
                     after,
                     TransportRestorePolicy.restoreResultDetail(success, developerOptionsOff)
                 )
-            }.getOrElse { error ->
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
                 Result(false, snapshot(context), error.message ?: error.javaClass.simpleName)
             }
         }
