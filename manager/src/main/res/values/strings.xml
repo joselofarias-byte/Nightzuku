@@ -308,6 +308,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <!-- Maximum persistence -->
     <string name="persistence_title">Maximum persistence</string>
     <string name="persistence_summary">Keep Nightzuku running and recover it when the binder or server dies.</string>
+    <string name="persistence_watchdog">Persistence</string>
     <string name="persistence_service">Service</string>
     <string name="persistence_service_running">Running</string>
     <string name="persistence_service_recovering">Recovering</string>
