@@ -1,8 +1,10 @@
 package moe.shizuku.manager.persistence
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.os.SystemClock
@@ -124,6 +126,52 @@ object PersistenceActions {
         if (runCatching { app.startActivity(direct) }.isSuccess) return true
 
         val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { app.startActivity(fallback) }.isSuccess
+    }
+
+    fun isHonorMagicOsDevice(): Boolean {
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val brand = Build.BRAND.orEmpty().lowercase()
+        return manufacturer.contains("honor") || brand.contains("honor")
+    }
+
+    /**
+     * HONOR/MagicOS has an OEM App launch policy in addition to Android's
+     * battery-optimization whitelist. It cannot be granted by a normal app,
+     * so Nightzuku opens the vendor page and lets the user enable:
+     * Auto-launch, Secondary launch and Run in background.
+     */
+    fun openHonorAppLaunchSettings(context: Context): Boolean {
+        val app = context.applicationContext
+        val candidates = listOf(
+            ComponentName(
+                "com.hihonor.systemmanager",
+                "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            ),
+            ComponentName(
+                "com.hihonor.systemmanager",
+                "com.hihonor.systemmanager.optimize.process.ProtectActivity"
+            ),
+            ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            ),
+            ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.optimize.process.ProtectActivity"
+            )
+        )
+
+        for (component in candidates) {
+            val intent = Intent()
+                .setComponent(component)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { app.startActivity(intent) }.isSuccess) return true
+        }
+
+        val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(Uri.parse("package:${app.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return runCatching { app.startActivity(fallback) }.isSuccess
     }
