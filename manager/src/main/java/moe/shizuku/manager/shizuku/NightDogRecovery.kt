@@ -178,11 +178,27 @@ object NightDogRecovery {
                 )
 
                 try {
-                    DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context)
+                    val wirelessCleanup =
+                        DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context)
+                    wirelessCleanup.exceptionOrNull()?.let { error ->
+                        Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", error)
+                        val detail = error.message ?: error.javaClass.simpleName
+                        recordFailure(
+                            context = context,
+                            reason = RecoveryFailureReason.WIRELESS_CLEANUP_FAILED,
+                            detail = detail,
+                            transport = RecoveryTransport.BINDER_ALIVE
+                        )
+                        NightDogBootTrace.note(
+                            context,
+                            "dhizuku_wireless_cleanup_failed",
+                            detail
+                        )
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Throwable) {
-                    Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", error)
+                    Log.w(AppConstants.TAG, "Unexpected Dhizuku wireless cleanup failure", error)
                     val detail = error.message ?: error.javaClass.simpleName
                     recordFailure(
                         context = context,
