@@ -42,6 +42,7 @@ dependencyResolutionManagement {
 
 include ':server', ':starter', ':shell'
 include ':manager'
+include ':bootmonitor'
 include ':common'
 include ':shizutest'
 
