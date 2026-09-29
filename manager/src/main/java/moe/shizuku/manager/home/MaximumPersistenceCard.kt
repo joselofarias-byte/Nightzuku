@@ -80,6 +80,9 @@ fun MaximumPersistenceCard() {
     var developerState by remember {
         mutableStateOf(PersistenceActions.developerOptionsSnapshot(context))
     }
+    var batteryExempt by remember {
+        mutableStateOf(PersistenceActions.isBatteryOptimizationIgnored(context))
+    }
     var actionStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmStopKeepRunning by remember { mutableStateOf(false) }
@@ -100,6 +103,7 @@ fun MaximumPersistenceCard() {
     LaunchedEffect(Unit) {
         while (true) {
             developerState = PersistenceActions.developerOptionsSnapshot(context)
+            batteryExempt = PersistenceActions.isBatteryOptimizationIgnored(context)
             delay(1_500L)
         }
     }
@@ -158,12 +162,20 @@ fun MaximumPersistenceCard() {
     PersistenceCardBody(
         model = model,
         bootTrace = bootTrace,
+        batteryExempt = batteryExempt,
         developerState = developerState,
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
         busy = busy,
         showDetails = showDetails,
         onToggleDetails = { showDetails = !showDetails },
+        onRequestBatteryExemption = {
+            val opened = PersistenceActions.requestBatteryOptimizationExemption(context)
+            actionStatus = context.getString(
+                if (opened) R.string.persistence_battery_exempt_requested
+                else R.string.persistence_battery_settings_failed
+            )
+        },
         onDesiredChange = { desired ->
             if (!desired) confirmStopKeepRunning = true
             else PersistenceActions.setDesiredRunning(context, true)
@@ -387,12 +399,14 @@ fun MaximumPersistenceCard() {
 private fun PersistenceCardBody(
     model: PersistenceUiModel,
     bootTrace: String,
+    batteryExempt: Boolean,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
     actionStatus: String?,
     busy: Boolean,
     showDetails: Boolean,
     onToggleDetails: () -> Unit,
+    onRequestBatteryExemption: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -511,6 +525,13 @@ private fun PersistenceCardBody(
 
                 if (showDetails) {
                     Fact(
+                        R.string.persistence_battery_optimization,
+                        stringResource(
+                            if (batteryExempt) R.string.persistence_battery_exempt
+                            else R.string.persistence_battery_restricted
+                        )
+                    )
+                    Fact(
                         R.string.persistence_developer_options,
                         stringResource(
                             if (developerState.developerOptionsEnabled) {
@@ -607,6 +628,16 @@ private fun PersistenceCardBody(
                         }
                     }
                     if (showDetails) {
+                    if (!batteryExempt) {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onRequestBatteryExemption,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_warning_24)
+                            Text(stringResource(R.string.persistence_battery_exempt_action))
+                        }
+                    }
                     FilledTonalButton(
                         enabled = !busy,
                         onClick = onEnableTcp,
