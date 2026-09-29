@@ -64,7 +64,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,7 +80,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.BuildConfig
@@ -765,7 +766,8 @@ private fun WirelessAdbCard(
 @Composable
 private fun DhizukuAdbRecoveryCard() {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = lifecycleOwner.lifecycleScope
     var state by remember { mutableStateOf(DhizukuAdbRecovery.readState(context)) }
     var working by remember { mutableStateOf(false) }
 
