@@ -1,6 +1,10 @@
 package moe.shizuku.manager.persistence
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.os.SystemClock
 import kotlinx.coroutines.delay
 import moe.shizuku.manager.ShizukuSettings
@@ -101,6 +105,27 @@ object PersistenceActions {
             elapsedSeconds = timeoutSeconds,
             lastStage = snapshot.stage.name
         )
+    }
+
+    fun isBatteryOptimizationIgnored(context: Context): Boolean {
+        val pm = context.getSystemService(PowerManager::class.java) ?: return false
+        return runCatching { pm.isIgnoringBatteryOptimizations(context.packageName) }
+            .getOrDefault(false)
+    }
+
+    fun requestBatteryOptimizationExemption(context: Context): Boolean {
+        if (isBatteryOptimizationIgnored(context)) return true
+        val app = context.applicationContext
+        val direct = Intent(
+            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.parse("package:${app.packageName}")
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        if (runCatching { app.startActivity(direct) }.isSuccess) return true
+
+        val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { app.startActivity(fallback) }.isSuccess
     }
 
     fun openDeveloperOptions(context: Context): Boolean {
