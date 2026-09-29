@@ -370,6 +370,7 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_open_wireless_debugging">Depuración inalámbrica</string>
     <string name="persistence_result_no_checks">Sin comprobaciones todavía</string>
     <string name="persistence_result_binder_received">Binder recibido; el servicio está activo</string>
+    <string name="persistence_result_binder_stabilizing">Binder detectado; verificando estabilidad</string>
     <string name="persistence_result_binder_responding">El binder responde</string>
     <string name="persistence_result_binder_already_alive">El binder ya está activo</string>
     <string name="persistence_result_binder_lost">Binder perdido; iniciando recuperación</string>
