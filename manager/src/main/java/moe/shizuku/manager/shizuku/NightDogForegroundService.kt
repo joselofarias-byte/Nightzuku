@@ -38,7 +38,9 @@ class NightDogForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        NightDogBootTrace.note(this, "fgs_on_start", "startId=$startId")
         if (!NightDogRecovery.isDesiredRunning(this)) {
+            NightDogBootTrace.note(this, "fgs_skip", "desired running disabled")
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -65,12 +67,19 @@ class NightDogForegroundService : Service() {
                 .setContentIntent(open)
                 .setOngoing(true)
                 .build())
+            NightDogBootTrace.note(this, "fgs_foreground", "notification posted")
         } catch (error: RuntimeException) {
             Log.e(AppConstants.TAG, "NightDog foreground startup failed", error)
+            NightDogBootTrace.note(
+                this,
+                "fgs_failed",
+                "${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
             stopSelf(startId)
             return START_NOT_STICKY
         }
         NightDogRecovery.start(this)
+        NightDogBootTrace.note(this, "fgs_recovery_started", "START_STICKY")
         return START_STICKY
     }
 }
