@@ -343,6 +343,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_recovery_count">Recovery count</string>
     <string name="persistence_last_result">Last recovery result</string>
     <string name="persistence_last_failure">Last failure</string>
+    <string name="persistence_failure_code">Diagnostic code</string>
     <string name="persistence_last_failure_none">None</string>
     <string name="persistence_retry">Next retry</string>
     <string name="persistence_retry_now">Now</string>

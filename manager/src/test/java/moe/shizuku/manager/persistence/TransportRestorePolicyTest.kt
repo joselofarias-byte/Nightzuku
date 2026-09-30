@@ -34,6 +34,10 @@ class TransportRestorePolicyTest {
             previousWirelessEnabled = captured.previousWirelessEnabled
         )
         assertTrue(restore.apply)
+        assertEquals(
+            TransportRestorePolicy.CleanupMode.KEEP_ADB_DISABLE_WIRELESS,
+            restore.mode
+        )
         assertTrue(restore.adbEnabled)
         assertFalse(restore.wirelessEnabled)
         assertFalse(TransportRestorePolicy.writesDevelopmentSettings(restore.writes))
@@ -46,6 +50,10 @@ class TransportRestorePolicyTest {
         )
 
         val devOnStable = restore(captured, developerOptionsEnabled = true)
+        assertEquals(
+            TransportRestorePolicy.CleanupMode.KEEP_ADB_RESTORE_PREVIOUS_WIRELESS,
+            devOnStable.mode
+        )
         assertTrue(devOnStable.adbEnabled)
         assertFalse(devOnStable.wirelessEnabled)
         assertEquals(1, devOnStable.writes.single { it.key == TransportRestorePolicy.ADB_ENABLED }.intValue)
@@ -171,7 +179,7 @@ class TransportRestorePolicyTest {
             TransportRestorePolicy.restoreResultDetail(verified = false, developerOptionsOff = true)
         )
         assertEquals(
-            TransportRestorePolicy.DETAIL_TRANSPORT_RESTORED,
+            TransportRestorePolicy.DETAIL_TRANSPORT_STABILIZED,
             TransportRestorePolicy.restoreResultDetail(verified = true, developerOptionsOff = false)
         )
     }
@@ -233,6 +241,7 @@ class TransportRestorePolicyTest {
             previousWirelessEnabled = true
         )
         assertFalse(skipped.apply)
+        assertEquals(TransportRestorePolicy.CleanupMode.NONE, skipped.mode)
         assertTrue(skipped.writes.isEmpty())
         assertEquals(TransportRestorePolicy.NO_TRANSPORT_RESTORE_PENDING, skipped.skipDetail)
 
@@ -243,6 +252,10 @@ class TransportRestorePolicyTest {
             previousWirelessEnabled = true
         )
         assertTrue(devOff.apply)
+        assertEquals(
+            TransportRestorePolicy.CleanupMode.KEEP_ADB_DISABLE_WIRELESS,
+            devOff.mode
+        )
         assertTrue(devOff.adbEnabled)
         assertFalse(devOff.wirelessEnabled)
         assertFalse(TransportRestorePolicy.writesDevelopmentSettings(devOff.writes))
