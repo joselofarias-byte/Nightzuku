@@ -83,6 +83,9 @@ fun MaximumPersistenceCard() {
     var batteryExempt by remember {
         mutableStateOf(PersistenceActions.isBatteryOptimizationIgnored(context))
     }
+    var vpnBootstrap by remember {
+        mutableStateOf(PersistenceActions.vpnBootstrapStatus(context))
+    }
     var actionStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmStopKeepRunning by remember { mutableStateOf(false) }
@@ -104,6 +107,7 @@ fun MaximumPersistenceCard() {
         while (true) {
             developerState = PersistenceActions.developerOptionsSnapshot(context)
             batteryExempt = PersistenceActions.isBatteryOptimizationIgnored(context)
+            vpnBootstrap = PersistenceActions.vpnBootstrapStatus(context)
             delay(1_500L)
         }
     }
@@ -165,6 +169,7 @@ fun MaximumPersistenceCard() {
         bootTrace = bootTrace,
         honorDevice = honorDevice,
         batteryExempt = batteryExempt,
+        vpnBootstrap = vpnBootstrap,
         developerState = developerState,
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
@@ -184,6 +189,42 @@ fun MaximumPersistenceCard() {
                 if (opened) R.string.persistence_honor_autostart_opened
                 else R.string.persistence_honor_autostart_failed
             )
+        },
+        onEnableVpnBootstrap = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            scope.launch {
+                val result = PersistenceActions.setVpnBootstrap(context, true)
+                vpnBootstrap = result.getOrElse { PersistenceActions.vpnBootstrapStatus(context) }
+                actionStatus = result.fold(
+                    onSuccess = { context.getString(R.string.persistence_vpn_bootstrap_enable_ok) },
+                    onFailure = {
+                        context.getString(
+                            R.string.persistence_vpn_bootstrap_failed,
+                            it.message ?: it.javaClass.simpleName
+                        )
+                    }
+                )
+                busy = false
+            }
+        },
+        onDisableVpnBootstrap = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            scope.launch {
+                val result = PersistenceActions.setVpnBootstrap(context, false)
+                vpnBootstrap = result.getOrElse { PersistenceActions.vpnBootstrapStatus(context) }
+                actionStatus = result.fold(
+                    onSuccess = { context.getString(R.string.persistence_vpn_bootstrap_disable_ok) },
+                    onFailure = {
+                        context.getString(
+                            R.string.persistence_vpn_bootstrap_failed,
+                            it.message ?: it.javaClass.simpleName
+                        )
+                    }
+                )
+                busy = false
+            }
         },
         onDesiredChange = { desired ->
             if (!desired) confirmStopKeepRunning = true
@@ -410,6 +451,7 @@ private fun PersistenceCardBody(
     bootTrace: String,
     honorDevice: Boolean,
     batteryExempt: Boolean,
+    vpnBootstrap: PersistenceActions.VpnBootstrapStatus,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
     actionStatus: String?,
@@ -418,6 +460,8 @@ private fun PersistenceCardBody(
     onToggleDetails: () -> Unit,
     onRequestBatteryExemption: () -> Unit,
     onOpenHonorAutostart: () -> Unit,
+    onEnableVpnBootstrap: () -> Unit,
+    onDisableVpnBootstrap: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -541,6 +585,26 @@ private fun PersistenceCardBody(
                             if (batteryExempt) R.string.persistence_battery_exempt
                             else R.string.persistence_battery_restricted
                         )
+                    )
+                    Fact(
+                        R.string.persistence_vpn_bootstrap,
+                        stringResource(
+                            when {
+                                !vpnBootstrap.supported ->
+                                    R.string.persistence_vpn_bootstrap_unsupported
+                                vpnBootstrap.enabledForNightzuku ->
+                                    R.string.persistence_vpn_bootstrap_on
+                                !vpnBootstrap.configuredPackage.isNullOrBlank() ->
+                                    R.string.persistence_vpn_bootstrap_other
+                                else ->
+                                    R.string.persistence_vpn_bootstrap_off
+                            }
+                        )
+                    )
+                    Text(
+                        stringResource(R.string.persistence_vpn_bootstrap_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (honorDevice) {
                         Fact(
