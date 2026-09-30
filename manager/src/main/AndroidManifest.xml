@@ -181,6 +181,19 @@
             android:foregroundServiceType="connectedDevice" />
 
         <service
+            android:name=".shizuku.NightzukuBootstrapVpnService"
+            android:directBootAware="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="true" />
+        </service>
+
+        <service
             android:name=".shizuku.NightDogBootJobService"
             android:directBootAware="true"
             android:exported="false"
