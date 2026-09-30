@@ -13,7 +13,6 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbRecoveryTestController
 import moe.shizuku.manager.adb.AdbTcpController
 import moe.shizuku.manager.shizuku.NightDogRecovery
-import moe.shizuku.manager.dhizuku.DhizukuDeviceOwnerBridge
 import rikka.shizuku.Shizuku
 
 data class RecoveryTestReport(
@@ -25,13 +24,6 @@ data class RecoveryTestReport(
 )
 
 object PersistenceActions {
-
-    data class VpnBootstrapStatus(
-        val supported: Boolean,
-        val enabledForNightzuku: Boolean,
-        val configuredPackage: String?,
-        val message: String
-    )
 
     suspend fun recoverNow(context: Context): DeveloperOptionsController.Result? {
         val before = DeveloperOptionsController.snapshot(context)
@@ -136,50 +128,6 @@ object PersistenceActions {
         val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return runCatching { app.startActivity(fallback) }.isSuccess
-    }
-
-    fun vpnBootstrapStatus(context: Context): VpnBootstrapStatus {
-        val app = context.applicationContext
-        val result = DhizukuDeviceOwnerBridge.getAlwaysOnVpnPackage(app)
-        val configured = result.getOrNull()
-        return if (result.isSuccess) {
-            VpnBootstrapStatus(
-                supported = true,
-                enabledForNightzuku = configured == app.packageName,
-                configuredPackage = configured,
-                message = when {
-                    configured == app.packageName -> "Bootstrap del sistema activado para Nightzuku."
-                    configured.isNullOrBlank() -> "No hay VPN always-on administrada."
-                    else -> "Otra app usa VPN always-on: $configured"
-                }
-            )
-        } else {
-            VpnBootstrapStatus(
-                supported = false,
-                enabledForNightzuku = false,
-                configuredPackage = null,
-                message = result.exceptionOrNull()?.message ?: "No disponible."
-            )
-        }
-    }
-
-    fun setVpnBootstrap(context: Context, enabled: Boolean): Result<VpnBootstrapStatus> {
-        val app = context.applicationContext
-        if (enabled) {
-            val current = vpnBootstrapStatus(app)
-            if (current.configuredPackage != null &&
-                current.configuredPackage != app.packageName) {
-                return Result.failure(
-                    IllegalStateException(
-                        "Ya existe una VPN always-on administrada: ${current.configuredPackage}"
-                    )
-                )
-            }
-        }
-
-        return DhizukuDeviceOwnerBridge
-            .setNightzukuAlwaysOnVpn(app, enabled)
-            .map { vpnBootstrapStatus(app) }
     }
 
     fun isHonorMagicOsDevice(): Boolean {
