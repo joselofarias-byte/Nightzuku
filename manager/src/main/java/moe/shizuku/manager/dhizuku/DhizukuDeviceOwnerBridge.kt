@@ -54,6 +54,21 @@ object DhizukuDeviceOwnerBridge {
         )
     }
 
+    fun setNightzukuAlwaysOnVpn(context: Context, enabled: Boolean): Result<Unit> = runCatching {
+        val elevated = elevatedDpm(context)
+        val packageName = if (enabled) context.applicationContext.packageName else null
+        elevated.dpm.setAlwaysOnVpnPackage(
+            elevated.admin,
+            packageName,
+            false
+        )
+    }
+
+    fun getAlwaysOnVpnPackage(context: Context): Result<String?> = runCatching {
+        val elevated = elevatedDpm(context)
+        elevated.dpm.getAlwaysOnVpnPackage(elevated.admin)
+    }
+
     private fun elevatedDpm(context: Context): ElevatedDpm {
         val app = context.applicationContext
 
