@@ -474,4 +474,15 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_honor_autostart_help">Desactivá la administración automática de Nightzuku y activá Inicio automático, Inicio secundario y Ejecutar en segundo plano.</string>
     <string name="persistence_honor_autostart_opened">Se abrieron los ajustes de inicio de aplicaciones de HONOR.</string>
     <string name="persistence_honor_autostart_failed">No se pudieron abrir los ajustes de inicio de aplicaciones de HONOR.</string>
+    <string name="persistence_vpn_bootstrap">Arranque por el sistema</string>
+    <string name="persistence_vpn_bootstrap_on">Activado · Android iniciará Nightzuku tras reiniciar</string>
+    <string name="persistence_vpn_bootstrap_off">Desactivado</string>
+    <string name="persistence_vpn_bootstrap_other">No disponible · hay otra VPN siempre activa configurada</string>
+    <string name="persistence_vpn_bootstrap_unsupported">No disponible mediante Dhizuku Device Owner</string>
+    <string name="persistence_vpn_bootstrap_enable">Activar arranque por el sistema</string>
+    <string name="persistence_vpn_bootstrap_disable">Desactivar arranque por el sistema</string>
+    <string name="persistence_vpn_bootstrap_enable_ok">Arranque por el sistema activado. Android puede mostrar un indicador de VPN; el bloqueo está desactivado y Nightzuku no instala rutas de tráfico.</string>
+    <string name="persistence_vpn_bootstrap_disable_ok">Arranque por el sistema desactivado.</string>
+    <string name="persistence_vpn_bootstrap_failed">No se pudo cambiar el arranque por el sistema: %1$s</string>
+    <string name="persistence_vpn_bootstrap_note">Usa la VPN siempre activa de Android sólo como gancho de arranque. El bloqueo está desactivado y no se instalan rutas de tráfico. Aun así puede mostrar un indicador de VPN y entrar en conflicto con otra app VPN.</string>
 </resources>
