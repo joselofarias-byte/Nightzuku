@@ -1,0 +1,62 @@
+name: Build Dhizuku Nightzuku relay
+
+on:
+  push:
+    branches:
+      - fix/boot-headless-persistence-20260928
+    paths:
+      - .github/workflows/build-dhizuku-relay.yml
+      - manager/src/main/java/moe/shizuku/manager/receiver/DhizukuBootstrapReceiver.kt
+      - manager/src/main/AndroidManifest.xml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Nightzuku
+        uses: actions/checkout@v6
+
+      - name: Checkout Dhizuku relay branch
+        uses: actions/checkout@v6
+        with:
+          repository: joselofarias-byte/Dhizuku
+          ref: feature/nightzuku-boot-relay-20260929
+          path: dhizuku
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK 37
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 37 packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-37" "build-tools;37.0.0"
+
+      - name: Build Dhizuku relay APK
+        working-directory: dhizuku
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --warning-mode=all :app:assembleDebug
+
+      - name: Verify APK certificate
+        run: |
+          APK="dhizuku/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" | tee Dhizuku-Nightzuku-relay.sha256.txt
+          cp "$APK" Dhizuku-Nightzuku-relay.apk
+
+      - name: Upload relay APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: dhizuku-nightzuku-boot-relay
+          path: |
+            Dhizuku-Nightzuku-relay.apk
+            Dhizuku-Nightzuku-relay.sha256.txt
+          retention-days: 14
