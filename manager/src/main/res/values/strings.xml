@@ -469,7 +469,7 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_battery_exempt_requested">Android battery settings opened. Approve the exclusion for Nightzuku.</string>
     <string name="persistence_battery_settings_failed">Could not open battery optimization settings.</string>
     <string name="persistence_honor_autostart">HONOR / MagicOS app launch</string>
-    <string name="persistence_honor_autostart_required">Manual permission required</string>
+    <string name="persistence_honor_autostart_required">Manual MagicOS setting · not automatically verifiable</string>
     <string name="persistence_honor_autostart_action">Open HONOR app launch settings</string>
     <string name="persistence_honor_autostart_help">Disable automatic management for Nightzuku, then enable Auto-launch, Secondary launch and Run in background.</string>
     <string name="persistence_honor_autostart_opened">HONOR app launch settings opened.</string>
