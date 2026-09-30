@@ -187,6 +187,17 @@
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <receiver
+            android:name=".receiver.DhizukuBootstrapReceiver"
+            android:directBootAware="true"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.rosan.dhizuku.permission.API">
+            <intent-filter>
+                <action android:name="com.joselofarias.nightzuku.action.DHIZUKU_BOOTSTRAP" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".receiver.BootCompleteReceiver"
             android:directBootAware="true"
             android:enabled="true"
