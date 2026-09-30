@@ -474,4 +474,15 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_honor_autostart_help">Disable automatic management for Nightzuku, then enable Auto-launch, Secondary launch and Run in background.</string>
     <string name="persistence_honor_autostart_opened">HONOR app launch settings opened.</string>
     <string name="persistence_honor_autostart_failed">Could not open HONOR app launch settings.</string>
+    <string name="persistence_vpn_bootstrap">System bootstrap</string>
+    <string name="persistence_vpn_bootstrap_on">Enabled · Android will start Nightzuku after reboot</string>
+    <string name="persistence_vpn_bootstrap_off">Disabled</string>
+    <string name="persistence_vpn_bootstrap_other">Unavailable · another always-on VPN is configured</string>
+    <string name="persistence_vpn_bootstrap_unsupported">Unavailable through Dhizuku Device Owner</string>
+    <string name="persistence_vpn_bootstrap_enable">Enable system bootstrap</string>
+    <string name="persistence_vpn_bootstrap_disable">Disable system bootstrap</string>
+    <string name="persistence_vpn_bootstrap_enable_ok">System bootstrap enabled. Android may show a VPN indicator; lockdown is off and Nightzuku installs no traffic routes.</string>
+    <string name="persistence_vpn_bootstrap_disable_ok">System bootstrap disabled.</string>
+    <string name="persistence_vpn_bootstrap_failed">Could not change system bootstrap: %1$s</string>
+    <string name="persistence_vpn_bootstrap_note">Uses Android always-on VPN only as a system boot hook. Lockdown is disabled and no traffic routes are installed. It can still show a VPN indicator and may conflict with another VPN app.</string>
 </resources>
