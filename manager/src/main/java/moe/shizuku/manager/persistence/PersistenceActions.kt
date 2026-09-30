@@ -73,6 +73,18 @@ object PersistenceActions {
         return AdbTcpController.classifyStored()
     }
 
+    suspend fun applySystemBootHardening(context: Context): SystemBootHardening.Report {
+        return SystemBootHardening.apply(context)
+    }
+
+    suspend fun removeSystemBootHardening(context: Context): SystemBootHardening.Report {
+        return SystemBootHardening.remove(context)
+    }
+
+    fun systemBootHardeningLocalStatus(context: Context): Pair<Int?, Boolean> {
+        return SystemBootHardening.localStatus(context)
+    }
+
     suspend fun testRecovery(context: Context, timeoutSeconds: Int = 30): RecoveryTestReport {
         check(Shizuku.pingBinder()) { "service_not_running" }
         NightDogRecovery.requestImmediateRecovery(context)
