@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: joselofarias-byte/Dhizuku
-          ref: feature/nightzuku-boot-relay-20260929
+          ref: 738bfb420b7055baf326db59ad2259807b412829
           path: dhizuku
 
       - name: Set up JDK 21
