@@ -36,7 +36,6 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager | head -n 1)"
           echo "SDKMANAGER=$SDKMANAGER"
           test -n "$SDKMANAGER"
-          chmod +x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0"
 
