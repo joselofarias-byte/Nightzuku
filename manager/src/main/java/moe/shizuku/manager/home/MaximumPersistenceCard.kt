@@ -50,11 +50,13 @@ import moe.shizuku.manager.persistence.PersistenceUiMapper
 import moe.shizuku.manager.persistence.PersistenceUiModel
 import moe.shizuku.manager.persistence.RecoveryTransport
 import moe.shizuku.manager.persistence.RecoveryTransportPolicy
+import moe.shizuku.manager.persistence.SystemBootHardening
 import moe.shizuku.manager.persistence.TcpCapability
 import moe.shizuku.manager.persistence.TcpHealth
 import moe.shizuku.manager.persistence.TcpHealthClassifier
 import moe.shizuku.manager.persistence.TcpHealthState
 import moe.shizuku.manager.persistence.TransportCandidate
+import moe.shizuku.manager.shizuku.NightDogBootTrace
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 
@@ -79,6 +81,15 @@ fun MaximumPersistenceCard() {
     var developerState by remember {
         mutableStateOf(PersistenceActions.developerOptionsSnapshot(context))
     }
+    var batteryExempt by remember {
+        mutableStateOf(PersistenceActions.isBatteryOptimizationIgnored(context))
+    }
+    var systemHardeningApplied by remember {
+        mutableStateOf(SystemBootHardening.wasApplied(context))
+    }
+    var systemHardeningReport by remember {
+        mutableStateOf<SystemBootHardening.Report?>(null)
+    }
     var actionStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmStopKeepRunning by remember { mutableStateOf(false) }
@@ -99,6 +110,7 @@ fun MaximumPersistenceCard() {
     LaunchedEffect(Unit) {
         while (true) {
             developerState = PersistenceActions.developerOptionsSnapshot(context)
+            batteryExempt = PersistenceActions.isBatteryOptimizationIgnored(context)
             delay(1_500L)
         }
     }
@@ -152,14 +164,74 @@ fun MaximumPersistenceCard() {
         displayTransport = displayTransport
     )
 
+    val bootTrace = NightDogBootTrace.summary(context)
+    val honorDevice = PersistenceActions.isHonorMagicOsDevice()
+
     PersistenceCardBody(
         model = model,
+        bootTrace = bootTrace,
+        honorDevice = honorDevice,
+        batteryExempt = batteryExempt,
+        systemHardeningApplied = systemHardeningApplied,
+        systemHardeningReport = systemHardeningReport,
         developerState = developerState,
         lastResultText = lastResultText(model),
         actionStatus = actionStatus,
         busy = busy,
         showDetails = showDetails,
         onToggleDetails = { showDetails = !showDetails },
+        onRequestBatteryExemption = {
+            val opened = PersistenceActions.requestBatteryOptimizationExemption(context)
+            actionStatus = context.getString(
+                if (opened) R.string.persistence_battery_exempt_requested
+                else R.string.persistence_battery_settings_failed
+            )
+        },
+        onOpenHonorAutostart = {
+            val opened = PersistenceActions.openHonorAppLaunchSettings(context)
+            actionStatus = context.getString(
+                if (opened) R.string.persistence_honor_autostart_opened
+                else R.string.persistence_honor_autostart_failed
+            )
+        },
+        onApplySystemHardening = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val report = PersistenceActions.applySystemBootHardening(context)
+                systemHardeningReport = report
+                systemHardeningApplied = report.success
+                actionStatus = if (report.success) {
+                    context.getString(R.string.persistence_system_hardening_success)
+                } else {
+                    context.getString(
+                        R.string.persistence_system_hardening_failed,
+                        report.message
+                    )
+                }
+                busy = false
+            }
+        },
+        onRemoveSystemHardening = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val report = PersistenceActions.removeSystemBootHardening(context)
+                systemHardeningReport = report
+                systemHardeningApplied = false
+                actionStatus = if (report.success) {
+                    context.getString(R.string.persistence_system_hardening_removed)
+                } else {
+                    context.getString(
+                        R.string.persistence_system_hardening_failed,
+                        report.message
+                    )
+                }
+                busy = false
+            }
+        },
         onDesiredChange = { desired ->
             if (!desired) confirmStopKeepRunning = true
             else PersistenceActions.setDesiredRunning(context, true)
@@ -382,12 +454,21 @@ fun MaximumPersistenceCard() {
 @Composable
 private fun PersistenceCardBody(
     model: PersistenceUiModel,
+    bootTrace: String,
+    honorDevice: Boolean,
+    batteryExempt: Boolean,
+    systemHardeningApplied: Boolean,
+    systemHardeningReport: SystemBootHardening.Report?,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
     actionStatus: String?,
     busy: Boolean,
     showDetails: Boolean,
     onToggleDetails: () -> Unit,
+    onRequestBatteryExemption: () -> Unit,
+    onOpenHonorAutostart: () -> Unit,
+    onApplySystemHardening: () -> Unit,
+    onRemoveSystemHardening: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -506,6 +587,42 @@ private fun PersistenceCardBody(
 
                 if (showDetails) {
                     Fact(
+                        R.string.persistence_battery_optimization,
+                        stringResource(
+                            if (batteryExempt) R.string.persistence_battery_exempt
+                            else R.string.persistence_battery_restricted
+                        )
+                    )
+                    Fact(
+                        R.string.persistence_system_hardening,
+                        stringResource(
+                            when {
+                                systemHardeningApplied ->
+                                    R.string.persistence_system_hardening_ready
+                                systemHardeningReport != null ->
+                                    R.string.persistence_system_hardening_partial
+                                else ->
+                                    R.string.persistence_system_hardening_unknown
+                            }
+                        )
+                    )
+                    Text(
+                        stringResource(R.string.persistence_system_hardening_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (honorDevice) {
+                        Fact(
+                            R.string.persistence_honor_autostart,
+                            stringResource(R.string.persistence_honor_autostart_required)
+                        )
+                        Text(
+                            stringResource(R.string.persistence_honor_autostart_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Fact(
                         R.string.persistence_developer_options,
                         stringResource(
                             if (developerState.developerOptionsEnabled) {
@@ -569,6 +686,16 @@ private fun PersistenceCardBody(
                         }
                     )
                     HonestyBanner(model)
+                    Text(
+                        "Registro reciente de arranque",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        bootTrace,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 if (!actionStatus.isNullOrBlank()) {
                     Text(
@@ -592,6 +719,45 @@ private fun PersistenceCardBody(
                         }
                     }
                     if (showDetails) {
+                    if (systemHardeningApplied) {
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = onRemoveSystemHardening,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_close_24)
+                            Text(stringResource(R.string.persistence_system_hardening_remove))
+                        }
+                    } else {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onApplySystemHardening,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_server_restart)
+                            Text(stringResource(R.string.persistence_system_hardening_apply))
+                        }
+                    }
+                    if (honorDevice) {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onOpenHonorAutostart,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_settings_outline_24dp)
+                            Text(stringResource(R.string.persistence_honor_autostart_action))
+                        }
+                    }
+                    if (!batteryExempt) {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onRequestBatteryExemption,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_warning_24)
+                            Text(stringResource(R.string.persistence_battery_exempt_action))
+                        }
+                    }
                     FilledTonalButton(
                         enabled = !busy,
                         onClick = onEnableTcp,
@@ -687,7 +853,7 @@ private fun QuickStatusOverview(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         QuickStatusChip(
-            label = stringResource(R.string.persistence_service),
+            label = stringResource(R.string.persistence_watchdog),
             value = serviceLabel(model.service),
             tone = when (model.service) {
                 PersistenceServiceState.RUNNING -> QuickStatusTone.ACTIVE
@@ -892,6 +1058,7 @@ private fun lastResultText(model: PersistenceUiModel): String {
         NightDogRecovery.RESULT_NO_CHECKS -> R.string.persistence_result_no_checks
         NightDogRecovery.RESULT_BINDER_RECEIVED -> R.string.persistence_result_binder_received
         NightDogRecovery.RESULT_BINDER_RESPONDING -> R.string.persistence_result_binder_responding
+        NightDogRecovery.RESULT_BINDER_STABILIZING -> R.string.persistence_result_binder_stabilizing
         NightDogRecovery.RESULT_BINDER_ALREADY_ALIVE -> R.string.persistence_result_binder_already_alive
         NightDogRecovery.RESULT_BINDER_LOST -> R.string.persistence_result_binder_lost
         NightDogRecovery.RESULT_BINDER_UNRESPONSIVE -> R.string.persistence_result_binder_unresponsive

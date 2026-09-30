@@ -1,9 +1,10 @@
 package moe.shizuku.manager.shizuku
 
 import android.content.Context
-import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.SystemClock
+import android.os.UserManager
 import androidx.lifecycle.Observer
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +30,10 @@ import moe.shizuku.manager.persistence.NightDogBackoff
 import moe.shizuku.manager.persistence.RecoveryTransport
 import moe.shizuku.manager.persistence.RecoveryTransportPolicy
 import moe.shizuku.manager.persistence.TransportCandidate
-import moe.shizuku.manager.starter.StarterActivity
+import moe.shizuku.manager.dhizuku.DhizukuAdbRecovery
+import moe.shizuku.manager.starter.Starter
+import android.util.Log
+import moe.shizuku.manager.AppConstants
 import rikka.shizuku.Shizuku
 
 /** Process-level watchdog that keeps the service aligned with the persisted desired state. */
@@ -38,6 +42,10 @@ object NightDogRecovery {
     private const val PREFS_NAME = "nightdog_recovery"
     private const val KEY_DESIRED_RUNNING = "desired_running"
     private const val STARTER_IN_FLIGHT_GUARD_MS = 15_000L
+    private const val TRANSPORT_CLEANUP_STABILITY_MS = 5_000L
+    private const val TRANSPORT_STABILITY_POLL_MS = 500L
+    private const val TRANSPORT_POST_CLEANUP_VERIFY_MS = 2_000L
+    private const val RUNNING_STABILITY_MS = 3_000L
 
     enum class Stage {
         IDLE,
@@ -74,6 +82,7 @@ object NightDogRecovery {
     const val RESULT_NO_CHECKS = "no_checks"
     const val RESULT_BINDER_RECEIVED = "binder_received"
     const val RESULT_BINDER_RESPONDING = "binder_responding"
+    const val RESULT_BINDER_STABILIZING = "binder_stabilizing"
     const val RESULT_BINDER_ALREADY_ALIVE = "binder_already_alive"
     const val RESULT_BINDER_LOST = "binder_lost"
     const val RESULT_BINDER_UNRESPONSIVE = "binder_unresponsive"
@@ -126,14 +135,69 @@ object NightDogRecovery {
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         applicationContext?.let { context ->
             preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+            NightDogBootScheduler.schedule(context)
+            NightDogBootTrace.note(context, "binder_received", "server alive")
 
-            // If NightDog temporarily enabled ADB only to recover the service,
-            // return ADB / wireless debugging to the exact previous state once
-            // Binder proves that Nightzuku is alive. Developer options itself
-            // is intentionally never changed by this cleanup.
+            // Do not touch the recovery transport immediately after Binder.
+            // Physical HONOR 200 evidence showed that cleaning ADB too early
+            // can kill the freshly started server and create a recovery loop.
             scope.launch {
-                delay(500L)
-                DeveloperOptionsController.restoreAdbTransportAfterRecovery(context)
+                NightDogBootTrace.note(
+                    context,
+                    "transport_cleanup_wait",
+                    "${TRANSPORT_CLEANUP_STABILITY_MS}ms"
+                )
+
+                val checks = (TRANSPORT_CLEANUP_STABILITY_MS / TRANSPORT_STABILITY_POLL_MS)
+                    .toInt()
+                    .coerceAtLeast(1)
+                repeat(checks) {
+                    delay(TRANSPORT_STABILITY_POLL_MS)
+                    if (!Shizuku.pingBinder()) {
+                        NightDogBootTrace.note(
+                            context,
+                            "transport_cleanup_skipped",
+                            "binder lost before cleanup"
+                        )
+                        return@launch
+                    }
+                }
+
+                val restored = DeveloperOptionsController
+                    .restoreAdbTransportAfterRecovery(context)
+                NightDogBootTrace.note(
+                    context,
+                    "transport_cleanup_applied",
+                    restored.detail ?: if (restored.success) "ok" else "failed"
+                )
+
+                runCatching {
+                    DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context)
+                }.onFailure {
+                    Log.w(AppConstants.TAG, "Dhizuku wireless cleanup failed", it)
+                    NightDogBootTrace.note(
+                        context,
+                        "dhizuku_wireless_cleanup_failed",
+                        it.message ?: it.javaClass.simpleName
+                    )
+                }
+
+                delay(TRANSPORT_POST_CLEANUP_VERIFY_MS)
+                if (Shizuku.pingBinder()) {
+                    NightDogBootTrace.note(
+                        context,
+                        "transport_cleanup_stable",
+                        "binder alive after cleanup"
+                    )
+                } else {
+                    lastFailure = "Binder died after transport cleanup"
+                    NightDogBootTrace.note(
+                        context,
+                        "transport_cleanup_destabilized",
+                        "binder died after cleanup"
+                    )
+                    requestRecovery()
+                }
             }
         }
         ShizukuSettings.setAdbReactivationRequired(false)
@@ -170,6 +234,8 @@ object NightDogRecovery {
     fun start(context: Context) {
         applicationContext = context.applicationContext
         ensureDesiredStateInitialized(context)
+        NightDogBootScheduler.sync(context)
+        NightDogBootTrace.note(context, "recovery_start", "desired=${isDesiredRunning(context)}")
         if (pollingJob?.isActive == true) return
 
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
@@ -231,6 +297,10 @@ object NightDogRecovery {
     fun requestManualStart(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        NightDogBootScheduler.schedule(context)
+        NightDogBootTrace.note(context, "manual_start", "desired=on")
+        runCatching { NightDogForegroundService.start(context) }
+            .onFailure { Log.w(AppConstants.TAG, "Persistence service start failed", it) }
         failedAttempts = 0
         lastAttemptAt = 0L
         publish(
@@ -245,6 +315,10 @@ object NightDogRecovery {
     fun requestImmediateRecovery(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        NightDogBootScheduler.schedule(context)
+        NightDogBootTrace.note(context, "recover_now", "desired=on")
+        runCatching { NightDogForegroundService.start(context) }
+            .onFailure { Log.w(AppConstants.TAG, "Persistence service start failed", it) }
         failedAttempts = 0
         lastAttemptAt = 0L
         recoveryJob?.cancel()
@@ -265,6 +339,9 @@ object NightDogRecovery {
     fun prepareForManualStop(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, false).apply()
+        NightDogBootScheduler.cancel(context)
+        NightDogBootTrace.note(context, "manual_stop", "desired=off")
+        NightDogForegroundService.stop(context)
         recoveryJob?.cancel()
         recoveryJob = null
         failedAttempts = 0
@@ -346,8 +423,35 @@ object NightDogRecovery {
         }
     }
 
-    private fun preferences(context: Context) =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private fun preferences(context: Context): SharedPreferences {
+        val app = context.applicationContext
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+
+        val deviceContext = app.createDeviceProtectedStorageContext()
+        val devicePrefs = deviceContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // One-time migration from the pre-direct-boot preference. Never touch
+        // credential-encrypted storage while the user is still locked.
+        if (!devicePrefs.contains(KEY_DESIRED_RUNNING)) {
+            val unlocked = app.getSystemService(UserManager::class.java)?.isUserUnlocked == true
+            if (unlocked) {
+                runCatching {
+                    val legacy = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    if (legacy.contains(KEY_DESIRED_RUNNING)) {
+                        devicePrefs.edit()
+                            .putBoolean(
+                                KEY_DESIRED_RUNNING,
+                                legacy.getBoolean(KEY_DESIRED_RUNNING, true)
+                            )
+                            .commit()
+                    }
+                }
+            }
+        }
+        return devicePrefs
+    }
 
     private fun resolveCandidate(): TransportCandidate {
         val persistent = AdbTransportResolver.persistentTcpEndpoint()?.let { endpoint ->
@@ -541,6 +645,22 @@ object NightDogRecovery {
                 }
             }
 
+            // Device Owner is a second transport recovery path on this HONOR.
+            // Only use a permission already granted in the UI. A boot receiver
+            // must never request Dhizuku permission or open an authorization screen.
+            if (candidate.kind == RecoveryTransport.NONE &&
+                DhizukuAdbRecovery.readState(context).permissionGranted
+            ) {
+                val dhizuku = DhizukuAdbRecovery.recoverAdbIfAuthorized(context)
+                if (dhizuku.isSuccess) {
+                    delay(1_200L)
+                    candidate = resolveCandidate()
+                } else {
+                    Log.w(AppConstants.TAG, "Device Owner ADB recovery failed", dhizuku.exceptionOrNull())
+                    lastFailure = dhizuku.exceptionOrNull()?.message ?: lastFailure
+                }
+            }
+
             failedAttempts++
             lastAttemptAt = SystemClock.elapsedRealtime()
 
@@ -566,13 +686,6 @@ object NightDogRecovery {
                 endpoint = candidate.endpoint
             )
 
-            val intent = Intent(context, StarterActivity::class.java).apply {
-                putExtra(StarterActivity.EXTRA_IS_ROOT, false)
-                putExtra(StarterActivity.EXTRA_HOST, host)
-                putExtra(StarterActivity.EXTRA_PORT, port)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            }
-
             if (!tryBeginStarterAttempt()) {
                 publish(
                     Stage.STARTING_SERVICE,
@@ -581,15 +694,34 @@ object NightDogRecovery {
                 )
                 return@launch
             }
-            runCatching {
-                context.startActivity(intent)
-            }.onFailure { error ->
-                clearStarterAttempt()
-                lastFailure = error.javaClass.simpleName
+            // Background Activity launches are restricted after boot. Run the
+            // authenticated ADB start directly in NightDog's IO coroutine.
+            val started = runCatching {
+                val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
+                AdbClient(host, port, key).use { client ->
+                    client.connect()
+                    client.shellCommand(Starter.internalCommand, null)
+                }
+                repeat(24) {
+                    if (Shizuku.pingBinder()) return@runCatching true
+                    delay(250L)
+                }
+                Shizuku.pingBinder()
+            }
+            clearStarterAttempt()
+            if (started.getOrDefault(false) || Shizuku.pingBinder()) {
+                failedAttempts = 0
+                lastAttemptAt = 0L
+                lastFailure = null
+                publishRunning(RESULT_BINDER_RECEIVED, "Service started in background")
+            } else {
+                val error = started.exceptionOrNull()
+                Log.w(AppConstants.TAG, "Background ADB recovery failed at $host:$port", error)
+                lastFailure = error?.javaClass?.simpleName ?: "Binder did not arrive"
                 publish(
-                    Stage.ERROR,
+                    Stage.WAITING_FOR_ADB,
                     RESULT_STARTER_FAILED,
-                    "Could not open the starter: ${error.javaClass.simpleName}",
+                    "ADB start failed; NightDog will retry",
                     transportKind = candidate.kind,
                     endpoint = candidate.endpoint
                 )
@@ -598,7 +730,24 @@ object NightDogRecovery {
     }
 
     private fun publishRunning(resultKey: String, result: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (runningSinceAt == 0L) runningSinceAt = now
+
         val tcp = AdbTransportResolver.persistentTcpEndpoint()
+        val stableFor = now - runningSinceAt
+
+        if (stableFor < RUNNING_STABILITY_MS) {
+            publish(
+                Stage.STARTING_SERVICE,
+                RESULT_BINDER_STABILIZING,
+                "Binder detected; verifying stability",
+                binderAlive = true,
+                transportKind = RecoveryTransport.BINDER_ALIVE,
+                endpoint = tcp?.let { "${it.host}:${it.port}" }
+            )
+            return
+        }
+
         publish(
             Stage.RUNNING,
             resultKey,

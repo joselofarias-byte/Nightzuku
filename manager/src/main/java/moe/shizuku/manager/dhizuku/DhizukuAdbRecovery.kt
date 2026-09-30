@@ -9,6 +9,7 @@ import android.provider.Settings
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 import com.rosan.dhizuku.api.DhizukuUserServiceArgs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -47,32 +48,115 @@ object DhizukuAdbRecovery {
 
     suspend fun authorize(context: Context): Result<DhizukuAdbState> {
         val appContext = context.applicationContext
-        return runCatching {
+        return try {
             check(runCatching { Dhizuku.init(appContext) }.getOrDefault(false)) {
                 "Dhizuku no está disponible o no está activo."
             }
             ensurePermission()
             delay(250)
-            readState(appContext)
+            Result.success(readState(appContext))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
     }
 
     suspend fun setAdbEnabled(context: Context, enabled: Boolean): Result<DhizukuAdbState> {
+        return setAdbEnabledInternal(context, enabled, requestPermissionIfNeeded = true)
+    }
+
+    /** Background recovery may use an existing grant, but must never open a permission UI. */
+    suspend fun recoverAdbIfAuthorized(context: Context): Result<DhizukuAdbState> {
+        val prefs = context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false) &&
+            !readState(context).wirelessDebuggingEnabled) {
+            // Capture before Dhizuku may enable wireless debugging. Persist this
+            // across process death so a later Binder can finish the cleanup.
+            prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, true).apply()
+        }
+        return setAdbEnabledInternal(context, true, requestPermissionIfNeeded = false)
+    }
+
+    suspend fun restoreWirelessAfterRecoveryIfNeeded(context: Context) {
+        val appContext = context.applicationContext
+        val prefs = appContext.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(WIRELESS_RESTORE_PENDING, false)) return
+        if (!readState(appContext).wirelessDebuggingEnabled) {
+            prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+            return
+        }
+        if (!runCatching { Dhizuku.init(appContext) && Dhizuku.isPermissionGranted() }
+                .getOrDefault(false)) return
+        val direct = DhizukuDeviceOwnerBridge
+            .setWirelessDebuggingEnabled(appContext, false)
+
+        if (direct.isSuccess) {
+            delay(350)
+            if (!readState(appContext).wirelessDebuggingEnabled) {
+                prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+                return
+            }
+        }
+
+        // Compatibility fallback for Dhizuku builds where the direct DPM
+        // wrapper path is unavailable.
+        val bound = bindService(appContext) ?: return
+        try {
+            if (bound.remote.setWirelessDebuggingEnabled(false) &&
+                !readState(appContext).wirelessDebuggingEnabled) {
+                prefs.edit().putBoolean(WIRELESS_RESTORE_PENDING, false).apply()
+            }
+        } finally {
+            closeService(bound)
+        }
+    }
+
+    private suspend fun setAdbEnabledInternal(
+        context: Context,
+        enabled: Boolean,
+        requestPermissionIfNeeded: Boolean
+    ): Result<DhizukuAdbState> {
         val appContext = context.applicationContext
 
-        return runCatching {
+        return try {
             check(runCatching { Dhizuku.init(appContext) }.getOrDefault(false)) {
                 "Dhizuku no está disponible o no está activo."
             }
 
-            ensurePermission()
+            if (requestPermissionIfNeeded) {
+                ensurePermission()
+            } else {
+                check(Dhizuku.isPermissionGranted()) {
+                    "Nightzuku no tiene un permiso Dhizuku concedido previamente."
+                }
+            }
 
+            val direct = DhizukuDeviceOwnerBridge.setAdbEnabled(appContext, enabled)
+            var directError = direct.exceptionOrNull()
+
+            if (direct.isSuccess) {
+                delay(700)
+                val directState = readState(appContext)
+                if (directState.adbEnabled == enabled) {
+                    return Result.success(directState)
+                }
+                directError = IllegalStateException(
+                    "Android no conservó ADB=${if (enabled) "ON" else "OFF"} por la ruta Device Owner directa."
+                )
+            }
+
+            // Keep the UserService route only as a compatibility fallback.
             val bound = bindService(appContext)
-                ?: error("No se pudo conectar al servicio Device Owner de Dhizuku.")
+                ?: error(
+                    "Dhizuku no pudo aplicar ADB por Device Owner directo" +
+                        (directError?.message?.let { ": $it" } ?: "") +
+                        " y tampoco conectó el UserService."
+                )
 
             try {
                 check(bound.remote.setAdbEnabled(enabled)) {
-                    "Dhizuku no pudo cambiar el estado de ADB."
+                    "Dhizuku UserService no pudo cambiar el estado de ADB."
                 }
             } finally {
                 closeService(bound)
@@ -83,19 +167,32 @@ object DhizukuAdbRecovery {
             check(state.adbEnabled == enabled) {
                 "Android no conservó el estado de ADB solicitado."
             }
-            state
+            Result.success(state)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
     }
 
     suspend fun enableAdbAndWaitForWireless(context: Context): Result<DhizukuAdbState> {
-        return setAdbEnabled(context, true).mapCatching { initial ->
-            var current = initial
+        val initial = setAdbEnabled(context, true)
+        if (initial.isFailure) return initial
+
+        return try {
+            var current = initial.getOrThrow()
             repeat(WIRELESS_VERIFY_ATTEMPTS) {
-                if (current.wirelessDebuggingEnabled) return@mapCatching current
+                if (current.wirelessDebuggingEnabled) {
+                    return Result.success(current)
+                }
                 delay(WIRELESS_VERIFY_INTERVAL_MS)
                 current = readState(context)
             }
-            current
+            Result.success(current)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
     }
 
@@ -166,6 +263,8 @@ object DhizukuAdbRecovery {
     }
 
     private const val SERVICE_BIND_TIMEOUT_MS = 10_000L
+    private const val RECOVERY_PREFS = "nightzuku_dhizuku_recovery"
+    private const val WIRELESS_RESTORE_PENDING = "wireless_restore_pending"
     private const val WIRELESS_VERIFY_ATTEMPTS = 5
     private const val WIRELESS_VERIFY_INTERVAL_MS = 500L
 }

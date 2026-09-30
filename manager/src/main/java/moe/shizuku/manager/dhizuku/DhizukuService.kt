@@ -18,6 +18,20 @@ class DhizukuService(private val context: Context) : IDhizukuService.Stub() {
 
     override fun enableAdb(): Boolean = setAdbEnabled(true)
 
+    override fun setWirelessDebuggingEnabled(enabled: Boolean): Boolean {
+        return try {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val ownerAdmin = dpm.activeAdmins?.firstOrNull { admin ->
+                runCatching { dpm.isDeviceOwnerApp(admin.packageName) }.getOrDefault(false)
+            } ?: return false
+            dpm.setGlobalSetting(ownerAdmin, "adb_wifi_enabled", if (enabled) "1" else "0")
+            (Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled", 0) == 1) == enabled
+        } catch (e: Throwable) {
+            Log.w(TAG, "setWirelessDebuggingEnabled($enabled) failed", e)
+            false
+        }
+    }
+
     override fun setAdbEnabled(enabled: Boolean): Boolean {
         return try {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager

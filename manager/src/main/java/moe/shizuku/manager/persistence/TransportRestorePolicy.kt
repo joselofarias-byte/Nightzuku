@@ -9,11 +9,16 @@ package moe.shizuku.manager.persistence
  * false, so retries keep the original snapshot.
  *
  * After Binder:
- * - Developer options OFF: keep ADB on and wireless debugging off. Turning
- *   ADB_ENABLED back off was unstable on HONOR 200; Stellar leaves it on.
- * - Developer options ON with a pending snapshot: restore that exact pair.
+ * - Automatic recovery NEVER writes ADB_ENABLED back to 0. Physical HONOR 200
+ *   evidence showed that doing so kills the freshly started Shizuku server
+ *   roughly one second after Binder recovery.
+ * - Developer options OFF: keep ADB on and wireless debugging off.
+ * - Developer options ON: keep ADB on, but restore the previous Wireless
+ *   debugging state so a temporary wireless transport can still be cleaned up.
+ * - Exact ADB-off restoration remains an explicit/manual Developer control
+ *   action; it is not part of the self-healing path.
  *
- * Pending is cleared only when Android reflects the requested switches.
+ * Pending is cleared only when Android reflects this stable transport state.
  */
 object TransportRestorePolicy {
 
@@ -107,7 +112,12 @@ object TransportRestorePolicy {
         }
 
         val developerOptionsOff = !developerOptionsEnabled
-        val adbEnabled = if (developerOptionsOff) true else previousAdbEnabled
+
+        // Never disable ADB automatically after Binder recovery. On the HONOR
+        // 200 / Android 16 physical device, restoring a captured ADB=OFF state
+        // immediately killed the just-started Shizuku server and created a
+        // recover -> start -> disable ADB -> die loop.
+        val adbEnabled = true
         val wirelessEnabled = if (developerOptionsOff) false else previousWirelessEnabled
         return DesiredTransportRestore(
             apply = true,
