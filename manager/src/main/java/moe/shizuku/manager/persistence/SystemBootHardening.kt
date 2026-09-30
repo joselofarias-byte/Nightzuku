@@ -89,7 +89,7 @@ object SystemBootHardening {
         val essentialsOk = endpoint != null && idleWhitelisted && standbyActive
         val ownerOk = ownerProtected != false
 
-        Report(
+        val report = Report(
             success = essentialsOk && ownerOk && !backgroundRestricted,
             endpoint = endpoint,
             deviceOwnerProtected = ownerProtected,
@@ -104,6 +104,8 @@ object SystemBootHardening {
                 if (backgroundRestricted) append(" Android aún marca ejecución en segundo plano como restringida.")
             }
         )
+        markApplied(app, report.success)
+        report
     }
 
     suspend fun remove(context: Context): Report = withContext(Dispatchers.IO) {
@@ -148,7 +150,7 @@ object SystemBootHardening {
             app.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted == true
         }.getOrDefault(false)
 
-        Report(
+        val report = Report(
             success = endpoint != null && !idleWhitelisted && ownerProtected != true,
             endpoint = endpoint,
             deviceOwnerProtected = ownerProtected,
@@ -158,6 +160,20 @@ object SystemBootHardening {
             output = output.takeLast(MAX_REPORT_CHARS),
             message = "Blindaje persistente retirado; app-ops devueltos a default."
         )
+        markApplied(app, false)
+        report
+    }
+
+    fun wasApplied(context: Context): Boolean {
+        val app = context.applicationContext
+        val prefsContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            app.createDeviceProtectedStorageContext()
+        } else {
+            app
+        }
+        return prefsContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_APPLIED, false)
     }
 
     fun localStatus(context: Context): Pair<Int?, Boolean> {
@@ -209,9 +225,25 @@ object SystemBootHardening {
         return null to lastError
     }
 
+    private fun markApplied(context: Context, applied: Boolean) {
+        val app = context.applicationContext
+        val prefsContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            app.createDeviceProtectedStorageContext()
+        } else {
+            app
+        }
+        prefsContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_APPLIED, applied)
+            .apply()
+    }
+
     private fun shellQuote(value: String): String {
         return "'" + value.replace("'", "'\\''") + "'"
     }
 
+    private const val PREFS_NAME = "system_boot_hardening"
+    private const val KEY_APPLIED = "applied"
     private const val MAX_REPORT_CHARS = 8_000
 }
