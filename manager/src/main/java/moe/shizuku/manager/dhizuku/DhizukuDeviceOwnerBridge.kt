@@ -54,6 +54,46 @@ object DhizukuDeviceOwnerBridge {
         )
     }
 
+    /**
+     * Protect/unprotect Nightzuku through the existing Dhizuku Device Owner.
+     *
+     * Android's user-control-disabled policy prevents the user-facing force-stop
+     * / clear-data controls from being applied to the package. The current list
+     * is preserved; Nightzuku only adds/removes its own package.
+     */
+    fun setNightzukuUserControlProtected(
+        context: Context,
+        enabled: Boolean
+    ): Result<Boolean> = runCatching {
+        val elevated = elevatedDpm(context)
+        val packageName = context.applicationContext.packageName
+        val packages = elevated.dpm
+            .getUserControlDisabledPackages(elevated.admin)
+            .toMutableSet()
+
+        if (enabled) {
+            packages.add(packageName)
+        } else {
+            packages.remove(packageName)
+        }
+
+        elevated.dpm.setUserControlDisabledPackages(
+            elevated.admin,
+            packages.sorted()
+        )
+
+        elevated.dpm
+            .getUserControlDisabledPackages(elevated.admin)
+            .contains(packageName)
+    }
+
+    fun isNightzukuUserControlProtected(context: Context): Result<Boolean> = runCatching {
+        val elevated = elevatedDpm(context)
+        elevated.dpm
+            .getUserControlDisabledPackages(elevated.admin)
+            .contains(context.applicationContext.packageName)
+    }
+
     private fun elevatedDpm(context: Context): ElevatedDpm {
         val app = context.applicationContext
 
