@@ -84,6 +84,11 @@ public final class MainActivity extends Activity {
             .format(new Date(millis));
     }
 
+    private String currentTime(long millis, long bootEpoch) {
+        return MonitorTimeline.belongsToCurrentBoot(millis, bootEpoch)
+            ? time(millis) : "Sin registro de este arranque";
+    }
+
     private String buildReport() {
         long boot = MonitorStore.bootTime(this);
         long post = MonitorStore.postTime(this);
@@ -92,19 +97,29 @@ public final class MainActivity extends Activity {
         long removed = MonitorStore.removedTime(this);
         long systemBootEpoch = MonitorTimeline.bootEpoch(
             System.currentTimeMillis(), SystemClock.elapsedRealtime());
-        String verdict = boot == 0 ? "Aún no se registró BOOT_COMPLETED en este monitor."
-            : !listenerEnabled() ? "Falta conceder acceso a notificaciones; no se puede evaluar Nightzuku."
-            : post == 0 ? "El monitor arrancó, pero no observó la notificación persistente de Nightzuku."
-            : "Nightzuku publicó su notificación persistente después del reinicio.";
+        String verdict;
+        switch (MonitorTimeline.observation(listenerEnabled(), connected, post, systemBootEpoch)) {
+            case OBSERVED:
+                verdict = "Nightzuku publicó su notificación persistente en este arranque.";
+                break;
+            case NO_ACCESS:
+                verdict = "Falta conceder acceso a notificaciones; no se puede evaluar Nightzuku.";
+                break;
+            case WAITING_FOR_LISTENER:
+                verdict = "El observador aún no se conectó en este arranque; resultado indeterminado.";
+                break;
+            default:
+                verdict = "El observador se conectó, pero no observó la notificación de Nightzuku en este arranque.";
+        }
         return "MONITOR DE ARRANQUE NIGHTZUKU\n\n"
             + "Resultado: " + verdict + "\n\n"
             + "Dispositivo: " + Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")\n"
             + "Acceso a notificaciones: " + (listenerEnabled() ? "Concedido" : "Sin conceder") + "\n"
-            + "BOOT_COMPLETED recibido: " + time(boot) + "\n"
-            + "Observador conectado: " + time(connected) + "\n"
-            + "Notificación NightDog publicada: " + time(post) + "\n"
-            + "Notificación observada: " + time(observed) + "\n"
-            + "Notificación retirada: " + time(removed) + "\n"
+            + "BOOT_COMPLETED recibido: " + currentTime(boot, systemBootEpoch) + "\n"
+            + "Observador conectado: " + currentTime(connected, systemBootEpoch) + "\n"
+            + "Notificación NightDog publicada: " + currentTime(post, systemBootEpoch) + "\n"
+            + "Notificación observada: " + currentTime(observed, systemBootEpoch) + "\n"
+            + "Notificación retirada: " + currentTime(removed, systemBootEpoch) + "\n"
             + (MonitorTimeline.belongsToCurrentBoot(post, systemBootEpoch)
                 ? "Demora desde arranque del sistema: "
                     + MonitorTimeline.secondsSinceBoot(post, systemBootEpoch) + " segundos\n"

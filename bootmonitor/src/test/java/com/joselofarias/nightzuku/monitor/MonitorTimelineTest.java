@@ -30,4 +30,23 @@ public final class MonitorTimelineTest {
         assertEquals(5L, MonitorTimeline.secondsSinceBoot(1_580_999L, 1_575_000L));
         assertEquals(0L, MonitorTimeline.secondsSinceBoot(1_574_000L, 1_575_000L));
     }
+    @Test public void previousBootCannotBeReportedAsSuccessful() {
+        assertEquals(MonitorTimeline.Observation.WAITING_FOR_LISTENER,
+            MonitorTimeline.observation(true, 900_000, 910_000, 1_000_000));
+        assertEquals(MonitorTimeline.Observation.NO_NOTIFICATION,
+            MonitorTimeline.observation(true, 1_005_000, 910_000, 1_000_000));
+    }
+
+    @Test public void observationDoesNotDependOnBootReceiverArrival() {
+        assertEquals(MonitorTimeline.Observation.OBSERVED,
+            MonitorTimeline.observation(true, 0, 1_005_000, 1_000_000));
+        assertEquals(MonitorTimeline.Observation.NO_ACCESS,
+            MonitorTimeline.observation(false, 0, 0, 1_000_000));
+    }
+
+    @Test public void newBootPostReplacesStalePostBeforeReceiverClearsIt() {
+        assertTrue(MonitorTimeline.shouldRecordPost(910_000, 1_005_000, 1_000_000));
+        assertFalse(MonitorTimeline.shouldRecordPost(1_005_000, 1_006_000, 1_000_000));
+        assertFalse(MonitorTimeline.shouldRecordPost(0, 910_000, 1_000_000));
+    }
 }
