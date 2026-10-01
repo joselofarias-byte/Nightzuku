@@ -4,13 +4,14 @@ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
 plugins {
     id('com.android.application')
     id('org.jetbrains.kotlin.plugin.compose')
+    id('org.jetbrains.kotlin.plugin.serialization')
     id('dev.rikka.tools.refine')
 }
 
 android {
     namespace 'moe.shizuku.manager'
     defaultConfig {
-        applicationId "com.joselofarias.nightzuku"
+        applicationId "kerneldroid.nightzuku"
         versionCode rootProject.ext.versionCode
         versionName rootProject.ext.versionName
         externalNativeBuild {
@@ -40,7 +41,7 @@ android {
             minifyEnabled true
             shrinkResources true
             vcsInfo.include false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            proguardFiles 'proguard-rules.pro'
         }
     }
     externalNativeBuild {
@@ -122,6 +123,10 @@ afterEvaluate {
     tasks.getByName('preDebugBuild').dependsOn(':shell:copyDebugShellDex')
     tasks.getByName('mergeReleaseAssets').dependsOn(':shell:copyReleaseShellDex')
     tasks.getByName('mergeDebugAssets').dependsOn(':shell:copyDebugShellDex')
+    tasks.getByName('preReleaseBuild').dependsOn(':shell:buildReleaseTapiDex')
+    tasks.getByName('preDebugBuild').dependsOn(':shell:buildDebugTapiDex')
+    tasks.getByName('mergeReleaseAssets').dependsOn(':shell:buildReleaseTapiDex')
+    tasks.getByName('mergeDebugAssets').dependsOn(':shell:buildDebugTapiDex')
 
     ['debug', 'release'].each { variantName ->
         def capitalized = variantName.capitalize()
@@ -172,24 +177,27 @@ dependencies {
     implementation project(':starter')
     implementation project(':api')
     implementation project(':provider')
+    implementation project(':common')
+    implementation project(':tapi')
+    compileOnly project(':nightdog')
 
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
 
-    implementation platform('androidx.compose:compose-bom:2026.04.01')
+    implementation platform('androidx.compose:compose-bom:2026.06.00')
     implementation 'androidx.compose.animation:animation'
     implementation 'androidx.compose.foundation:foundation'
     implementation 'androidx.compose.material:material-icons-core'
     implementation 'androidx.compose.material:material-icons-extended'
-    implementation 'androidx.compose.material3:material3:1.5.0-alpha18'
+    implementation 'androidx.compose.material3:material3:1.5.0-alpha22'
     implementation 'androidx.compose.runtime:runtime'
     implementation 'androidx.compose.runtime:runtime-livedata'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     
-    implementation 'androidx.wear.compose:compose-foundation:1.5.0-alpha04'
-    implementation 'androidx.wear.compose:compose-material3:1.0.0-alpha30'
+    implementation 'androidx.wear.compose:compose-foundation:1.6.2'
+    implementation 'androidx.wear.compose:compose-material3:1.6.2'
 
     implementation 'androidx.tv:tv-foundation:1.0.0'
     implementation 'androidx.tv:tv-material:1.1.0'
@@ -199,9 +207,9 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.19.0'
     implementation 'androidx.fragment:fragment-ktx:1.8.9'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
-    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.11.0-beta01'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0-beta01'
-    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.11.0-beta01'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.11.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0'
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.11.0'
     implementation 'androidx.preference:preference-ktx:1.2.1'
 
     implementation 'com.google.android.material:material:1.14.0'
@@ -224,7 +232,7 @@ dependencies {
     implementation 'dev.rikka.rikkax.lifecycle:lifecycle-shared-viewmodel:1.0.1'
     implementation 'dev.rikka.rikkax.lifecycle:lifecycle-viewmodel-lazy:2.0.0'
 
-    implementation 'io.github.vvb2060.ndk:boringssl:20251124-lto-ndk29'
+    implementation 'io.github.vvb2060.ndk:boringssl:20251124'
     implementation 'org.lsposed.libcxx:libcxx:29.0.14206865'
 
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
@@ -232,6 +240,12 @@ dependencies {
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.84'
 
     implementation 'me.zhanghai.android.appiconloader:appiconloader:1.5.0'
+
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
+    implementation 'io.coil-kt:coil-compose:2.7.0'
 }
 
 apply from: rootProject.file('signing.gradle')

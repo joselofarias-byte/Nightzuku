@@ -19,6 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.material3.lazy.rememberTransformationSpec
+import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
 import androidx.wear.compose.material3.Text as WearText
@@ -26,7 +29,6 @@ import androidx.wear.compose.material3.TitleCard as WearTitleCard
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ui.compose.WearScreenScaffold
 import moe.shizuku.manager.ui.compose.WearScreenTitle
-import androidx.wear.compose.material3.lazy.scrollTransform
 
 @Composable
 fun WearSettingsScreen(
@@ -42,6 +44,7 @@ fun WearSettingsScreen(
     moduleAccessMode: moe.shizuku.manager.module.ModuleSettings.AccessMode,
     onModuleAccessModeClick: () -> Unit,
     onCustomPermissionsClick: () -> Unit,
+    onGitHubTokenClick: () -> Unit,
 
     showNightDialog: Boolean,
     nightLabels: List<String>,
@@ -59,6 +62,8 @@ fun WearSettingsScreen(
     val customPermissionsTitle = stringResource(R.string.modules_custom_permissions)
     val labFeaturesTitle = stringResource(R.string.lab_features_title)
 
+    val transformationSpec = rememberTransformationSpec()
+
     WearScreenScaffold { state ->
         TransformingLazyColumn(
             state = state,
@@ -67,11 +72,7 @@ fun WearSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                WearScreenTitle(
-                    icon = Icons.Rounded.RestartAlt,
-                    title = stringResource(R.string.settings_title),
-                    modifier = Modifier.scrollTransform(this)
-                )
+                WearScreenTitle(icon = Icons.Rounded.RestartAlt, title = stringResource(R.string.settings_title))
             }
 
             item {
@@ -80,7 +81,8 @@ fun WearSettingsScreen(
                     onCheckedChange = onStartOnBootChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     label = { WearText(startOnBootTitle) },
                     icon = { WearIcon(Icons.Rounded.RestartAlt, contentDescription = null) }
                 )
@@ -91,7 +93,8 @@ fun WearSettingsScreen(
                     onClick = onNightModeClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     title = { WearText(nightModeTitle) },
                     subtitle = { WearText(nightModeSummary) }
                 )
@@ -103,7 +106,8 @@ fun WearSettingsScreen(
                     onCheckedChange = onBlackNightThemeChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     label = { WearText(blackThemeTitle) },
                     icon = { WearIcon(Icons.Rounded.DarkMode, contentDescription = null) }
                 )
@@ -115,7 +119,8 @@ fun WearSettingsScreen(
                     onCheckedChange = onUseSystemColorChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     label = { WearText(systemColorTitle) },
                     icon = { WearIcon(Icons.Rounded.Palette, contentDescription = null) }
                 )
@@ -126,7 +131,8 @@ fun WearSettingsScreen(
                     onClick = onModuleAccessModeClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     title = { WearText(accessModeTitle) },
                     subtitle = { WearText(accessModeSummary) }
                 )
@@ -138,7 +144,8 @@ fun WearSettingsScreen(
                         onClick = onCustomPermissionsClick,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .scrollTransform(this),
+                            .transformedHeight(this, transformationSpec),
+                        transformation = SurfaceTransformation(transformationSpec),
                         title = { WearText(customPermissionsTitle) }
                     )
                 }
@@ -149,8 +156,21 @@ fun WearSettingsScreen(
                     onClick = onLabFeaturesClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     title = { WearText(labFeaturesTitle) }
+                )
+            }
+
+            item {
+                WearTitleCard(
+                    onClick = onGitHubTokenClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
+                    title = { WearText(stringResource(R.string.update_settings_github_pat)) },
+                    subtitle = { WearText(stringResource(R.string.update_settings_github_pat_title)) }
                 )
             }
         }

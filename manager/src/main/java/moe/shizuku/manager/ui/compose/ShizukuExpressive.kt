@@ -299,12 +299,11 @@ fun WearScreenScaffold(
 @Composable
 fun WearScreenTitle(
     icon: ImageVector,
-    title: String,
-    modifier: Modifier = Modifier
+    title: String
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = 8.dp)
     ) {
         WearIcon(
             imageVector = icon,
@@ -323,16 +322,15 @@ fun WearScreenTitle(
 
 @Composable
 fun WearScreenTitle(
-    @DrawableRes icon: Int,
-    title: String,
-    modifier: Modifier = Modifier
+    @androidx.annotation.DrawableRes icon: Int,
+    title: String
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = 8.dp)
     ) {
         WearIcon(
-            painter = painterResource(id = icon),
+            painter = painterResource(icon),
             contentDescription = null,
             modifier = Modifier.size(24.dp),
             tint = WearMaterialTheme.colorScheme.primary
@@ -748,25 +746,7 @@ fun ExpressiveSwitch(
             }
         } else {
             null
-        },
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = Color(0xFFC8E6C9),
-            checkedTrackColor = Color(0xFF2E7D32),
-            checkedIconColor = Color(0xFF1B5E20),
-            checkedBorderColor = Color.Transparent,
-            uncheckedThumbColor = MaterialTheme.colorScheme.tertiary,
-            uncheckedTrackColor = MaterialTheme.colorScheme.tertiaryContainer,
-            uncheckedBorderColor = Color.Transparent,
-            uncheckedIconColor = MaterialTheme.colorScheme.onTertiary,
-            disabledCheckedThumbColor = Color(0xFFC8E6C9).copy(alpha = 0.38f),
-            disabledCheckedTrackColor = Color(0xFF2E7D32).copy(alpha = 0.38f),
-            disabledCheckedIconColor = Color(0xFF1B5E20).copy(alpha = 0.38f),
-            disabledCheckedBorderColor = Color.Transparent,
-            disabledUncheckedThumbColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.38f),
-            disabledUncheckedTrackColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.38f),
-            disabledUncheckedBorderColor = Color.Transparent,
-            disabledUncheckedIconColor = MaterialTheme.colorScheme.onTertiary.copy(alpha = 0.38f)
-        )
+        }
     )
 }
 
@@ -835,6 +815,7 @@ private fun roundedIconFor(@DrawableRes icon: Int): ImageVector? {
         R.drawable.ic_terminal_24 -> Icons.Rounded.Terminal
         R.drawable.ic_code_24dp -> Icons.Rounded.Code
         R.drawable.ic_server_ok_24dp -> Icons.Rounded.Check
+        R.drawable.ic_outline_store_24 -> Icons.Rounded.Apps
         else -> null
     }
 }

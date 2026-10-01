@@ -8,14 +8,6 @@
     <plurals name="home_app_management_authorized_apps_count">
         <item quantity="other">已授权 %d 个应用</item>
     </plurals>
-    <plurals name="home_app_management_unauthorized_apps_count">
-        <item quantity="other">未授权 %d 个应用</item>
-    </plurals>
-    <string name="home_app_management_no_authorized_apps">无已授权应用</string>
-    <string name="home_app_management_no_unauthorized_apps">无未授权应用</string>
-    <string name="app_management_search_placeholder">搜索应用</string>
-    <string name="app_management_search_empty">未找到应用</string>
-    <string name="app_management_search_clear">清除输入</string>
 
     <!-- Terminal -->
     <string name="home_terminal_title">在终端中使用 Nightzuku</string>
@@ -34,4 +26,63 @@
 
     <!-- Lab Features -->
     <string name="lab_features_title">实验室功能</string>
+
+    <!-- Update Settings -->
+    <string name="update_settings_title">更新设置</string>
+    <string name="update_settings_catalog">模块目录</string>
+    <string name="update_settings_catalog_enabled">启用目录</string>
+    <string name="update_settings_catalog_enabled_summary">显示从 GitHub Topics 发现的模块</string>
+    <string name="update_settings_frequency">更新频率</string>
+    <string name="update_settings_frequency_label">检查更新</string>
+    <string name="update_settings_frequency_manual">手动</string>
+    <string name="update_settings_frequency_daily">每天</string>
+    <string name="update_settings_frequency_weekly">每周</string>
+    <string name="update_settings_install_mode">安装方式</string>
+    <string name="update_settings_install_mode_label">默认安装方法</string>
+    <string name="update_settings_install_mode_sources">从源码编译</string>
+    <string name="update_settings_install_mode_release">下载发布版 ZIP</string>
+    <string name="update_settings_github">GitHub</string>
+    <string name="update_settings_github_pat">个人访问令牌</string>
+    <string name="update_settings_github_pat_set">令牌已设置</string>
+    <string name="update_settings_github_pat_unset">未设置（60 次请求/小时）</string>
+    <string name="update_settings_github_pat_title">GitHub Personal Access Token</string>
+    <string name="update_settings_github_pat_description">可选。GitHub PAT 可将 API 速率限制从每小时 60 次提升至 5000 次。公共仓库仅需 public_repo 权限。</string>
+    <string name="update_settings_github_pat_label">令牌</string>
+    <string name="update_settings_github_pat_show">显示</string>
+    <string name="update_settings_github_pat_hide">隐藏</string>
+    <string name="update_settings_github_pat_clear">清除</string>
+    <string name="update_settings_github_pat_delete">删除令牌</string>
+    <string name="update_settings_github_pat_delete_summary">移除已保存的 GitHub 令牌</string>
+
+    <!-- Module Catalog -->
+    <string name="modules_catalog">目录</string>
+    <string name="modules_catalog_title">模块目录</string>
+    <string name="modules_catalog_empty">未找到模块</string>
+    <string name="modules_catalog_sort_newest">最新</string>
+    <string name="modules_catalog_sort_oldest">最早</string>
+    <string name="modules_catalog_sort_stars">按星标</string>
+    <string name="modules_catalog_sort_official">官方</string>
+    <string name="modules_catalog_install_sources">从源码安装</string>
+    <string name="modules_catalog_install_release">下载发布版 ZIP</string>
+    <string name="modules_catalog_install_description">选择安装此模块的方式：</string>
+    <string name="modules_catalog_install_success">模块安装成功</string>
+    <string name="modules_catalog_install_failed">安装失败：%s</string>
+    <string name="modules_catalog_token_required">需要 GitHub 令牌</string>
+    <string name="modules_catalog_token_hint">GitHub Personal Access Token</string>
+    <string name="modules_catalog_token_description">搜索 GitHub 上的模块需要令牌。你可以在 github.com/settings/tokens 创建一个。</string>
+    <string name="modules_catalog_token_format_warning">令牌应以 ghp_ 或 github_pat_ 开头，且至少 30 个字符</string>
+    <string name="modules_catalog_loading">正在加载目录…</string>
+    <string name="modules_catalog_error">加载目录失败</string>
+    <string name="modules_catalog_install">安装</string>
+    <string name="modules_catalog_installing">正在安装…</string>
+    <string name="modules_catalog_view_github">在 GitHub 上查看</string>
+    <string name="modules_catalog_skip_token">跳过</string>
+    <string name="modules_catalog_open">打开目录</string>
+
+    <!-- Wear Catalog -->
+    <string name="wear_catalog_sort_newest">最新</string>
+    <string name="wear_catalog_sort_stars">按星标</string>
+    <string name="wear_catalog_sort_official">官方</string>
+    <string name="wear_catalog_sort_by">排序方式</string>
+    <string name="wear_catalog_filter">筛选</string>
 </resources>
