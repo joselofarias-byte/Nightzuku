@@ -7,6 +7,7 @@ on:
       - 'fix/**'
       - 'research/**'
       - 'integration/**'
+      - 'work/honor200-recovery-20261001'
   pull_request:
     branches:
       - main
