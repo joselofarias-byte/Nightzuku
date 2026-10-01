@@ -50,6 +50,7 @@ import moe.shizuku.manager.persistence.PersistenceUiMapper
 import moe.shizuku.manager.persistence.PersistenceUiModel
 import moe.shizuku.manager.persistence.RecoveryTransport
 import moe.shizuku.manager.persistence.RecoveryTransportPolicy
+import moe.shizuku.manager.persistence.SystemBootHardening
 import moe.shizuku.manager.persistence.TcpCapability
 import moe.shizuku.manager.persistence.TcpHealth
 import moe.shizuku.manager.persistence.TcpHealthClassifier
@@ -82,6 +83,12 @@ fun MaximumPersistenceCard() {
     }
     var batteryExempt by remember {
         mutableStateOf(PersistenceActions.isBatteryOptimizationIgnored(context))
+    }
+    var systemHardeningApplied by remember {
+        mutableStateOf(SystemBootHardening.wasApplied(context))
+    }
+    var systemHardeningReport by remember {
+        mutableStateOf<SystemBootHardening.Report?>(null)
     }
     var actionStatus by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -158,11 +165,15 @@ fun MaximumPersistenceCard() {
     )
 
     val bootTrace = NightDogBootTrace.summary(context)
+    val honorDevice = PersistenceActions.isHonorMagicOsDevice()
 
     PersistenceCardBody(
         model = model,
         bootTrace = bootTrace,
+        honorDevice = honorDevice,
         batteryExempt = batteryExempt,
+        systemHardeningApplied = systemHardeningApplied,
+        systemHardeningReport = systemHardeningReport,
         developerState = developerState,
         lastResultText = lastResultText(model),
         failureCode = snapshot.lastFailureCode?.name,
@@ -176,6 +187,51 @@ fun MaximumPersistenceCard() {
                 if (opened) R.string.persistence_battery_exempt_requested
                 else R.string.persistence_battery_settings_failed
             )
+        },
+        onOpenHonorAutostart = {
+            val opened = PersistenceActions.openHonorAppLaunchSettings(context)
+            actionStatus = context.getString(
+                if (opened) R.string.persistence_honor_autostart_opened
+                else R.string.persistence_honor_autostart_failed
+            )
+        },
+        onApplySystemHardening = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val report = PersistenceActions.applySystemBootHardening(context)
+                systemHardeningReport = report
+                systemHardeningApplied = report.success
+                actionStatus = if (report.success) {
+                    context.getString(R.string.persistence_system_hardening_success)
+                } else {
+                    context.getString(
+                        R.string.persistence_system_hardening_failed,
+                        report.message
+                    )
+                }
+                busy = false
+            }
+        },
+        onRemoveSystemHardening = {
+            if (busy) return@PersistenceCardBody
+            busy = true
+            actionStatus = context.getString(R.string.persistence_action_busy)
+            scope.launch {
+                val report = PersistenceActions.removeSystemBootHardening(context)
+                systemHardeningReport = report
+                systemHardeningApplied = false
+                actionStatus = if (report.success) {
+                    context.getString(R.string.persistence_system_hardening_removed)
+                } else {
+                    context.getString(
+                        R.string.persistence_system_hardening_failed,
+                        report.message
+                    )
+                }
+                busy = false
+            }
         },
         onDesiredChange = { desired ->
             if (!desired) confirmStopKeepRunning = true
@@ -400,7 +456,10 @@ fun MaximumPersistenceCard() {
 private fun PersistenceCardBody(
     model: PersistenceUiModel,
     bootTrace: String,
+    honorDevice: Boolean,
     batteryExempt: Boolean,
+    systemHardeningApplied: Boolean,
+    systemHardeningReport: SystemBootHardening.Report?,
     developerState: DeveloperOptionsController.Snapshot,
     lastResultText: String,
     failureCode: String?,
@@ -409,6 +468,9 @@ private fun PersistenceCardBody(
     showDetails: Boolean,
     onToggleDetails: () -> Unit,
     onRequestBatteryExemption: () -> Unit,
+    onOpenHonorAutostart: () -> Unit,
+    onApplySystemHardening: () -> Unit,
+    onRemoveSystemHardening: () -> Unit,
     onDesiredChange: (Boolean) -> Unit,
     onRecoverNow: () -> Unit,
     onEnableTcp: () -> Unit,
@@ -534,6 +596,35 @@ private fun PersistenceCardBody(
                         )
                     )
                     Fact(
+                        R.string.persistence_system_hardening,
+                        stringResource(
+                            when {
+                                systemHardeningApplied ->
+                                    R.string.persistence_system_hardening_ready
+                                systemHardeningReport != null ->
+                                    R.string.persistence_system_hardening_partial
+                                else ->
+                                    R.string.persistence_system_hardening_unknown
+                            }
+                        )
+                    )
+                    Text(
+                        stringResource(R.string.persistence_system_hardening_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (honorDevice) {
+                        Fact(
+                            R.string.persistence_honor_autostart,
+                            stringResource(R.string.persistence_honor_autostart_required)
+                        )
+                        Text(
+                            stringResource(R.string.persistence_honor_autostart_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Fact(
                         R.string.persistence_developer_options,
                         stringResource(
                             if (developerState.developerOptionsEnabled) {
@@ -634,6 +725,35 @@ private fun PersistenceCardBody(
                         }
                     }
                     if (showDetails) {
+                    if (systemHardeningApplied) {
+                        OutlinedButton(
+                            enabled = !busy,
+                            onClick = onRemoveSystemHardening,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_close_24)
+                            Text(stringResource(R.string.persistence_system_hardening_remove))
+                        }
+                    } else {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onApplySystemHardening,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_server_restart)
+                            Text(stringResource(R.string.persistence_system_hardening_apply))
+                        }
+                    }
+                    if (honorDevice) {
+                        FilledTonalButton(
+                            enabled = !busy,
+                            onClick = onOpenHonorAutostart,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            ButtonIcon(R.drawable.ic_settings_outline_24dp)
+                            Text(stringResource(R.string.persistence_honor_autostart_action))
+                        }
+                    }
                     if (!batteryExempt) {
                         FilledTonalButton(
                             enabled = !busy,

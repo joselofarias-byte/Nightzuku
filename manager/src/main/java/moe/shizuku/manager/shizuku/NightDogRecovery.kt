@@ -28,6 +28,7 @@ import moe.shizuku.manager.adb.AdbTransportResolver
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.persistence.DeveloperOptionsController
 import moe.shizuku.manager.persistence.NightDogBackoff
+import moe.shizuku.manager.persistence.RecoveryCleanupPolicy
 import moe.shizuku.manager.persistence.RecoveryFailureDiagnostic
 import moe.shizuku.manager.persistence.RecoveryFailureReason
 import moe.shizuku.manager.persistence.RecoveryTransport
@@ -111,6 +112,7 @@ object NightDogRecovery {
     @Volatile private var applicationContext: Context? = null
     @Volatile private var pollingJob: Job? = null
     @Volatile private var recoveryJob: Job? = null
+    @Volatile private var transportCleanupJob: Job? = null
     @Volatile private var failedAttempts = 0
     @Volatile private var lastAttemptAt = 0L
     @Volatile private var adbMdns: AdbMdns? = null
@@ -138,8 +140,19 @@ object NightDogRecovery {
     }
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        applicationContext?.let { context ->
-            preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        handleBinderReceived()
+    }
+
+    @Synchronized
+    private fun handleBinderReceived() {
+        val context = applicationContext ?: return
+        // A late/sticky Binder is an observation, never a user's request to restart.
+        // Serialize this decision with prepareForManualStop and keep desired=off.
+        if (!isDesiredRunning(context)) {
+            NightDogBootTrace.note(context, "binder_received_ignored", "desired=off")
+            return
+        }
+        run {
             NightDogBootScheduler.schedule(context)
             NightDogBootTrace.note(context, "binder_received", "server alive")
             clearFailure()
@@ -147,7 +160,8 @@ object NightDogRecovery {
             // Do not touch the recovery transport immediately after Binder.
             // Physical HONOR 200 evidence showed that cleaning ADB too early
             // can kill the freshly started server and create a recovery loop.
-            scope.launch {
+            transportCleanupJob?.cancel()
+            transportCleanupJob = scope.launch {
                 NightDogBootTrace.note(
                     context,
                     "transport_cleanup_wait",
@@ -157,18 +171,17 @@ object NightDogRecovery {
                 val checks = (TRANSPORT_CLEANUP_STABILITY_MS / TRANSPORT_STABILITY_POLL_MS)
                     .toInt()
                     .coerceAtLeast(1)
-                repeat(checks) {
-                    delay(TRANSPORT_STABILITY_POLL_MS)
-                    if (!Shizuku.pingBinder()) {
-                        NightDogBootTrace.note(
-                            context,
-                            "transport_cleanup_skipped",
-                            "binder lost before cleanup"
-                        )
-                        return@launch
-                    }
+                if (!RecoveryCleanupPolicy.awaitStableBinder(
+                        checks, TRANSPORT_STABILITY_POLL_MS,
+                        { isDesiredRunning(context) }, { Shizuku.pingBinder() })) {
+                    NightDogBootTrace.note(
+                        context, "transport_cleanup_skipped",
+                        "manual stop or binder lost before cleanup"
+                    )
+                    return@launch
                 }
 
+                if (!isDesiredRunning(context)) return@launch
                 val restored = DeveloperOptionsController
                     .restoreAdbTransportAfterRecovery(context)
                 val transportCleanupDetail =
@@ -187,6 +200,7 @@ object NightDogRecovery {
                     )
                 }
 
+                if (!isDesiredRunning(context)) return@launch
                 try {
                     val wirelessCleanup =
                         DhizukuAdbRecovery.restoreWirelessAfterRecoveryIfNeeded(context)
@@ -224,6 +238,7 @@ object NightDogRecovery {
                 }
 
                 delay(TRANSPORT_POST_CLEANUP_VERIFY_MS)
+                if (!isDesiredRunning(context)) return@launch
                 if (Shizuku.pingBinder()) {
                     NightDogBootTrace.note(
                         context,
@@ -384,6 +399,8 @@ object NightDogRecovery {
     fun prepareForManualStop(context: Context) {
         applicationContext = context.applicationContext
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, false).apply()
+        transportCleanupJob?.cancel()
+        transportCleanupJob = null
         NightDogBootScheduler.cancel(context)
         NightDogBootTrace.note(context, "manual_stop", "desired=off")
         NightDogForegroundService.stop(context)
@@ -413,6 +430,8 @@ object NightDogRecovery {
 
     @Synchronized
     fun stop() {
+        transportCleanupJob?.cancel()
+        transportCleanupJob = null
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
         Shizuku.removeBinderDeadListener(binderDeadListener)
         pollingJob?.cancel()
