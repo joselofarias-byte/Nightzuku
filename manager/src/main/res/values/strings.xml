@@ -469,4 +469,20 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="persistence_battery_exempt_action">Exclude from battery optimization</string>
     <string name="persistence_battery_exempt_requested">Android battery settings opened. Approve the exclusion for Nightzuku.</string>
     <string name="persistence_battery_settings_failed">Could not open battery optimization settings.</string>
+    <string name="persistence_honor_autostart">HONOR / MagicOS app launch</string>
+    <string name="persistence_honor_autostart_required">Manual MagicOS setting · not automatically verifiable</string>
+    <string name="persistence_honor_autostart_action">Open HONOR app launch settings</string>
+    <string name="persistence_honor_autostart_help">Disable automatic management for Nightzuku, then enable Auto-launch, Secondary launch and Run in background.</string>
+    <string name="persistence_honor_autostart_opened">HONOR app launch settings opened.</string>
+    <string name="persistence_honor_autostart_failed">Could not open HONOR app launch settings.</string>
+    <string name="persistence_system_hardening">System boot hardening</string>
+    <string name="persistence_system_hardening_ready">Applied</string>
+    <string name="persistence_system_hardening_partial">Incomplete</string>
+    <string name="persistence_system_hardening_unknown">Not checked</string>
+    <string name="persistence_system_hardening_apply">Apply system boot hardening</string>
+    <string name="persistence_system_hardening_remove">Remove system boot hardening</string>
+    <string name="persistence_system_hardening_note">Uses the existing authenticated ADB transport and Dhizuku Device Owner. It adds Nightzuku to Android\'s idle allowlist, keeps the standby bucket active, allows background execution and protects the package from user force-stop. No VPN is used.</string>
+    <string name="persistence_system_hardening_success">System boot hardening applied.</string>
+    <string name="persistence_system_hardening_removed">System boot hardening removed.</string>
+    <string name="persistence_system_hardening_failed">System boot hardening incomplete: %1$s</string>
 </resources>

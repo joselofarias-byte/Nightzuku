@@ -469,4 +469,20 @@ Nota: Nightzuku es el sucesor moderno de Shizuku. Para evitar conflictos, desins
     <string name="persistence_battery_exempt_action">Excluir de optimización de batería</string>
     <string name="persistence_battery_exempt_requested">Se abrieron los ajustes de batería de Android. Aceptá la exclusión para Nightzuku.</string>
     <string name="persistence_battery_settings_failed">No se pudieron abrir los ajustes de optimización de batería.</string>
+    <string name="persistence_honor_autostart">Inicio de aplicaciones HONOR / MagicOS</string>
+    <string name="persistence_honor_autostart_required">Configuración manual de MagicOS · no verificable automáticamente</string>
+    <string name="persistence_honor_autostart_action">Abrir inicio de aplicaciones HONOR</string>
+    <string name="persistence_honor_autostart_help">Desactivá la administración automática de Nightzuku y activá Inicio automático, Inicio secundario y Ejecutar en segundo plano.</string>
+    <string name="persistence_honor_autostart_opened">Se abrieron los ajustes de inicio de aplicaciones de HONOR.</string>
+    <string name="persistence_honor_autostart_failed">No se pudieron abrir los ajustes de inicio de aplicaciones de HONOR.</string>
+    <string name="persistence_system_hardening">Blindaje de arranque del sistema</string>
+    <string name="persistence_system_hardening_ready">Aplicado</string>
+    <string name="persistence_system_hardening_partial">Incompleto</string>
+    <string name="persistence_system_hardening_unknown">Sin comprobar</string>
+    <string name="persistence_system_hardening_apply">Aplicar blindaje de arranque</string>
+    <string name="persistence_system_hardening_remove">Retirar blindaje de arranque</string>
+    <string name="persistence_system_hardening_note">Usa el ADB autenticado existente y el Device Owner de Dhizuku. Agrega Nightzuku a la whitelist de inactividad de Android, mantiene el standby en active, permite ejecución en segundo plano y protege el paquete frente a Forzar detención del usuario. No usa VPN.</string>
+    <string name="persistence_system_hardening_success">Blindaje de arranque aplicado.</string>
+    <string name="persistence_system_hardening_removed">Blindaje de arranque retirado.</string>
+    <string name="persistence_system_hardening_failed">Blindaje de arranque incompleto: %1$s</string>
 </resources>
