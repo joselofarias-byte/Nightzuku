@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import moe.shizuku.manager.AppConstants
+import moe.shizuku.manager.persistence.BootRescueJobPolicy
 import moe.shizuku.manager.utils.UserHandleCompat
 
 /**
@@ -37,10 +38,17 @@ object NightDogBootScheduler {
         }
 
         val scheduler = app.getSystemService(JobScheduler::class.java) ?: return false
-        val builder = JobInfo.Builder(
-            JOB_ID,
-            ComponentName(app, NightDogBootJobService::class.java)
-        )
+        val component = ComponentName(app, NightDogBootJobService::class.java)
+        val existing = scheduler.allPendingJobs.firstOrNull { it.id == JOB_ID }
+        if (existing != null && BootRescueJobPolicy.keepExisting(
+                existing.isPersisted, existing.isPeriodic,
+                existing.service == component, existing.intervalMillis, PERIOD_MS)) {
+            // Re-scheduling an unchanged periodic job restarts its execution window.
+            // Binder reconnects must not postpone the rescue job indefinitely.
+            NightDogBootTrace.note(app, "job_schedule", "already scheduled")
+            return true
+        }
+        val builder = JobInfo.Builder(JOB_ID, component)
             .setPersisted(true)
             .setPeriodic(PERIOD_MS)
 
@@ -48,7 +56,13 @@ object NightDogBootScheduler {
             builder.setRequiresBatteryNotLow(false)
         }
 
-        val result = scheduler.schedule(builder.build())
+        val result = try {
+            scheduler.schedule(builder.build())
+        } catch (error: RuntimeException) {
+            Log.w(AppConstants.TAG, "Could not schedule persisted NightDog rescue job", error)
+            NightDogBootTrace.note(app, "job_schedule", "failed:${error.javaClass.simpleName}")
+            return false
+        }
         val ok = result == JobScheduler.RESULT_SUCCESS
         if (!ok) Log.w(AppConstants.TAG, "Could not schedule persisted NightDog rescue job")
         NightDogBootTrace.note(app, "job_schedule", if (ok) "ok" else "failed")
