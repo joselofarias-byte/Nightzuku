@@ -45,9 +45,11 @@ final class MonitorStore {
             System.currentTimeMillis(), SystemClock.elapsedRealtime());
         if (!MonitorTimeline.belongsToCurrentBoot(postTime, bootEpoch)) return;
         long existing = p.getLong(POSTED, 0);
-        if (MonitorTimeline.shouldRecordEarlierPost(existing, postTime)) {
-            p.edit().putLong(POSTED, postTime)
-                .putLong(OBSERVED, System.currentTimeMillis()).apply();
+        if (MonitorTimeline.shouldRecordPost(existing, postTime, bootEpoch)) {
+            SharedPreferences.Editor edit = p.edit().putLong(POSTED, postTime)
+                .putLong(OBSERVED, System.currentTimeMillis());
+            if (!MonitorTimeline.belongsToCurrentBoot(existing, bootEpoch)) edit.remove(REMOVED);
+            edit.apply();
         }
     }
 
