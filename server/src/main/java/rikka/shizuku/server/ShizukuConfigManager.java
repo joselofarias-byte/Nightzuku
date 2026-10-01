@@ -28,6 +28,7 @@ import rikka.hidden.compat.PackageManagerApis;
 import rikka.hidden.compat.UserManagerApis;
 import rikka.shizuku.server.ktx.HandlerKt;
 import rikka.shizuku.server.util.Android17Compat;
+import rikka.shizuku.common.util.InstalledPackagesCompat;
 
 public class ShizukuConfigManager extends ConfigManager {
 
@@ -149,7 +150,7 @@ public class ShizukuConfigManager extends ConfigManager {
         }
 
         for (int userId : UserManagerApis.getUserIdsNoThrow()) {
-            for (PackageInfo pi : Android17Compat.getInstalledPackages(PackageManager.GET_PERMISSIONS, userId)) {
+            for (PackageInfo pi : InstalledPackagesCompat.getInstalledPackagesNoThrow(PackageManager.GET_PERMISSIONS, userId)) {
                 if (pi == null
                         || pi.applicationInfo == null
                         || pi.requestedPermissions == null
@@ -207,18 +208,6 @@ public class ShizukuConfigManager extends ConfigManager {
         }
     }
 
-    public List<Integer> getAllowedUids() {
-        synchronized (this) {
-            List<Integer> result = new ArrayList<>();
-            for (ShizukuConfig.PackageEntry entry : config.packages) {
-                if ((entry.flags & ConfigManager.FLAG_ALLOWED) != 0) {
-                    result.add(entry.uid);
-                }
-            }
-            return result;
-        }
-    }
-
     private void updateLocked(int uid, List<String> packages, int mask, int values) {
         ShizukuConfig.PackageEntry entry = findLocked(uid);
         if (entry == null) {
@@ -261,6 +250,22 @@ public class ShizukuConfigManager extends ConfigManager {
     public void remove(int uid) {
         synchronized (this) {
             removeLocked(uid);
+        }
+    }
+
+    public boolean getNightDogEnabled() {
+        synchronized (this) {
+            return config.nightDogEnabled;
+        }
+    }
+
+    public void setNightDogEnabled(boolean enabled) {
+        synchronized (this) {
+            if (config.nightDogEnabled == enabled) {
+                return;
+            }
+            config.nightDogEnabled = enabled;
+            scheduleWriteLocked();
         }
     }
 }

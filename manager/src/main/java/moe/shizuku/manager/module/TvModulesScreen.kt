@@ -38,6 +38,7 @@ import androidx.tv.material3.SurfaceDefaults as TvSurfaceDefaults
 import androidx.tv.material3.Text as TvText
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ui.compose.ShizukuIcon
+import moe.shizuku.manager.ui.compose.TvMenuButton
 
 @Composable
 fun TvModulesScreen(
@@ -49,7 +50,9 @@ fun TvModulesScreen(
     onRunService: (AdbModule) -> Unit,
     onDelete: (AdbModule) -> Unit,
     onTrustChange: (AdbModule, Boolean) -> Unit,
-    onOpenWebUi: (AdbModule) -> Unit
+    onOpenWebUi: (AdbModule) -> Unit,
+    onOpenCatalog: () -> Unit = {},
+    onLabFeatures: () -> Unit = {}
 ) {
     Row(modifier = Modifier.fillMaxSize()) {
 
@@ -76,6 +79,18 @@ fun TvModulesScreen(
                 icon = R.drawable.ic_outline_arrow_upward_24,
                 label = R.string.modules_install_zip,
                 onClick = onInstallZip
+            )
+
+            TvMenuButton(
+                icon = R.drawable.ic_outline_open_in_new_24,
+                label = R.string.modules_catalog,
+                onClick = onOpenCatalog
+            )
+
+            TvMenuButton(
+                icon = R.drawable.ic_outline_info_24,
+                label = R.string.lab_features_title,
+                onClick = onLabFeatures
             )
         }
 
@@ -118,33 +133,6 @@ fun TvModulesScreen(
 }
 
 @Composable
-private fun TvMenuButton(
-    icon: Int,
-    label: Int,
-    onClick: () -> Unit
-) {
-    val alpha = if (isSystemInDarkTheme()) 0.3f else 0.12f
-    TvSurface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = TvClickableSurfaceDefaults.shape(TvMaterialTheme.shapes.medium),
-        colors = TvClickableSurfaceDefaults.colors(
-            containerColor = TvMaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha),
-            focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            ShizukuIcon(icon = icon, modifier = Modifier.size(24.dp))
-            TvText(text = stringResource(label), style = TvMaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
-@Composable
 private fun TvModuleCard(
     module: AdbModule,
     isTrusted: Boolean,
@@ -177,7 +165,7 @@ private fun TvModuleCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     TvText(
-                        text = "${module.author} • ${module.version}",
+                        text = "${module.author ?: "-"} • ${module.version ?: "-"}",
                         style = TvMaterialTheme.typography.bodySmall,
                         color = TvMaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -187,14 +175,14 @@ private fun TvModuleCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TvText(
-                        text = if (module.enabled) "ACTIVE" else "DISABLED",
+                        text = stringResource(if (module.enabled) R.string.tv_status_active else R.string.tv_status_disabled),
                         color = if (module.enabled) TvMaterialTheme.colorScheme.primary else TvMaterialTheme.colorScheme.onSurfaceVariant,
                         style = TvMaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold
                     )
                     if (isTrusted) {
                         TvText(
-                            text = "TRUSTED",
+                            text = stringResource(R.string.tv_status_trusted),
                             color = TvMaterialTheme.colorScheme.primary,
                             style = TvMaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.ExtraBold

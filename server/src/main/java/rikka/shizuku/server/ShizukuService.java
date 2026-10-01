@@ -55,6 +55,8 @@ import rikka.shizuku.server.api.IContentProviderUtils;
 import rikka.shizuku.server.util.Android17Compat;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.UserHandleCompat;
+import rikka.shizuku.common.util.InstalledPackagesCompat;
+import rikka.shizuku.nightdog.NightDog;
 
 public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuClientManager, ShizukuConfigManager> {
 
@@ -67,69 +69,14 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         Looper.loop();
     }
 
-    private static void runCompatTest() {
-        Log.i("ShizukuCompatTest", "Starting hardcore compatibility test...");
-        int userId = 0;
-        String pkg = MANAGER_APPLICATION_ID;
-        String perm = android.Manifest.permission.WRITE_SECURE_SETTINGS;
-
-        try {
-            Log.i("ShizukuCompatTest", "1. Testing getInstalledPackages...");
-            List<PackageInfo> pkgs = Android17Compat.getInstalledPackages(0, userId);
-            Log.i("ShizukuCompatTest", "   Found " + pkgs.size() + " packages.");
-
-            Log.i("ShizukuCompatTest", "2. Testing getPackageInfo...");
-            PackageInfo pi = Android17Compat.getPackageInfo(pkg, 0, userId);
-            Log.i("ShizukuCompatTest", "   Result: " + (pi != null ? "SUCCESS" : "FAIL"));
-
-            Log.i("ShizukuCompatTest", "3. Testing getApplicationInfo...");
-            ApplicationInfo ai = Android17Compat.getApplicationInfo(pkg, 0, userId);
-            Log.i("ShizukuCompatTest", "   Result: " + (ai != null ? "SUCCESS" : "FAIL"));
-
-            Log.i("ShizukuCompatTest", "4. Testing checkPermission (String, String, int)...");
-            int res1 = Android17Compat.checkPermission(perm, pkg, userId);
-            Log.i("ShizukuCompatTest", "   Result code: " + res1);
-
-            if (ai != null) {
-                Log.i("ShizukuCompatTest", "5. Testing checkPermission (String, int)...");
-                int res2 = Android17Compat.checkPermission(perm, ai.uid);
-                Log.i("ShizukuCompatTest", "   Result code: " + res2);
-            }
-
-            Log.i("ShizukuCompatTest", "6. Testing grantRuntimePermission...");
-            Android17Compat.grantRuntimePermission(pkg, perm, userId);
-            Log.i("ShizukuCompatTest", "   SUCCESS (no crash)");
-
-            Log.i("ShizukuCompatTest", "7. Testing revokeRuntimePermission...");
-            Android17Compat.revokeRuntimePermission(pkg, perm, userId);
-            Log.i("ShizukuCompatTest", "   SUCCESS (no crash)");
-
-            Log.i("ShizukuCompatTest", "HARDCORE TEST PASSED ON ANDROID 17!");
-        } catch (Throwable t) {
-            Log.e("ShizukuCompatTest", "HARDCORE TEST FAILED!", t);
-        }
-    }
-
-    // ponytail: 60 s is generous for any legitimate slow-boot ROM.
-    // if a system service truly never starts the server must not hang forever.
-    private static final int WAIT_SERVICE_TIMEOUT_S = 60;
-
     private static void waitSystemService(String name) {
-        int waited = 0;
         while (ServiceManager.getService(name) == null) {
-            if (waited >= WAIT_SERVICE_TIMEOUT_S) {
-                LOGGER.e("service " + name + " did not start within "
-                        + WAIT_SERVICE_TIMEOUT_S + "s, exiting.");
-                System.exit(51);
-            }
             try {
-                LOGGER.i("service " + name + " is not started, wait 1s. ("
-                        + waited + "/" + WAIT_SERVICE_TIMEOUT_S + ")");
+                LOGGER.i("service " + name + " is not started, wait 1s.");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
                 LOGGER.w(e.getMessage(), e);
             }
-            waited++;
         }
     }
 
@@ -142,31 +89,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     private final ShizukuClientManager clientManager;
     private final ShizukuConfigManager configManager;
     private final int managerAppId;
-
-    private void migratePermissionGrants() {
-        List<Integer> allowedUids = configManager.getAllowedUids();
-        if (allowedUids.isEmpty()) {
-            return;
-        }
-        LOGGER.i("migratePermissionGrants: checking %d authorized UIDs", allowedUids.size());
-        int migrated = 0;
-        for (int uid : allowedUids) {
-            int userId = UserHandleCompat.getUserId(uid);
-            for (String packageName : PackageManagerApis.getPackagesForUidNoThrow(uid)) {
-                PackageInfo pi = Android17Compat.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS, userId);
-                if (pi == null || pi.requestedPermissions == null || !ArraysKt.contains(pi.requestedPermissions, PERMISSION)) {
-                    continue;
-                }
-                try {
-                    Android17Compat.grantRuntimePermission(packageName, PERMISSION, userId);
-                    migrated++;
-                } catch (Throwable e) {
-                    LOGGER.w(e, "migratePermissionGrants: grant failed for %s", packageName);
-                }
-            }
-        }
-        LOGGER.i("migratePermissionGrants: granted/refreshed %d permission(s)", migrated);
-    }
+    private Runnable heartbeatRunnable;
 
     public ShizukuService() {
         super();
@@ -200,8 +123,22 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
 
         BinderSender.register(this);
 
+        if (configManager.getNightDogEnabled()) {
+            LOGGER.i("Initializing NightDog watchdog...");
+            NightDog.INSTANCE.start(60000L, 60000L);
+            LOGGER.i("NightDog watchdog initialized");
+
+            heartbeatRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    NightDog.INSTANCE.beat();
+                    mainHandler.postDelayed(this, 5000L);
+                }
+            };
+            mainHandler.post(heartbeatRunnable);
+        }
+
         mainHandler.post(() -> {
-            migratePermissionGrants();
             sendBinderToClient();
             sendBinderToManager();
         });
@@ -243,13 +180,8 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         if (UserHandleCompat.getAppId(callingUid) == managerAppId) {
             return true;
         }
-        if (clientRecord == null) {
-            if (checkCallingPermission() == PackageManager.PERMISSION_GRANTED) {
-                return true;
-            }
-            if ((getFlagsForUidInternal(callingUid, ConfigManager.MASK_PERMISSION, false) & ConfigManager.FLAG_ALLOWED) == ConfigManager.FLAG_ALLOWED) {
-                return true;
-            }
+        if (clientRecord == null && checkCallingPermission() == PackageManager.PERMISSION_GRANTED) {
+            return true;
         }
         return false;
     }
@@ -258,6 +190,11 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     public void exit() {
         enforceManagerPermission("exit");
         LOGGER.i("exit");
+        if (heartbeatRunnable != null) {
+            mainHandler.removeCallbacks(heartbeatRunnable);
+            heartbeatRunnable = null;
+        }
+        NightDog.INSTANCE.stop();
         System.exit(0);
     }
 
@@ -439,10 +376,19 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         return 0;
     }
 
+    private boolean isManagerOrAuthorized(int callingUid) {
+        int callingAppId = UserHandleCompat.getAppId(callingUid);
+        if (callingAppId == managerAppId || callingUid == 2000 || callingUid == 0) {
+            return true;
+        }
+        List<String> packages = PackageManagerApis.getPackagesForUidNoThrow(callingUid);
+        return packages.contains("com.termux");
+    }
+
     @Override
     public int getFlagsForUid(int uid, int mask) {
-        if (UserHandleCompat.getAppId(Binder.getCallingUid()) != managerAppId) {
-            LOGGER.w("updateFlagsForUid is allowed to be called only from the manager");
+        if (!isManagerOrAuthorized(Binder.getCallingUid())) {
+            LOGGER.w("getFlagsForUid is allowed to be called only from the manager or authorized clients");
             return 0;
         }
         return getFlagsForUidInternal(uid, mask, true);
@@ -450,8 +396,8 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
 
     @Override
     public void updateFlagsForUid(int uid, int mask, int value) throws RemoteException {
-        if (UserHandleCompat.getAppId(Binder.getCallingUid()) != managerAppId) {
-            LOGGER.w("updateFlagsForUid is allowed to be called only from the manager");
+        if (!isManagerOrAuthorized(Binder.getCallingUid())) {
+            LOGGER.w("updateFlagsForUid is allowed to be called only from the manager or authorized clients");
             return;
         }
 
@@ -486,7 +432,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             }
         }
 
-        configManager.update(uid, null, mask, value);
+        configManager.update(uid, PackageManagerApis.getPackagesForUidNoThrow(uid), mask, value);
     }
 
     private void onPermissionRevoked(String packageName) {
@@ -503,7 +449,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         }
 
         for (int user : users) {
-            for (PackageInfo pi : Android17Compat.getInstalledPackages(PackageManager.GET_META_DATA | PackageManager.GET_PERMISSIONS, user)) {
+            for (PackageInfo pi : InstalledPackagesCompat.getInstalledPackagesNoThrow(PackageManager.GET_META_DATA | PackageManager.GET_PERMISSIONS, user)) {
                 if (Objects.equals(MANAGER_APPLICATION_ID, pi.packageName)) continue;
                 if (pi.applicationInfo == null) continue;
 
@@ -543,6 +489,27 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             reply.writeNoException();
             result.writeToParcel(reply, android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
             return true;
+        } else if (code == ServerConstants.BINDER_TRANSACTION_setNightDogEnabled) {
+            if (UserHandleCompat.getAppId(Binder.getCallingUid()) != managerAppId) {
+                reply.writeException(new SecurityException("Permission denied"));
+                return true;
+            }
+            data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR);
+            boolean enabled = data.readInt() != 0;
+            LOGGER.i("setNightDogEnabled: %s", enabled);
+            configManager.setNightDogEnabled(enabled);
+            applyNightDogState(enabled);
+            reply.writeNoException();
+            return true;
+        } else if (code == ServerConstants.BINDER_TRANSACTION_getNightDogEnabled) {
+            if (UserHandleCompat.getAppId(Binder.getCallingUid()) != managerAppId) {
+                reply.writeException(new SecurityException("Permission denied"));
+                return true;
+            }
+            data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR);
+            reply.writeNoException();
+            reply.writeInt(configManager.getNightDogEnabled() ? 1 : 0);
+            return true;
         }
         return super.onTransact(code, data, reply, flags);
     }
@@ -553,9 +520,34 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         }
     }
 
+    private void applyNightDogState(boolean enabled) {
+        if (enabled) {
+            if (!NightDog.INSTANCE.isStarted()) {
+                LOGGER.i("Starting NightDog watchdog...");
+                NightDog.INSTANCE.start(60000L, 60000L);
+                heartbeatRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        NightDog.INSTANCE.beat();
+                        mainHandler.postDelayed(this, 5000L);
+                    }
+                };
+                mainHandler.post(heartbeatRunnable);
+                LOGGER.i("NightDog watchdog started");
+            }
+        } else {
+            if (heartbeatRunnable != null) {
+                mainHandler.removeCallbacks(heartbeatRunnable);
+                heartbeatRunnable = null;
+            }
+            NightDog.INSTANCE.stop();
+            LOGGER.i("NightDog watchdog stopped");
+        }
+    }
+
     private static void sendBinderToClient(Binder binder, int userId) {
         try {
-            for (PackageInfo pi : Android17Compat.getInstalledPackages(PackageManager.GET_PERMISSIONS, userId)) {
+            for (PackageInfo pi : InstalledPackagesCompat.getInstalledPackagesNoThrow(PackageManager.GET_PERMISSIONS, userId)) {
                 if (pi == null || pi.requestedPermissions == null)
                     continue;
 

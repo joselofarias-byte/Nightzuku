@@ -8,6 +8,7 @@ pluginManagement {
         id("com.android.application") version "9.3.0-alpha03"
         id("com.android.library") version "9.3.0-alpha03"
         id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.2.10"
         id("dev.rikka.tools.autoresconfig") version "1.2.2"
         id("dev.rikka.tools.materialthemebuilder") version "1.5.1"
         id("dev.rikka.tools.refine") version "4.4.0"
@@ -43,6 +44,7 @@ dependencyResolutionManagement {
 include ':server', ':starter', ':shell'
 include ':manager'
 include ':common'
+include ':nightdog'
 include ':shizutest'
 
 def root = "api"
@@ -77,3 +79,4 @@ project(':provider').projectDir = file("$root${File.separator}provider")
 
 include ':server-shared'
 project(':server-shared').projectDir = file("$root${File.separator}server-shared")
+
