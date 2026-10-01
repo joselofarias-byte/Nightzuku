@@ -123,10 +123,6 @@ afterEvaluate {
     tasks.getByName('preDebugBuild').dependsOn(':shell:copyDebugShellDex')
     tasks.getByName('mergeReleaseAssets').dependsOn(':shell:copyReleaseShellDex')
     tasks.getByName('mergeDebugAssets').dependsOn(':shell:copyDebugShellDex')
-    tasks.getByName('preReleaseBuild').dependsOn(':shell:buildReleaseTapiDex')
-    tasks.getByName('preDebugBuild').dependsOn(':shell:buildDebugTapiDex')
-    tasks.getByName('mergeReleaseAssets').dependsOn(':shell:buildReleaseTapiDex')
-    tasks.getByName('mergeDebugAssets').dependsOn(':shell:buildDebugTapiDex')
 
     ['debug', 'release'].each { variantName ->
         def capitalized = variantName.capitalize()
