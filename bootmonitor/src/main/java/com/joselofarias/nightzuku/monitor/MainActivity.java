@@ -2,6 +2,7 @@ package com.joselofarias.nightzuku.monitor;
 
 import android.app.Activity;
 import android.content.ContentValues;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -9,9 +10,12 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.service.notification.NotificationListenerService;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -30,7 +34,9 @@ public final class MainActivity extends Activity {
     private TextView statusDetail;
     private TextView report;
     private Button detailsButton;
+    private Button permissionButton;
     private boolean detailsVisible;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -61,9 +67,14 @@ public final class MainActivity extends Activity {
         intro.setPadding(0, 0, 0, dp(18));
         body.addView(intro);
 
-        button(body, "Dar permiso necesario", () -> {
+        permissionButton = button(body, "Dar permiso necesario", () -> {
             if (listenerEnabled()) {
-                Toast.makeText(this, "El permiso ya está concedido.", Toast.LENGTH_SHORT).show();
+                reconnectObserver();
+                Toast.makeText(
+                    this,
+                    "Permiso concedido. Intentando reconectar el monitor…",
+                    Toast.LENGTH_SHORT
+                ).show();
             } else {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
             }
@@ -79,7 +90,7 @@ public final class MainActivity extends Activity {
             ).show();
         });
 
-        button(body, "Comprobar resultado", this::refresh);
+        button(body, "Comprobar resultado", this::checkResult);
 
         TextView resultTitle = new TextView(this);
         resultTitle.setText("RESULTADO");
@@ -142,7 +153,42 @@ public final class MainActivity extends Activity {
 
     @Override public void onResume() {
         super.onResume();
-        if (report != null) refresh();
+        if (report != null) {
+            refresh();
+            if (listenerEnabled()) {
+                reconnectObserver();
+                mainHandler.postDelayed(this::refresh, 900L);
+            }
+        }
+    }
+
+    private void checkResult() {
+        refresh();
+        if (!listenerEnabled()) return;
+
+        MonitorTimeline.Observation state = observation(systemBootEpoch());
+        if (state == MonitorTimeline.Observation.WAITING_FOR_LISTENER) {
+            status.setText("… CONECTANDO EL MONITOR");
+            status.setTextColor(Color.rgb(95, 99, 104));
+            statusDetail.setText(
+                "El permiso está concedido. Android todavía no conectó el observador; "
+                    + "estoy intentando reconectarlo ahora."
+            );
+            reconnectObserver();
+            mainHandler.postDelayed(this::refresh, 700L);
+            mainHandler.postDelayed(this::refresh, 1600L);
+            mainHandler.postDelayed(this::refresh, 3000L);
+        }
+    }
+
+    private void reconnectObserver() {
+        try {
+            NotificationListenerService.requestRebind(
+                new ComponentName(this, NightzukuNotificationListener.class)
+            );
+        } catch (RuntimeException ignored) {
+            // El resultado seguirá mostrando que el observador no está conectado.
+        }
     }
 
     private boolean listenerEnabled() {
@@ -171,6 +217,9 @@ public final class MainActivity extends Activity {
 
     private void refresh() {
         long bootEpoch = systemBootEpoch();
+        boolean access = listenerEnabled();
+        permissionButton.setText(access ? "Permiso concedido ✓" : "Dar permiso necesario");
+
         switch (observation(bootEpoch)) {
             case OBSERVED:
                 status.setText("✓ NIGHTZUKU ARRANCÓ SOLO");
@@ -189,12 +238,12 @@ public final class MainActivity extends Activity {
                 );
                 break;
             case WAITING_FOR_LISTENER:
-                status.setText("… ESPERANDO DATOS");
-                status.setTextColor(Color.rgb(95, 99, 104));
+                status.setText("⚠ MONITOR SIN CONEXIÓN");
+                status.setTextColor(Color.rgb(176, 96, 0));
                 statusDetail.setText(
-                    "Todavía no hay evidencia suficiente de este arranque. "
-                        + "Si acabás de reiniciar, desbloqueá el teléfono y tocá "
-                        + "«Comprobar resultado»."
+                    "El permiso está concedido, pero Android todavía no conectó el observador. "
+                        + "Tocá «Comprobar resultado» y el monitor intentará reconectarse "
+                        + "automáticamente. Esto no abre ni modifica Nightzuku."
                 );
                 break;
             default:
@@ -227,7 +276,7 @@ public final class MainActivity extends Activity {
             case NO_ACCESS:
                 return "Falta conceder el permiso para observar notificaciones.";
             case WAITING_FOR_LISTENER:
-                return "Esperando datos de este arranque.";
+                return "El monitor tiene permiso, pero el observador todavía no está conectado.";
             default:
                 return "No se detectó el arranque automático de Nightzuku.";
         }
