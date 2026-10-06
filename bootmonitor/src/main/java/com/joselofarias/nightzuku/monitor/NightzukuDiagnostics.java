@@ -26,6 +26,13 @@ final class NightzukuDiagnostics {
         final boolean jobStart;
         final boolean jobFgsRequested;
         final String recoveryFailureDetail;
+        final long binderReceivedElapsed;
+        final long binderLostElapsed;
+        final long cleanupStableElapsed;
+        final long cleanupSkippedElapsed;
+        final long recoveryFailureElapsed;
+        final long recoverNowElapsed;
+        final long manualStartElapsed;
         final String latestEvent;
         final String latestDetail;
         final String trace;
@@ -48,6 +55,13 @@ final class NightzukuDiagnostics {
             boolean jobStart,
             boolean jobFgsRequested,
             String recoveryFailureDetail,
+            long binderReceivedElapsed,
+            long binderLostElapsed,
+            long cleanupStableElapsed,
+            long cleanupSkippedElapsed,
+            long recoveryFailureElapsed,
+            long recoverNowElapsed,
+            long manualStartElapsed,
             String latestEvent,
             String latestDetail,
             String trace
@@ -69,6 +83,13 @@ final class NightzukuDiagnostics {
             this.jobStart = jobStart;
             this.jobFgsRequested = jobFgsRequested;
             this.recoveryFailureDetail = recoveryFailureDetail;
+            this.binderReceivedElapsed = binderReceivedElapsed;
+            this.binderLostElapsed = binderLostElapsed;
+            this.cleanupStableElapsed = cleanupStableElapsed;
+            this.cleanupSkippedElapsed = cleanupSkippedElapsed;
+            this.recoveryFailureElapsed = recoveryFailureElapsed;
+            this.recoverNowElapsed = recoverNowElapsed;
+            this.manualStartElapsed = manualStartElapsed;
             this.latestEvent = latestEvent;
             this.latestDetail = latestDetail;
             this.trace = trace;
@@ -78,7 +99,7 @@ final class NightzukuDiagnostics {
             return new Snapshot(
                 false, error, "", true, false, true, true, 0L,
                 false, "", false, false, false, "", false, false,
-                "", "", "", ""
+                "", 0L, 0L, 0L, 0L, 0L, 0L, 0L, "", "", ""
             );
         }
     }
@@ -110,6 +131,13 @@ final class NightzukuDiagnostics {
                 bool(c, "job_start"),
                 bool(c, "job_fgs_requested"),
                 string(c, "recovery_failure_detail"),
+                number(c, "binder_received_elapsed"),
+                number(c, "binder_lost_elapsed"),
+                number(c, "cleanup_stable_elapsed"),
+                number(c, "cleanup_skipped_elapsed"),
+                number(c, "recovery_failure_elapsed"),
+                number(c, "recover_now_elapsed"),
+                number(c, "manual_start_elapsed"),
                 string(c, "latest_event"),
                 string(c, "latest_detail"),
                 string(c, "trace")
