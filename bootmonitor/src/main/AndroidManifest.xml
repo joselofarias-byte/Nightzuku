@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="com.joselofarias.nightzuku.permission.BOOT_DIAGNOSTICS" />
+    <queries>
+        <package android:name="com.joselofarias.nightzuku" />
+    </queries>
     <application
         android:label="Monitor Nightzuku"
         android:allowBackup="false"
