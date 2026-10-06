@@ -13,8 +13,18 @@ android {
     buildFeatures {
         buildConfig false
     }
+    signingConfigs {
+        sign
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.sign
+        }
+    }
 }
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
 }
+
+apply from: rootProject.file('signing.gradle')
