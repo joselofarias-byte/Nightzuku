@@ -50,6 +50,8 @@ object NightDogRecovery {
     private const val TRANSPORT_STABILITY_POLL_MS = 500L
     private const val TRANSPORT_POST_CLEANUP_VERIFY_MS = 2_000L
     private const val RUNNING_STABILITY_MS = 3_000L
+    private const val BINDER_START_WAIT_MS = 20_000L
+    private const val BINDER_START_POLL_MS = 250L
 
     enum class Stage {
         IDLE,
@@ -174,9 +176,16 @@ object NightDogRecovery {
                 if (!RecoveryCleanupPolicy.awaitStableBinder(
                         checks, TRANSPORT_STABILITY_POLL_MS,
                         { isDesiredRunning(context) }, { Shizuku.pingBinder() })) {
+                    val desired = isDesiredRunning(context)
+                    val binderAlive = Shizuku.pingBinder()
                     NightDogBootTrace.note(
-                        context, "transport_cleanup_skipped",
-                        "manual stop or binder lost before cleanup"
+                        context,
+                        "transport_cleanup_skipped",
+                        when {
+                            !desired -> "manual stop before cleanup"
+                            !binderAlive -> "binder lost before cleanup"
+                            else -> "stability check aborted before cleanup"
+                        }
                     )
                     return@launch
                 }
@@ -278,6 +287,9 @@ object NightDogRecovery {
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        applicationContext?.let {
+            NightDogBootTrace.note(it, "binder_lost", "dead listener")
+        }
         lastBinderLostAt = SystemClock.elapsedRealtime()
         runningSinceAt = 0L
         currentServerPid = null
@@ -317,6 +329,11 @@ object NightDogRecovery {
                     if (currentServerPid == null) refreshServerPid()
                 } else if (isDesiredRunning()) {
                     if (_snapshot.value.binderAlive) {
+                        NightDogBootTrace.note(
+                            context,
+                            "binder_lost",
+                            "poll detected binder loss"
+                        )
                         lastBinderLostAt = SystemClock.elapsedRealtime()
                         runningSinceAt = 0L
                         currentServerPid = null
@@ -812,9 +829,12 @@ object NightDogRecovery {
                         throw error
                     }
                 }
-                repeat(24) {
+                val checks = (BINDER_START_WAIT_MS / BINDER_START_POLL_MS)
+                    .toInt()
+                    .coerceAtLeast(1)
+                repeat(checks) {
                     if (Shizuku.pingBinder()) return@runCatching true
-                    delay(250L)
+                    delay(BINDER_START_POLL_MS)
                 }
                 Shizuku.pingBinder()
             }
