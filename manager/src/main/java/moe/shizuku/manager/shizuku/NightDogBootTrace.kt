@@ -20,6 +20,7 @@ object NightDogBootTrace {
     private const val KEY_ELAPSED = "elapsed"
     private const val KEY_HISTORY = "history"
     private const val MAX_HISTORY = 20
+    private const val BOOT_CLOCK_TOLERANCE_MS = 2_000L
 
     private fun prefs(context: Context) =
         (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -52,6 +53,25 @@ object NightDogBootTrace {
             .commit()
     }
 
+    data class BootSnapshot(
+        val currentSummary: String,
+        val events: Set<String>,
+        val latestEvent: String?,
+        val latestDetail: String?,
+        val receiverSkipDetail: String?,
+        val foregroundFailureDetail: String?,
+        val recoveryFailureDetail: String?
+    ) {
+        fun has(event: String): Boolean = event in events
+    }
+
+    private data class Entry(
+        val wall: Long,
+        val elapsed: Long,
+        val event: String,
+        val detail: String
+    )
+
     fun summary(context: Context, maxLines: Int = 8): String {
         val p = prefs(context)
         val history = p.getString(KEY_HISTORY, "").orEmpty()
@@ -69,22 +89,52 @@ object NightDogBootTrace {
         return "$wall|$elapsed|$event|$detail"
     }
 
-    private fun formatLine(raw: String): String {
+    fun snapshot(context: Context, maxLines: Int = MAX_HISTORY): BootSnapshot {
+        val history = prefs(context).getString(KEY_HISTORY, "").orEmpty()
+        val bootEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+        val current = history.lineSequence()
+            .mapNotNull(::parseLine)
+            .filter { it.wall >= bootEpoch - BOOT_CLOCK_TOLERANCE_MS }
+            .toList()
+            .takeLast(maxLines.coerceAtLeast(1))
+
+        val latest = current.lastOrNull()
+        return BootSnapshot(
+            currentSummary = current.joinToString("\n") { formatEntry(it) },
+            events = current.mapTo(linkedSetOf()) { it.event },
+            latestEvent = latest?.event,
+            latestDetail = latest?.detail,
+            receiverSkipDetail = current.lastOrNull { it.event == "receiver_skip" }?.detail,
+            foregroundFailureDetail = current.lastOrNull { it.event == "fgs_failed" }?.detail,
+            recoveryFailureDetail = current.lastOrNull { it.event == "recovery_failure" }?.detail
+        )
+    }
+
+    private fun parseLine(raw: String): Entry? {
         val parts = raw.split('|', limit = 4)
-        if (parts.size < 4) return raw
-        val wall = parts[0].toLongOrNull() ?: return raw
-        val event = parts[2]
-        val detail = parts[3]
+        if (parts.size < 4) return null
+        return Entry(
+            wall = parts[0].toLongOrNull() ?: return null,
+            elapsed = parts[1].toLongOrNull() ?: return null,
+            event = parts[2],
+            detail = parts[3]
+        )
+    }
+
+    private fun formatLine(raw: String): String =
+        parseLine(raw)?.let(::formatEntry) ?: raw
+
+    private fun formatEntry(entry: Entry): String {
         val time = runCatching {
-            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(wall))
-        }.getOrDefault(parts[0])
+            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.wall))
+        }.getOrDefault(entry.wall.toString())
         return buildString {
             append(time)
             append(" · ")
-            append(event)
-            if (detail.isNotBlank()) {
+            append(entry.event)
+            if (entry.detail.isNotBlank()) {
                 append(" · ")
-                append(detail)
+                append(entry.detail)
             }
         }
     }
