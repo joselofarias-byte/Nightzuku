@@ -30,11 +30,13 @@ import java.util.Date;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
+    private TextView intro;
     private TextView status;
     private TextView statusDetail;
     private TextView report;
     private Button detailsButton;
     private Button permissionButton;
+    private Button prepareButton;
     private boolean detailsVisible;
     private NightzukuDiagnostics.Snapshot nightzuku;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -55,7 +57,7 @@ public final class MainActivity extends Activity {
         title.setPadding(0, 0, 0, dp(12));
         body.addView(title);
 
-        TextView intro = new TextView(this);
+        intro = new TextView(this);
         intro.setText(
             "Esta prueba responde una sola pregunta:\n"
                 + "¿Nightzuku se inicia solo al encender el teléfono?\n\n"
@@ -81,7 +83,7 @@ public final class MainActivity extends Activity {
             }
         });
 
-        button(body, "Preparar nueva prueba", () -> {
+        prepareButton = button(body, "Preparar nueva prueba", () -> {
             MonitorStore.reset(this);
             refresh();
             Toast.makeText(
@@ -221,8 +223,29 @@ public final class MainActivity extends Activity {
         boolean access = listenerEnabled();
         nightzuku = NightzukuDiagnostics.read(this);
 
-        permissionButton.setVisibility(nightzuku.available ? View.GONE : View.VISIBLE);
-        permissionButton.setText(access ? "Permiso concedido ✓" : "Dar permiso necesario");
+        if (nightzuku.available) {
+            permissionButton.setVisibility(View.GONE);
+            prepareButton.setVisibility(View.GONE);
+            intro.setText(
+                "Prueba directa:\n"
+                    + "1. Reiniciá el teléfono y desbloquealo.\n"
+                    + "2. No abras Nightzuku.\n"
+                    + "3. Abrí este monitor y tocá «Comprobar resultado».\n\n"
+                    + "No necesitás preparar la prueba ni dar permisos extra."
+            );
+        } else {
+            permissionButton.setVisibility(View.VISIBLE);
+            prepareButton.setVisibility(View.VISIBLE);
+            permissionButton.setText(access ? "Permiso concedido ✓" : "Dar permiso necesario");
+            intro.setText(
+                "Esta prueba responde una sola pregunta:\n"
+                    + "¿Nightzuku se inicia solo al encender el teléfono?\n\n"
+                    + "1. Tocá «Preparar nueva prueba».\n"
+                    + "2. Reiniciá el teléfono y desbloquealo.\n"
+                    + "3. No abras Nightzuku.\n"
+                    + "4. Abrí este monitor y tocá «Comprobar resultado»."
+            );
+        }
 
         if (nightzuku.available) {
             renderNightzukuDiagnostics();
