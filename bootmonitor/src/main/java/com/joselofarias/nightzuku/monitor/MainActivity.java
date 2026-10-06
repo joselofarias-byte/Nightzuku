@@ -227,11 +227,11 @@ public final class MainActivity extends Activity {
             permissionButton.setVisibility(View.GONE);
             prepareButton.setVisibility(View.GONE);
             intro.setText(
-                "Prueba directa:\n"
+                "Prueba completa de arranque:\n"
                     + "1. Reiniciá el teléfono y desbloquealo.\n"
-                    + "2. No abras Nightzuku.\n"
-                    + "3. Abrí este monitor y tocá «Comprobar resultado».\n\n"
-                    + "No necesitás preparar la prueba ni dar permisos extra."
+                    + "2. No abras Nightzuku ni pulses «Recuperar ahora».\n"
+                    + "3. Abrí solamente este monitor y tocá «Comprobar resultado».\n\n"
+                    + "El monitor comprobará por separado el servicio persistente y el Binder/Shizuku."
             );
         } else {
             permissionButton.setVisibility(View.VISIBLE);
@@ -303,12 +303,65 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        if (nightzuku.fgsForeground) {
-            status.setText("✓ NIGHTZUKU ARRANCÓ SOLO");
+        boolean manualIntervention =
+            nightzuku.recoverNowElapsed > 0L || nightzuku.manualStartElapsed > 0L;
+        long instability = Math.max(
+            Math.max(nightzuku.binderLostElapsed, nightzuku.cleanupSkippedElapsed),
+            nightzuku.recoveryFailureElapsed
+        );
+        boolean binderStable =
+            nightzuku.cleanupStableElapsed > 0L &&
+            nightzuku.cleanupStableElapsed > instability;
+
+        if (manualIntervention) {
+            status.setText("⚠ PRUEBA ALTERADA POR RECUPERACIÓN MANUAL");
+            status.setTextColor(Color.rgb(176, 96, 0));
+            statusDetail.setText(
+                binderStable
+                    ? "El Binder terminó estable, pero hubo una orden manual durante este arranque. "
+                        + "Eso no demuestra recuperación automática. Repetí la prueba sin abrir Nightzuku."
+                    : "Hubo una orden manual «Recuperar ahora» o «Iniciar» durante este arranque. "
+                        + "Repetí la prueba sin tocar Nightzuku para medir la persistencia real."
+            );
+            return;
+        }
+
+        if (nightzuku.fgsForeground && binderStable) {
+            status.setText("✓ ARRANQUE COMPLETO: NIGHTZUKU + BINDER");
             status.setTextColor(Color.rgb(19, 115, 51));
             statusDetail.setText(
-                "Nightzuku confirma desde su propio registro que el servicio persistente "
-                    + "entró en primer plano durante este arranque."
+                "Nightzuku arrancó solo y el Binder/Shizuku permaneció estable después "
+                    + "de la recuperación y limpieza del transporte."
+            );
+            return;
+        }
+
+        if (nightzuku.fgsForeground && nightzuku.binderReceivedElapsed > 0L) {
+            if (instability > nightzuku.binderReceivedElapsed) {
+                status.setText("✕ NIGHTZUKU ARRANCÓ, PERO EL BINDER SE PERDIÓ");
+                status.setTextColor(Color.rgb(179, 38, 30));
+                statusDetail.setText(
+                    "El servicio persistente arrancó y el Binder llegó a aparecer, "
+                        + "pero después se perdió o la recuperación falló. "
+                        + "La persistencia completa todavía no está lograda."
+                );
+            } else {
+                status.setText("⚠ NIGHTZUKU ARRANCÓ; BINDER EN VALIDACIÓN");
+                status.setTextColor(Color.rgb(176, 96, 0));
+                statusDetail.setText(
+                    "El Binder fue detectado, pero aún no hay evidencia de estabilidad "
+                        + "después de la limpieza del transporte."
+                );
+            }
+            return;
+        }
+
+        if (nightzuku.fgsForeground) {
+            status.setText("✕ NIGHTZUKU ARRANCÓ, BINDER NO CONFIRMADO");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText(
+                "El servicio persistente arrancó automáticamente, pero no hay evidencia "
+                    + "de que Binder/Shizuku haya quedado operativo en este arranque."
             );
             return;
         }
@@ -444,6 +497,13 @@ public final class MainActivity extends Activity {
                 + "Último detalle: " + nightzuku.latestDetail + "\n"
                 + "Fallo FGS: " + nightzuku.fgsFailureDetail + "\n"
                 + "Fallo recuperación: " + nightzuku.recoveryFailureDetail + "\n"
+                + "Binder recibido (elapsed): " + nightzuku.binderReceivedElapsed + "\n"
+                + "Binder perdido (elapsed): " + nightzuku.binderLostElapsed + "\n"
+                + "Cleanup estable (elapsed): " + nightzuku.cleanupStableElapsed + "\n"
+                + "Cleanup omitido (elapsed): " + nightzuku.cleanupSkippedElapsed + "\n"
+                + "Fallo recuperación (elapsed): " + nightzuku.recoveryFailureElapsed + "\n"
+                + "Recuperar ahora manual (elapsed): " + nightzuku.recoverNowElapsed + "\n"
+                + "Inicio manual (elapsed): " + nightzuku.manualStartElapsed + "\n"
                 + "Traza de este arranque:\n"
                 + (nightzuku.trace.isEmpty() ? "(sin eventos)" : nightzuku.trace)
                 + "\n\n";
