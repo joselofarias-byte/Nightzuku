@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
     private Button detailsButton;
     private Button permissionButton;
     private boolean detailsVisible;
+    private NightzukuDiagnostics.Snapshot nightzuku;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override public void onCreate(Bundle state) {
@@ -218,7 +219,16 @@ public final class MainActivity extends Activity {
     private void refresh() {
         long bootEpoch = systemBootEpoch();
         boolean access = listenerEnabled();
+        nightzuku = NightzukuDiagnostics.read(this);
+
+        permissionButton.setVisibility(nightzuku.available ? View.GONE : View.VISIBLE);
         permissionButton.setText(access ? "Permiso concedido ✓" : "Dar permiso necesario");
+
+        if (nightzuku.available) {
+            renderNightzukuDiagnostics();
+            report.setText(buildReport());
+            return;
+        }
 
         switch (observation(bootEpoch)) {
             case OBSERVED:
@@ -256,6 +266,93 @@ public final class MainActivity extends Activity {
                 break;
         }
         report.setText(buildReport());
+    }
+
+
+    private void renderNightzukuDiagnostics() {
+        if (!nightzuku.desiredRunning) {
+            status.setText("✕ PERSISTENCIA DESACTIVADA");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText(
+                "Nightzuku tiene guardado el estado «detenido». Así no intentará "
+                    + "arrancar automáticamente al reiniciar."
+            );
+            return;
+        }
+
+        if (nightzuku.fgsForeground) {
+            status.setText("✓ NIGHTZUKU ARRANCÓ SOLO");
+            status.setTextColor(Color.rgb(19, 115, 51));
+            statusDetail.setText(
+                "Nightzuku confirma desde su propio registro que el servicio persistente "
+                    + "entró en primer plano durante este arranque."
+            );
+            return;
+        }
+
+        if (!nightzuku.fgsFailureDetail.isEmpty()) {
+            status.setText("✕ NIGHTZUKU INTENTÓ ARRANCAR Y FALLÓ");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText("Fallo registrado: " + nightzuku.fgsFailureDetail);
+            return;
+        }
+
+        if (!nightzuku.receiverSkipDetail.isEmpty()) {
+            status.setText("✕ ARRANQUE RECIBIDO, PERO OMITIDO");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText(
+                "Android entregó el evento de arranque, pero Nightzuku lo descartó: "
+                    + nightzuku.receiverSkipDetail
+            );
+            return;
+        }
+
+        if (nightzuku.fgsOnStart && !nightzuku.fgsForeground) {
+            status.setText("✕ EL SERVICIO INICIÓ, PERO NO QUEDÓ ACTIVO");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText(
+                "Nightzuku llegó a ejecutar el servicio, pero no hay registro de que "
+                    + "alcanzara el estado persistente de primer plano."
+            );
+            return;
+        }
+
+        if (nightzuku.receiverFgsRequested && !nightzuku.fgsOnStart) {
+            status.setText("✕ ANDROID/MAGICOS NO INICIÓ EL SERVICIO");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText(
+                "Nightzuku recibió el arranque y pidió iniciar su servicio, pero no "
+                    + "hay registro de que Android ejecutara el servicio."
+            );
+            return;
+        }
+
+        if (nightzuku.receiverSeen) {
+            status.setText("✕ NIGHTZUKU RECIBIÓ EL ARRANQUE");
+            status.setTextColor(Color.rgb(179, 38, 30));
+            statusDetail.setText(
+                "El evento llegó a Nightzuku, pero la secuencia no alcanzó el servicio persistente. "
+                    + "Abrí «Ver detalles técnicos» para ver el último paso registrado."
+            );
+            return;
+        }
+
+        if (nightzuku.jobStart || nightzuku.jobFgsRequested) {
+            status.setText("⚠ SE ACTIVÓ EL RESCATE DE NIGHTZUKU");
+            status.setTextColor(Color.rgb(176, 96, 0));
+            statusDetail.setText(
+                "No aparece el arranque normal, pero sí el mecanismo de rescate periódico. "
+                    + "Todavía no hay confirmación de servicio persistente activo."
+            );
+            return;
+        }
+
+        status.setText("✕ NIGHTZUKU NO RECIBIÓ EL ARRANQUE");
+        status.setTextColor(Color.rgb(179, 38, 30));
+        statusDetail.setText(
+            "No hay ningún evento de arranque de Nightzuku registrado desde el último "
+                + "reinicio. Esto apunta al arranque automático de Android/MagicOS, no al monitor."
+        );
     }
 
     private String time(long millis) {
@@ -306,7 +403,34 @@ public final class MainActivity extends Activity {
                 technicalVerdict = "El observador se conectó, pero no observó la notificación de Nightzuku en este arranque.";
         }
 
+        String internal = "";
+        if (nightzuku != null && nightzuku.available) {
+            internal = "DIAGNÓSTICO INTERNO NIGHTZUKU\n"
+                + "Versión: " + nightzuku.versionName + "\n"
+                + "Persistencia deseada: " + (nightzuku.desiredRunning ? "Activa" : "Detenida") + "\n"
+                + "Blindaje de arranque: " + (nightzuku.hardeningApplied ? "Aplicado" : "No aplicado") + "\n"
+                + "Permiso de notificaciones de Nightzuku: "
+                    + (nightzuku.notificationsGranted ? "Concedido" : "Sin conceder") + "\n"
+                + "Usuario desbloqueado: " + (nightzuku.userUnlocked ? "Sí" : "No") + "\n"
+                + "Segundos desde el arranque: " + nightzuku.bootAgeSeconds + "\n"
+                + "Receiver de arranque: " + (nightzuku.receiverSeen ? "Sí" : "No") + "\n"
+                + "Solicitud FGS: " + (nightzuku.receiverFgsRequested ? "Sí" : "No") + "\n"
+                + "FGS onStart: " + (nightzuku.fgsOnStart ? "Sí" : "No") + "\n"
+                + "FGS en primer plano: " + (nightzuku.fgsForeground ? "Sí" : "No") + "\n"
+                + "Último evento: " + nightzuku.latestEvent + "\n"
+                + "Último detalle: " + nightzuku.latestDetail + "\n"
+                + "Fallo FGS: " + nightzuku.fgsFailureDetail + "\n"
+                + "Fallo recuperación: " + nightzuku.recoveryFailureDetail + "\n"
+                + "Traza de este arranque:\n"
+                + (nightzuku.trace.isEmpty() ? "(sin eventos)" : nightzuku.trace)
+                + "\n\n";
+        } else if (nightzuku != null) {
+            internal = "DIAGNÓSTICO INTERNO NIGHTZUKU\n"
+                + "No disponible: " + nightzuku.error + "\n\n";
+        }
+
         return "MONITOR DE ARRANQUE NIGHTZUKU\n\n"
+            + internal
             + "Resultado simple: " + simpleVerdict(state) + "\n"
             + "Resultado técnico: " + technicalVerdict + "\n\n"
             + "Dispositivo: " + Build.MANUFACTURER + " " + Build.MODEL
