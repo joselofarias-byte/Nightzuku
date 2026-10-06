@@ -4,6 +4,10 @@
 
     <uses-sdk tools:overrideLibrary="com.rosan.dhizuku.api" />
 
+    <permission
+        android:name="${applicationId}.permission.BOOT_DIAGNOSTICS"
+        android:protectionLevel="signature" />
+
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -221,6 +225,14 @@
                 <action android:name="rikka.shizuku.intent.action.REQUEST_BINDER" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name=".diagnostics.BootDiagnosticsProvider"
+            android:authorities="${applicationId}.bootdiag"
+            android:directBootAware="true"
+            android:exported="true"
+            android:process=":bootdiag"
+            android:readPermission="${applicationId}.permission.BOOT_DIAGNOSTICS" />
 
         <provider
             android:name=".ShizukuManagerProvider"
