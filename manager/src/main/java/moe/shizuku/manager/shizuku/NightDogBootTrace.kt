@@ -60,7 +60,14 @@ object NightDogBootTrace {
         val latestDetail: String?,
         val receiverSkipDetail: String?,
         val foregroundFailureDetail: String?,
-        val recoveryFailureDetail: String?
+        val recoveryFailureDetail: String?,
+        val binderReceivedElapsed: Long,
+        val binderLostElapsed: Long,
+        val cleanupStableElapsed: Long,
+        val cleanupSkippedElapsed: Long,
+        val recoveryFailureElapsed: Long,
+        val recoverNowElapsed: Long,
+        val manualStartElapsed: Long
     ) {
         fun has(event: String): Boolean = event in events
     }
@@ -106,7 +113,14 @@ object NightDogBootTrace {
             latestDetail = latest?.detail,
             receiverSkipDetail = current.lastOrNull { it.event == "receiver_skip" }?.detail,
             foregroundFailureDetail = current.lastOrNull { it.event == "fgs_failed" }?.detail,
-            recoveryFailureDetail = current.lastOrNull { it.event == "recovery_failure" }?.detail
+            recoveryFailureDetail = current.lastOrNull { it.event == "recovery_failure" }?.detail,
+            binderReceivedElapsed = current.lastOrNull { it.event == "binder_received" }?.elapsed ?: 0L,
+            binderLostElapsed = current.lastOrNull { it.event == "binder_lost" }?.elapsed ?: 0L,
+            cleanupStableElapsed = current.lastOrNull { it.event == "transport_cleanup_stable" }?.elapsed ?: 0L,
+            cleanupSkippedElapsed = current.lastOrNull { it.event == "transport_cleanup_skipped" }?.elapsed ?: 0L,
+            recoveryFailureElapsed = current.lastOrNull { it.event == "recovery_failure" }?.elapsed ?: 0L,
+            recoverNowElapsed = current.lastOrNull { it.event == "recover_now" }?.elapsed ?: 0L,
+            manualStartElapsed = current.lastOrNull { it.event == "manual_start" }?.elapsed ?: 0L
         )
     }
 
