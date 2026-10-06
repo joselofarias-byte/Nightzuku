@@ -13,6 +13,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      NIGHTZUKU_KEYSTORE_BASE64: ${{ secrets.NIGHTZUKU_KEYSTORE_BASE64 }}
+      NIGHTZUKU_KEYSTORE_PASSWORD: ${{ secrets.NIGHTZUKU_KEYSTORE_PASSWORD }}
+      NIGHTZUKU_KEY_ALIAS: ${{ secrets.NIGHTZUKU_KEY_ALIAS }}
+      NIGHTZUKU_KEY_PASSWORD: ${{ secrets.NIGHTZUKU_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,6 +31,16 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36.1" "build-tools;36.0.0"
+      - name: Restore permanent signing keystore
+        if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
+        run: |
+          set -Eeuo pipefail
+          test -n "$NIGHTZUKU_KEYSTORE_PASSWORD"
+          test -n "$NIGHTZUKU_KEY_ALIAS"
+          test -n "$NIGHTZUKU_KEY_PASSWORD"
+          printf '%s' "$NIGHTZUKU_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nightzuku-release.jks"
+          chmod 600 "$RUNNER_TEMP/nightzuku-release.jks"
+          echo "NIGHTZUKU_KEYSTORE_FILE=$RUNNER_TEMP/nightzuku-release.jks" >> "$GITHUB_ENV"
       - name: Test and assemble monitor
         run: |
           cp api/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
@@ -36,11 +51,12 @@ jobs:
           APK="$(find bootmonitor/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 1 | tee monitor-badging.txt
           grep -F "name='com.joselofarias.nightzuku.monitor'" monitor-badging.txt
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | tee monitor-certificate.txt
       - uses: actions/upload-artifact@v4
         with:
           name: nightzuku-boot-monitor-${{ github.sha }}
           path: |
             bootmonitor/build/outputs/apk/debug/*.apk
             monitor-badging.txt
+            monitor-certificate.txt
           retention-days: 14
