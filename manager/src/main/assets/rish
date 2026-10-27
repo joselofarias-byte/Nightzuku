@@ -2,6 +2,89 @@
 BASEDIR=$(dirname "$0")
 DEX="$BASEDIR"/rish_shizuku.dex
 
+# rish must tell Nightzuku which terminal application owns this process.
+# Keep an explicit user override, then auto-detect Termux-compatible forks.
+# Do not hardcode com.termux, com.newtermux.dev, or any other terminal id.
+# Official Termux, NewTermux, and package-renamed forks must all work.
+
+rish_looks_like_package() {
+  case "$1" in
+    */*) return 1 ;;
+    *.*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+rish_from_termux_path() {
+  path="$1"
+  case "$path" in
+    /data/data/*/files/usr)
+      rest=${path#/data/data/}
+      pkg=${rest%/files/usr}
+      ;;
+    /data/user/*/*/files/usr)
+      rest=${path#/data/user/}
+      rest=${rest#*/}
+      pkg=${rest%/files/usr}
+      ;;
+    /data/data/*/files/home)
+      rest=${path#/data/data/}
+      pkg=${rest%/files/home}
+      ;;
+    /data/user/*/*/files/home)
+      rest=${path#/data/user/}
+      rest=${rest#*/}
+      pkg=${rest%/files/home}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  rish_looks_like_package "$pkg" || return 1
+  printf '%s\n' "$pkg"
+}
+
+rish_detect_application_id() {
+  if [ -n "$RISH_APPLICATION_ID" ]; then
+    printf '%s\n' "$RISH_APPLICATION_ID"
+    return 0
+  fi
+
+  case "$TERMUX_APP__PACKAGE_NAME" in
+    *.*)
+      if rish_looks_like_package "$TERMUX_APP__PACKAGE_NAME"; then
+        printf '%s\n' "$TERMUX_APP__PACKAGE_NAME"
+        return 0
+      fi
+      ;;
+  esac
+
+  pkg=$(rish_from_termux_path "$PREFIX") || pkg=""
+  if [ -n "$pkg" ]; then
+    printf '%s\n' "$pkg"
+    return 0
+  fi
+
+  pkg=$(rish_from_termux_path "$HOME") || pkg=""
+  if [ -n "$pkg" ]; then
+    printf '%s\n' "$pkg"
+    return 0
+  fi
+
+  return 1
+}
+
+# Tests and debug hosts can inspect identity without a dex or app_process.
+if [ "${RISH_DETECT_ONLY:-}" = "1" ]; then
+  if detected=$(rish_detect_application_id); then
+    printf '%s\n' "$detected"
+    exit 0
+  fi
+  echo "rish: could not detect terminal application id" >&2
+  echo "rish: set RISH_APPLICATION_ID to the terminal package name" >&2
+  exit 1
+fi
+
 if [ ! -f "$DEX" ]; then
   echo "Cannot find $DEX, please check the tutorial in Nightzuku"
   exit 1
@@ -20,45 +103,24 @@ if [ "$(getprop ro.build.version.sdk)" -ge 34 ]; then
   fi
 fi
 
-# rish must tell Nightzuku which terminal application owns this process.
-# Keep an explicit user override, but auto-detect Termux-compatible forks so
-# com.termux, NewTermux (com.newtermux.dev), and future package-renamed forks
-# do not need a hand-edited wrapper.
 if [ -z "$RISH_APPLICATION_ID" ]; then
-  case "$TERMUX_APP__PACKAGE_NAME" in
-    *.*) RISH_APPLICATION_ID="$TERMUX_APP__PACKAGE_NAME" ;;
-  esac
+  if detected=$(rish_detect_application_id); then
+    RISH_APPLICATION_ID="$detected"
+  fi
 fi
 
-if [ -z "$RISH_APPLICATION_ID" ]; then
-  case "$PREFIX" in
-    /data/data/*/files/usr)
-      RISH_APPLICATION_ID=${PREFIX#/data/data/}
-      RISH_APPLICATION_ID=${RISH_APPLICATION_ID%/files/usr}
-      ;;
-    /data/user/*/*/files/usr)
-      RISH_APPLICATION_ID=$(printf '%s\n' "$PREFIX" | sed -n 's#^/data/user/[0-9][0-9]*/\([^/]*\)/files/usr$#\1#p')
-      ;;
-  esac
+# Leave unset when undetected. ShizukuShellLoader prefers the single package
+# mapped to this UID, then RISH_APPLICATION_ID only if that lookup is ambiguous.
+if [ -n "$RISH_APPLICATION_ID" ]; then
+  export RISH_APPLICATION_ID
 fi
-
-if [ -z "$RISH_APPLICATION_ID" ]; then
-  case "$HOME" in
-    /data/data/*/files/home)
-      RISH_APPLICATION_ID=${HOME#/data/data/}
-      RISH_APPLICATION_ID=${RISH_APPLICATION_ID%/files/home}
-      ;;
-    /data/user/*/*/files/home)
-      RISH_APPLICATION_ID=$(printf '%s\n' "$HOME" | sed -n 's#^/data/user/[0-9][0-9]*/\([^/]*\)/files/home$#\1#p')
-      ;;
-  esac
-fi
-
-[ -z "$RISH_APPLICATION_ID" ] && RISH_APPLICATION_ID="com.termux"
-export RISH_APPLICATION_ID
 
 if [ "$RISH_DEBUG" = "1" ]; then
-  echo "rish: application id = $RISH_APPLICATION_ID" >&2
+  if [ -n "$RISH_APPLICATION_ID" ]; then
+    echo "rish: application id = $RISH_APPLICATION_ID" >&2
+  else
+    echo "rish: application id not detected; loader will use UID package lookup" >&2
+  fi
   echo "rish: dex = $DEX" >&2
 fi
 

@@ -17,6 +17,7 @@ import android.text.TextUtils;
 
 import java.io.File;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import rikka.shizuku.shell.BuildConfig;
 import dalvik.system.BaseDexClassLoader;
@@ -28,6 +29,7 @@ public class ShizukuShellLoader {
     private static String[] args;
     private static String callingPackage;
     private static Handler handler;
+    private static final AtomicBoolean binderReceived = new AtomicBoolean(false);
 
     private static final Binder receiverBinder = new Binder() {
 
@@ -35,14 +37,15 @@ public class ShizukuShellLoader {
         protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
             if (code == 1) {
                 IBinder binder = data.readStrongBinder();
-
                 String sourceDir = data.readString();
+
                 if (binder != null) {
-                    handler.post(() -> onBinderReceived(binder, sourceDir));
-                } else {
-                    System.err.println("Server is not running");
+                    if (binderReceived.compareAndSet(false, true)) {
+                        handler.post(() -> onBinderReceived(binder, sourceDir));
+                    }
+                } else if ("1".equals(System.getenv("RISH_DEBUG"))) {
+                    System.err.println("rish: Nightzuku replied without a server binder");
                     System.err.flush();
-                    System.exit(1);
                 }
                 return true;
             }
@@ -69,35 +72,16 @@ public class ShizukuShellLoader {
 
         try {
             if (Build.VERSION.SDK_INT >= 30) {
-                // Android 16 still needs the binder request delivered as a broadcast.
-                // Starting ShellRequestHandlerActivity directly can return without error
-                // yet never deliver the receiver binder back to rish, causing a timeout.
-                java.lang.reflect.Method method = findBroadcastMethod(am);
+                java.lang.reflect.Method method = BroadcastIntentArgs.findBroadcastMethod(am);
                 if (method == null) {
                     throw new RuntimeException("Cannot find broadcastIntentWithFeature on " + am.getClass());
                 }
-                Class<?>[] paramTypes = method.getParameterTypes();
-                Object[] args = new Object[paramTypes.length];
-                args[0] = null;
-                args[1] = null;
-                args[2] = intent;
-                int intIndex = 0;
-                int booleanIndex = 0;
-                for (int i = 3; i < paramTypes.length; i++) {
-                    Class<?> t = paramTypes[i];
-                    if (t == boolean.class) {
-                        args[i] = booleanIndex++ == 0;
-                    } else if (t == int.class) {
-                        args[i] = isAppOpParameter(paramTypes, i, intIndex) ? -1 : 0;
-                        intIndex++;
-                    } else if (t == long.class) {
-                        args[i] = 0L;
-                    } else {
-                        args[i] = null;
-                    }
-                }
+
+                int userId = Os.getuid() / 100000;
+                Object[] broadcastArgs = BroadcastIntentArgs.build(
+                        method.getParameterTypes(), intent, userId);
                 try {
-                    method.invoke(am, args);
+                    method.invoke(am, broadcastArgs);
                 } catch (ReflectiveOperationException e) {
                     throw new RuntimeException("broadcastIntentWithFeature invocation failed", e);
                 }
@@ -155,16 +139,12 @@ public class ShizukuShellLoader {
     public static void main(String[] args) {
         ShizukuShellLoader.args = args;
 
-        String packageName;
-        var pkg = PackageManagerApis.getPackagesForUidNoThrow(Os.getuid());
-        if (pkg.size() == 1) {
-            packageName = pkg.get(0);
-        } else {
-            packageName = System.getenv("RISH_APPLICATION_ID");
-            if (TextUtils.isEmpty(packageName) || "PKG".equals(packageName)) {
-                abort("RISH_APPLICATION_ID is not set, set this environment variable to the id of current application (package name)");
-                System.exit(1);
-            }
+        String packageName = RishIdentity.resolveCallingPackage(
+                PackageManagerApis.getPackagesForUidNoThrow(Os.getuid()),
+                System.getenv("RISH_APPLICATION_ID"));
+        if (packageName == null) {
+            abort("RISH_APPLICATION_ID is not set, set this environment variable to the id of current application (package name)");
+            System.exit(1);
         }
 
         ShizukuShellLoader.callingPackage = packageName;
@@ -181,20 +161,22 @@ public class ShizukuShellLoader {
 
         handler = new Handler(Looper.getMainLooper());
 
-        try {
-            requestForBinder();
-        } catch (Throwable tr) {
-            tr.printStackTrace(System.err);
-            System.err.flush();
-            System.exit(1);
-        }
+        requestForBinderAsync("initial");
 
-        handler.postDelayed(() -> abort(
-                String.format(
+        handler.postDelayed(() -> {
+            if (!binderReceived.get()) {
+                requestForBinderAsync("retry");
+            }
+        }, 1500);
+
+        handler.postDelayed(() -> {
+            if (!binderReceived.get()) {
+                abort(String.format(
                         "Request timeout. No binder reply was received by current app (%1$s) from Nightzuku (" + BuildConfig.MANAGER_APPLICATION_ID + "). " +
-                                "This can be caused by binder-request delivery being blocked or by the Nightzuku server not answering.",
-                        packageName)
-        ), 5000);
+                                "The Android 16 transport was retried without blocking the rish main looper.",
+                        packageName));
+            }
+        }, 8000);
 
         Looper.loop();
         System.exit(0);
@@ -206,22 +188,23 @@ public class ShizukuShellLoader {
         System.exit(1);
     }
 
-    private static java.lang.reflect.Method findBroadcastMethod(Object am) {
-        java.lang.reflect.Method best = null;
-        for (java.lang.reflect.Method m : am.getClass().getMethods()) {
-            if ("broadcastIntentWithFeature".equals(m.getName())) {
-                if (best == null || m.getParameterTypes().length > best.getParameterTypes().length) {
-                    best = m;
+    private static void requestForBinderAsync(String label) {
+        Thread thread = new Thread(() -> {
+            try {
+                requestForBinder();
+                if ("1".equals(System.getenv("RISH_DEBUG"))) {
+                    System.err.println("rish: binder request dispatched (" + label + ")");
+                    System.err.flush();
+                }
+            } catch (Throwable tr) {
+                if ("1".equals(System.getenv("RISH_DEBUG"))) {
+                    System.err.println("rish: binder request failed (" + label + ")");
+                    tr.printStackTrace(System.err);
+                    System.err.flush();
                 }
             }
-        }
-        return best;
-    }
-
-    private static boolean isAppOpParameter(Class<?>[] paramTypes, int index, int intIndex) {
-        if (index + 1 < paramTypes.length && paramTypes[index + 1] == Bundle.class) {
-            return true;
-        }
-        return intIndex == 1 && index + 1 < paramTypes.length && index + 1 < paramTypes.length && paramTypes[index + 1] != String.class;
+        }, "rish-binder-" + label);
+        thread.setDaemon(true);
+        thread.start();
     }
 }

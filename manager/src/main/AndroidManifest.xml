@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="com.rosan.dhizuku.api" />
+
+    <permission
+        android:name="${applicationId}.permission.BOOT_DIAGNOSTICS"
+        android:protectionLevel="signature" />
+
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -14,9 +20,15 @@
         tools:targetApi="33" />
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+
+    <queries>
+        <package android:name="com.hihonor.systemmanager" />
+        <package android:name="com.huawei.systemmanager" />
+    </queries>
 
     <uses-feature
         android:name="android.software.leanback"
@@ -103,6 +115,10 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".settings.MaximumPersistenceActivity"
+            android:exported="false"
+            android:label="@string/persistence_title" />
+        <activity
             android:name=".settings.LabFeaturesActivity"
             android:exported="false"
             android:label="Lab Features" />
@@ -162,6 +178,29 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <service
+            android:name=".shizuku.NightDogForegroundService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
+            android:name=".shizuku.NightDogBootJobService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".receiver.DhizukuBootstrapReceiver"
+            android:directBootAware="true"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.rosan.dhizuku.permission.API">
+            <intent-filter>
+                <action android:name="com.joselofarias.nightzuku.action.DHIZUKU_BOOTSTRAP" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".receiver.BootCompleteReceiver"
             android:directBootAware="true"
@@ -169,9 +208,10 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-            </intent-filter>
-            <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
@@ -185,6 +225,14 @@
                 <action android:name="rikka.shizuku.intent.action.REQUEST_BINDER" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name=".diagnostics.BootDiagnosticsProvider"
+            android:authorities="${applicationId}.bootdiag"
+            android:directBootAware="true"
+            android:exported="true"
+            android:process=":bootdiag"
+            android:readPermission="${applicationId}.permission.BOOT_DIAGNOSTICS" />
 
         <provider
             android:name=".ShizukuManagerProvider"

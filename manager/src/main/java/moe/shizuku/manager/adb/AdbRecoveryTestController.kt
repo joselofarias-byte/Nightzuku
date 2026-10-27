@@ -20,7 +20,7 @@ object AdbRecoveryTestController {
             ?: AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
             ?: return@withContext Result(
                 false,
-                "No hay un endpoint ADB disponible para ejecutar la prueba."
+                "No usable ADB endpoint is available for the recovery test."
             )
 
         runCatching {
@@ -39,20 +39,20 @@ object AdbRecoveryTestController {
 
             val text = output.toString(Charsets.UTF_8.name()).trim()
             if ("__NO_PID__" in text) {
-                return@runCatching Result(false, "No se encontró el proceso shizuku_server.")
+                return@runCatching Result(false, "shizuku_server process was not found.")
             }
             val pid = Regex("__PID__=(\\d+)").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: return@runCatching Result(false, "ADB respondió, pero no informó el PID del servidor.")
+                ?: return@runCatching Result(false, "ADB responded but did not report the server PID.")
 
             Result(
                 true,
-                "SIGKILL programado para PID $pid. NightDog debe detectar la pérdida del Binder y recuperar el servicio.",
+                "SIGKILL scheduled for PID $pid. NightDog should detect binder loss and recover the service.",
                 pid
             )
         }.getOrElse { error ->
             Result(
                 false,
-                "No se pudo ejecutar la prueba por ADB en ${endpoint.host}:${endpoint.port}: " +
+                "Could not run the ADB recovery test at ${endpoint.host}:${endpoint.port}: " +
                     (error.message ?: error.javaClass.simpleName)
             )
         }
