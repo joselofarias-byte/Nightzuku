@@ -43,7 +43,7 @@ internal object AdbLocalWirelessDiscovery {
 
     fun discover(): AdbEndpoint? {
         lastKnownEndpoint()?.let { endpoint ->
-            if (looksLikeAdb(endpoint.port)) return endpoint
+            if (looksLikeAdb(endpoint.port) && isAuthenticatedAdb(endpoint.port)) return endpoint
         }
 
         val range = localEphemeralRange()
@@ -78,7 +78,7 @@ internal object AdbLocalWirelessDiscovery {
         }
 
         val port = foundPort.get()
-        if (port !in 1..65535) return null
+        if (port !in 1..65535 || !isAuthenticatedAdb(port)) return null
 
         ShizukuSettings.getPreferences()
             .edit()
@@ -87,6 +87,19 @@ internal object AdbLocalWirelessDiscovery {
 
         return AdbEndpoint(LOOPBACK_HOST, port)
     }
+
+    /**
+     * A port that speaks the ADB wire protocol is not necessarily paired with
+     * Nightzuku. Only preserve endpoints that pass our saved-key handshake.
+     */
+    private fun isAuthenticatedAdb(port: Int): Boolean = runCatching {
+        val key = AdbKey(
+            PreferenceAdbKeyStore(ShizukuSettings.getPreferences()),
+            "shizuku"
+        )
+        AdbClient(LOOPBACK_HOST, port, key).use { client -> client.connect() }
+        true
+    }.getOrDefault(false)
 
     internal fun localEphemeralRange(): IntRange {
         val parsed = runCatching {
