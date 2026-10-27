@@ -20,6 +20,7 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.adb.AdbLocalPortDiscovery
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.starter.StarterActivity
 import moe.shizuku.manager.utils.EnvironmentUtils
@@ -228,7 +229,7 @@ object NightDogRecovery {
         return (MIN_RETRY_MS shl shift).coerceAtMost(MAX_RETRY_MS)
     }
 
-    private fun resolveEndpoint(): Triple<String, Int, String>? {
+    private suspend fun resolveEndpoint(): Triple<String, Int, String>? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)?.let { endpoint ->
                 val transport = if (endpoint.host == "127.0.0.1" || endpoint.host == "localhost") {
@@ -242,6 +243,9 @@ object NightDogRecovery {
 
         val port = EnvironmentUtils.getAdbTcpPort()
         if (port > 0) return Triple("127.0.0.1", port, "ADB local")
+        AdbLocalPortDiscovery.find()?.let { endpoint ->
+            return Triple(endpoint.host, endpoint.port, "ADB local descubierto y autenticado")
+        }
         return null
     }
 
