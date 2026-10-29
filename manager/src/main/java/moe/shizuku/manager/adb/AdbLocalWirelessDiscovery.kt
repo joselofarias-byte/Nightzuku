@@ -1,5 +1,6 @@
 package moe.shizuku.manager.adb
 
+import android.util.Log
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbProtocol.A_AUTH
 import moe.shizuku.manager.adb.AdbProtocol.A_CNXN
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal object AdbLocalWirelessDiscovery {
 
     private const val LOOPBACK_HOST = "127.0.0.1"
+    private const val TAG = "NightzukuAdbDiscovery"
     private const val PREF_LAST_DYNAMIC_PORT = "nightzuku_last_dynamic_adb_port"
     private const val PORT_RANGE_FILE = "/proc/sys/net/ipv4/ip_local_port_range"
     private const val FALLBACK_LOW = 32768
@@ -60,7 +62,7 @@ internal object AdbLocalWirelessDiscovery {
                     while (foundPort.get() < 0) {
                         val port = nextPort.getAndIncrement()
                         if (port > range.last) break
-                        if (looksLikeAdb(port)) {
+                        if (looksLikeAdb(port) && isAuthenticatedAdb(port)) {
                             foundPort.compareAndSet(-1, port)
                             break
                         }
@@ -78,7 +80,9 @@ internal object AdbLocalWirelessDiscovery {
         }
 
         val port = foundPort.get()
-        if (port !in 1..65535 || !isAuthenticatedAdb(port)) return null
+        if (port !in 1..65535) return null
+        // A worker may have completed authentication just as the deadline expired.
+        // The selected endpoint has already passed the saved-key handshake.
 
         ShizukuSettings.getPreferences()
             .edit()
@@ -99,6 +103,9 @@ internal object AdbLocalWirelessDiscovery {
         )
         AdbClient(LOOPBACK_HOST, port, key).use { client -> client.connect() }
         true
+    }.onFailure { error ->
+        // Do not log pairing keys, tokens or exception messages.
+        Log.w(TAG, "ADB authentication failed on loopback port $port: ${error.javaClass.simpleName}")
     }.getOrDefault(false)
 
     internal fun localEphemeralRange(): IntRange {
