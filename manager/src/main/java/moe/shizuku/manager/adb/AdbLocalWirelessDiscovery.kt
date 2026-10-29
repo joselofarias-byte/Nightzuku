@@ -81,6 +81,8 @@ internal object AdbLocalWirelessDiscovery {
 
         val port = foundPort.get()
         if (port !in 1..65535) return null
+        // A worker may have completed authentication just as the deadline expired.
+        // The selected endpoint has already passed the saved-key handshake.
 
         ShizukuSettings.getPreferences()
             .edit()
