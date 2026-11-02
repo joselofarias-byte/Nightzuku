@@ -165,6 +165,30 @@ class AppPolicyTest {
     }
 }
 
+class AdbPortReportTest {
+    @Test
+    fun dropsLanAndPublicHostsButKeepsThePort() {
+        val lan = JsonCodec.stringify(
+            JsonValue.Obj(AdbPortReport.remoteFields(37123, "192.168.1.20", true)),
+        )
+        assertTrue(lan.contains("37123"))
+        assertTrue(lan.contains("\"advertisedHostSuppressed\":true"))
+        assertFalse(lan.contains("192.168"))
+        val public = JsonCodec.stringify(
+            JsonValue.Obj(AdbPortReport.remoteFields(5555, "8.8.8.8", true)),
+        )
+        assertFalse(public.contains("8.8.8.8"))
+        val tailscale = JsonCodec.stringify(
+            JsonValue.Obj(AdbPortReport.remoteFields(37123, "100.90.0.2", false)),
+        )
+        assertTrue(tailscale.contains("100.90.0.2"))
+        val missing = AdbPortReport.remoteFields(0, null, null)
+        assertFalse(missing.containsKey("port"))
+        assertFalse(missing.values.any { it is JsonValue.Bool && it == JsonValue.Bool(true) && missing["demonstratedOnTargetDevice"] == JsonValue.Bool(true) })
+        assertEquals(JsonValue.Bool(false), missing["demonstratedOnTargetDevice"])
+    }
+}
+
 class CapabilityTest {
     @Test
     fun nothingIsMarkedDemonstratedAndLockscreenIsImpossible() {

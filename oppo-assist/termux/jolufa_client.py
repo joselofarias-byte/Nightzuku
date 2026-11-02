@@ -214,12 +214,45 @@ def rpc(cfg: dict, payload: dict) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def port_from_report(payload: dict) -> int | None:
+    port = payload.get("port")
+    if isinstance(port, bool) or not isinstance(port, int):
+        return None
+    if port < 1 or port > 65535:
+        return None
+    return port
+
+
+def reconnect_with_report(cfg: dict, payload: dict) -> dict:
+    """Usa el puerto que informa el agente y deja el host Tailscale ya configurado.
+
+    La IP anunciada por mDNS no reemplaza el host, aunque venga en el JSON.
+    """
+    updated = dict(cfg)
+    port = port_from_report(payload)
+    if port is None:
+        return updated
+    updated["adb_port"] = port
+    updated["serial"] = adb_serial(updated["host"], port)
+    return updated
+
+
+def alert_unreachable(cfg: dict) -> str:
+    return (
+        f"ALERTA: el ADB del OPPO no responde en {cfg['serial']}. "
+        "Se consulta el puerto por Tailscale. "
+        "No se adopta una IP de LAN ni una IP pública."
+    )
+
+
 def recovery_text() -> str:
     return (
-        "Se reintenta adb connect al host Tailscale y al puerto que anotaste.\n"
-        "No se vuelve a encender la depuración inalámbrica.\n"
-        "No se recupera scrcpy, ni el bloqueo, ni un puerto que haya cambiado.\n"
-        "Eso no está demostrado después de un reinicio."
+        "Se reintenta adb connect solo contra la IP Tailscale.\n"
+        "Si el agente responde, se usa el puerto que observa en el OPPO.\n"
+        "Nightzuku, en el OPPO, puede volver a pedir la depuración inalámbrica al arrancar. "
+        "Eso no está demostrado en el aparato y el puerto puede cambiar.\n"
+        "Este cliente no enciende adbd ni abre un puerto público.\n"
+        "No se recupera scrcpy ni el desbloqueo."
     )
 
 
@@ -232,6 +265,9 @@ def main(argv: list[str]) -> int:
             return 0 if confidently_unlocked(sys.stdin.read()) else 3
         if argv[0] == "recovery-text":
             print(recovery_text())
+            return 0
+        if argv[0] == "alert-unreachable":
+            print(alert_unreachable(load_config()))
             return 0
         if argv[0] == "build":
             kind = argv[1]

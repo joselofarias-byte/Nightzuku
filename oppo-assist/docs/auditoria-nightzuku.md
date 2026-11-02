@@ -26,11 +26,35 @@ Los módulos ADB (`docs/adb-modules-guide.md`) son ZIP que el servidor local eje
 
 El conector `content://kerneldroid.nightzuku.connector` (`docs/nightzuku-connectors.md`) devuelve el comando local de arranque. Viene apagado. No es una API de red.
 
-## Persistencia
+## Depuración inalámbrica y arranque
 
-El proceso `shizuku_server` vive mientras el proceso vive. No hay en este código un servicio que vuelva a levantar adbd después de un reinicio.
+Está implementado, con condiciones. No se ejecutó en un teléfono.
 
-`AdbTcpController` no crea un adbd permanente. Guarda host y puerto después de un probe. El puerto de la depuración inalámbrica de Android 11+ es dinámico: por eso este fork lo descubre por mDNS en vez de asumir el 5555.
+`BootCompleteReceiver` (`manager/src/main/java/moe/shizuku/manager/receiver/BootCompleteReceiver.kt`, líneas 31-104) escucha `LOCKED_BOOT_COMPLETED` y `BOOT_COMPLETED` (manifiesto, líneas 165-176). Si el equipo está en modo seguro, sale. Si el usuario no es el 0 o el binder de Shizuku ya responde, sale. Si el último arranque guardado es root, intenta `su`. El camino ADB entra solo si se cumplen las tres cosas de las líneas 49-51:
+
+- API 33 o más (`TIRAMISU`);
+- la app ya tiene `WRITE_SECURE_SETTINGS`;
+- `ShizukuSettings.getLastLaunchMode()` es ADB.
+
+Ese modo se graba cuando la pantalla de inicio ve el servidor corriendo y el UID no es 0 (`HomeActivity.kt`, líneas 146-151). El permiso lo otorga el servidor a sí mismo al enganchar el manager (`ShizukuService.java`, líneas 321-326), o sea después de un arranque exitoso por shell o root. No es un permiso que la app pida en el diálogo normal.
+
+Si entra, `adbStart` (líneas 68-103) escribe:
+
+- `adb_wifi_enabled = 1`
+- `ADB_ENABLED = 1`
+- `adb_allowed_connection_time = 0`
+
+y durante 3 segundos busca `_adb-tls-connect._tcp` para correr el starter con la clave ADB ya guardada. El mismo interruptor, si el permiso está, también lo escribe el diálogo de descubrimiento (`HomeDialogs.kt`, líneas 323-327).
+
+Eso no fija el puerto. El puerto de la depuración inalámbrica sigue saliendo de mDNS (`AdbMdns.kt`, línea 178) o, para el TCP clásico, de `service.adb.tcp.port` / `persist.adb.tcp.port` (`EnvironmentUtils.kt`, líneas 27-30, y `AdbTransportResolver.kt`, líneas 49-77). `AdbTcpController` solo guarda un host y un puerto después de un probe; no es el mecanismo de arranque.
+
+`NightDogRecovery` (`NightDogRecovery.kt`, líneas 28-158 y 231-246) es otro camino: lo arranca `ShizukuApplication.onCreate` (líneas 39-43). Cada 4 segundos, si el binder murió y el usuario no lo detuvo a mano, busca el endpoint y abre `StarterActivity`. No escribe `adb_wifi_enabled`. Solo vive mientras el proceso de Nightzuku vive. Después de un reinicio, el que pide el interruptor es el receptor, no este watchdog.
+
+Lo que el código no hace: no empareja solo (no hay código de 6 dígitos en el receptor), no ata adbd a Tailscale, y no promete que el sistema acepte esos `settings`. Si mDNS tarda más de 3 segundos, el starter de ese intento no corre aunque el interruptor se haya escrito.
+
+## Persistencia del servidor
+
+El proceso `shizuku_server` vive mientras el proceso vive. El receptor de arranque intenta levantarlo de nuevo solo en el camino de arriba.
 
 ## Papel en OPPO ASSIST
 

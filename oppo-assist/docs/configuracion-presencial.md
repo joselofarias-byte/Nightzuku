@@ -59,7 +59,20 @@ proot-distro login debian --shared-tmp
 
 Dentro de Debian, el `adb` que ya emparejaste es el de Termux. Esta parte no se corrió en el HONOR: si `scrcpy` no ve el servidor ADB, no inventes un puerto público. Usá mientras `jolufa captura` y `jolufa tocar`, que no necesitan X11.
 
-## 4. El APK en el OPPO
+## 4. Nightzuku en el OPPO
+
+Instalá también la app de este repositorio, `com.joselofarias.nightzuku`, en el OPPO. Es el programa que, al arrancar el teléfono, puede volver a pedir la depuración inalámbrica. OPPO Assist no tiene ese permiso.
+
+En persona:
+
+1. Emparejá la depuración inalámbrica una vez (el paso de emparejar, más abajo) y arrancá Nightzuku desde su pantalla, con el servidor en marcha. Ahí el servidor se otorga `WRITE_SECURE_SETTINGS` y la pantalla guarda el modo de arranque ADB. Sin ese primer arranque, el receptor no entra al camino ADB.
+2. El teléfono tiene que ser Android 13 o más. En 11 y 12 el receptor registra "No support start on boot" y no toca el interruptor.
+3. En ColorOS, activá el inicio automático de Nightzuku y de OPPO Assist. Si el sistema no entrega `BOOT_COMPLETED`, el código no corre. Eso no se midió en el modelo.
+4. Después de reiniciar hace falta una red para que aparezca el servicio `_adb-tls-connect._tcp`. En el código de AOSP eso va con la interfaz de depuración inalámbrica, en la práctica casi siempre Wi-Fi. Que alcance con datos móviles y Tailscale es una hipótesis.
+
+`jolufa cerrar-sesion` apaga el interruptor hasta el próximo arranque en el que Nightzuku cumpla esas condiciones. No está demostrado que este ColorOS acepte el `settings` ni que recuerde el emparejamiento.
+
+## 5. El APK de OPPO Assist en el OPPO
 
 El APK de depuración queda en `oppo-assist/agent/build/outputs/apk/debug/` después de `./gradlew :agent:assembleDebug` (desde `oppo-assist/`).
 
@@ -75,7 +88,7 @@ Tocá **Iniciar asistencia** y **Guardar lista de apps**.
 
 Con Tailscale conectado, el estado tiene que decir que escucha en una IP `100.` o `fd7a:115c:a1e0:`. Si Tailscale no está, el agente no abre el puerto. Eso es a propósito.
 
-## 5. Clave
+## 6. Clave
 
 En el OPPO, **Mostrar clave de esta sesión**. En el HONOR:
 
@@ -94,7 +107,7 @@ chmod 600 "$HOME/.config/jolufa/config"
 
 Reemplazá `100.x.x.x` y `PUERTO_DE_CONEXION`. No mandes la clave por SMS.
 
-## 6. Emparejar la depuración inalámbrica
+## 7. Emparejar la depuración inalámbrica
 
 En el OPPO: Ajustes, Acerca del teléfono, tocá el número de compilación hasta habilitar las opciones de desarrollador. Entrá a Depuración inalámbrica. Anotá el puerto de emparejamiento y el de conexión. El puerto de conexión cambia; no lo dejes escrito como si fuera fijo.
 
@@ -115,7 +128,7 @@ Si el `adb pair` a la IP `100.` no contesta, en esta visita y en una red que con
 
 No ejecutes `adb tcpip`. Eso abre el puerto en todas las interfaces y esta herramienta no lo hace.
 
-## 7. Probar el bloqueo
+## 8. Probar el bloqueo
 
 Bloqueá el OPPO con su PIN o patrón. En el HONOR:
 
@@ -136,18 +149,25 @@ jolufa captura
 jolufa tocar 200 400
 ```
 
-## 8. SMS
+## 9. SMS
 
 La casilla de SMS comunes queda apagada hasta que la marques en persona. Aunque esté prendida, un mensaje que parece código de un solo uso no entra a la cola del HONOR. En el OPPO aparece el pedido. Si tocás **Permitir**, `jolufa sms` lo muestra. Si no tocás nada, a los 10 minutos se borra.
 
 Los chats RCS no salen por este camino.
 
-## 9. Cerrar
+## 10. Cerrar y volver a entrar
 
 ```bash
 jolufa cerrar-sesion
 ```
 
-Si el teléfono no confirma el valor 0, apagá Depuración inalámbrica a mano. Un reinicio también la apaga en la plataforma Android, pero **no está demostrado en este OPPO** y tampoco vuelve a encenderla. Después de reiniciar hay que repetir el paso 6 y anotar el puerto nuevo. `jolufa reiniciar --confirmo` existe y avisa eso; no promete reconexión.
+Si el teléfono no confirma el valor 0, apagá Depuración inalámbrica a mano.
 
-`jolufa recuperar` solo reintenta el mismo puerto. Si el puerto cambió, no lo adivina.
+Después de un reinicio, si Nightzuku cumplió las condiciones del paso 4, puede volver a pedir el interruptor. El puerto nuevo no se adivina por la red pública. Con Tailscale arriba y el agente escuchando:
+
+```bash
+jolufa recuperar
+jolufa adb
+```
+
+`recuperar` avisa si el ADB no responde y, si el agente vio el servicio `_adb-tls-connect._tcp`, reconecta a la misma IP Tailscale con ese puerto. No está demostrado en el OPPO. Si el agente tampoco responde, hay que mirar el teléfono: Tailscale, la notificación de OPPO Assist y el inicio automático de ColorOS.

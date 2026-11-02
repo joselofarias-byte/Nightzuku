@@ -61,4 +61,11 @@ if grep -q " 1" <<<"$out"; then
   if grep -q "adb_wifi_enabled 1" <<<"$out"; then fail "no encender"; fi
 fi
 
+export JOLUFA_ADB_DOWN=1
+export JOLUFA_REPORTED_PORT=39999
+out="$( "$BIN" recuperar )"
+grep -q "ALERTA" <<<"$out" || fail "alerta"
+grep -q "100.64.8.8:39999" <<<"$out" || fail "puerto informado"
+if grep -q "192.168" <<<"$out"; then fail "no debe usar lan"; fi
+
 printf '%s\n' "jolufa cli ok"

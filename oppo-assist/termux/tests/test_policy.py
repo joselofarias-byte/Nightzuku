@@ -6,7 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jolufa_client import assert_safe, build, load_config  # noqa: E402
+from jolufa_client import (  # noqa: E402
+    alert_unreachable,
+    assert_safe,
+    build,
+    load_config,
+    reconnect_with_report,
+)
 from jolufa_policy import (  # noqa: E402
     PolicyError,
     check_host,
@@ -79,6 +85,19 @@ class PolicyTests(unittest.TestCase):
             build("uninstall", ["com.joselofarias.oppoassist"], config, confirmed=True)
         with self.assertRaises(PolicyError):
             build("text", ["hola;rm"], config)
+
+    def test_reported_port_keeps_tailscale_host(self):
+        config = cfg()
+        updated = reconnect_with_report(
+            config,
+            {"port": 39999, "advertisedHost": "192.168.1.20", "advertisedHostSuppressed": True},
+        )
+        cmd = build("connect", [], updated)
+        blob = " ".join(cmd)
+        self.assertIn("100.64.8.8:39999", blob)
+        self.assertNotIn("192.168.1.20", blob)
+        self.assertIn("ALERTA", alert_unreachable(config))
+        self.assertNotIn("192.168", alert_unreachable(config))
 
     def test_shell_script_does_not_name_bypass_tools(self):
         text = (ROOT / "bin" / "jolufa").read_text(encoding="utf-8").lower()

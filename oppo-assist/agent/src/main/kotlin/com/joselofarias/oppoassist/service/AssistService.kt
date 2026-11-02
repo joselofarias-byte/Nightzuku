@@ -17,6 +17,7 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.joselofarias.oppoassist.OppoAssistApp
+import com.joselofarias.oppoassist.adb.AdbWatch
 import com.joselofarias.oppoassist.R
 import com.joselofarias.oppoassist.core.AgentInfo
 import com.joselofarias.oppoassist.core.BindPolicy
@@ -51,6 +52,7 @@ class AssistService : Service() {
         createChannel()
         val text = "Iniciando asistencia"
         startInForeground(text)
+        AdbWatch.start(this)
         handler.post(tick)
         registerNetwork()
     }
@@ -62,6 +64,7 @@ class AssistService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        AdbWatch.stop()
         server?.stop()
         callback?.let { cb ->
             runCatching {

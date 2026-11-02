@@ -70,6 +70,7 @@ jolufa diagnostico
 jolufa sms
 jolufa sms ack ID
 jolufa recuperar
+jolufa adb
 jolufa cerrar-sesion
 EOF
 }
@@ -143,7 +144,7 @@ case "$cmd" in
     [[ "${1:-}" == "--confirmo" ]] || die "Este reinicio corta el control. Repetí: jolufa reiniciar --confirmo"
     run_build reboot --confirmo
     if [[ "${JOLUFA_DRY:-}" != "1" ]]; then
-      printf '%s\n' "La sesión terminó. No está demostrado que la depuración inalámbrica vuelva después del reinicio. Hay que encenderla de nuevo en el OPPO y anotar el puerto nuevo."
+      printf '%s\n' "La sesión de adb terminó. Nightzuku en el OPPO puede pedir de nuevo la depuración inalámbrica al arrancar, si ya tenía el permiso y el último arranque fue por ADB. No está demostrado en este teléfono. El puerto puede cambiar: jolufa recuperar lo pide por Tailscale."
     fi
     ;;
   hora)
@@ -196,20 +197,43 @@ case "$cmd" in
       python3 "$CLIENT" rpc sms.pending
     fi
     ;;
+  adb)
+    if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      printf '%s\n' "DRY rpc adb.status"
+    else
+      python3 "$CLIENT" rpc adb.status
+    fi
+    ;;
   recuperar)
     if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      if [[ "${JOLUFA_ADB_DOWN:-}" == "1" ]]; then
+        python3 "$CLIENT" alert-unreachable
+        if [[ -n "${JOLUFA_REPORTED_PORT:-}" ]]; then
+          export JOLUFA_ADB_PORT="$JOLUFA_REPORTED_PORT"
+        fi
+      fi
       run_build connect
       python3 "$CLIENT" recovery-text
     else
-      ok=0
-      for _ in 1 2 3; do
-        if run_build connect; then
-          ok=1
-          break
+      try_connect() {
+        local out
+        out="$(run_build connect 2>&1)" || true
+        printf '%s\n' "$out"
+        if grep -qi 'failed to connect' <<<"$out"; then
+          return 1
+        fi
+        grep -qiE 'connected to|already connected' <<<"$out"
+      }
+      if ! try_connect; then
+        python3 "$CLIENT" alert-unreachable || true
+        reported="$(python3 "$CLIENT" rpc adb.status 2>/dev/null | python3 -c 'import json,sys; data=json.load(sys.stdin); print(int((data.get("data") or {}).get("port") or 0))' || true)"
+        if [[ "$reported" =~ ^[1-9][0-9]*$ ]]; then
+          export JOLUFA_ADB_PORT="$reported"
+          printf '%s\n' "Puerto informado por el agente: $reported. Se reintenta solo contra la IP de Tailscale."
         fi
         sleep 2
-      done
-      [[ "$ok" == "1" ]] || die "No se pudo reconectar al puerto anotado."
+        try_connect || die "ALERTA: el ADB sigue sin responder. No se abre en otra interfaz."
+      fi
       python3 "$CLIENT" rpc ping || true
       python3 "$CLIENT" recovery-text
     fi

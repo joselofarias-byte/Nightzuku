@@ -92,6 +92,13 @@ object CapabilityMatrix {
             "El socket se ata a una IP de Tailscale. No escucha en 0.0.0.0. Tras un reinicio depende de que Android deje vivir el servicio y de que Tailscale vuelva.",
         ),
         Capability(
+            "adb.wireless.restart",
+            "nightzuku_en_el_oppo",
+            "solicitado_no_demostrado",
+            false,
+            "BootCompleteReceiver escribe adb_wifi_enabled=1 solo con Android 13+, WRITE_SECURE_SETTINGS ya otorgado y último arranque por ADB. El puerto lo descubre mDNS y puede cambiar. No demostrado en el OPPO.",
+        ),
+        Capability(
             "lockscreen.bypass",
             "nadie",
             "no",
@@ -116,12 +123,14 @@ object RecoveryPlan {
         "El servicio en primer plano del agente, con START_STICKY.",
         "El socket, cuando vuelva una IP de Tailscale.",
         "El servicio otra vez después de BOOT_COMPLETED, si el sistema entrega el aviso.",
+        "Nightzuku, en el OPPO, puede pedir adb_wifi_enabled=1 en su receptor de arranque. El agente no lo hace.",
     )
     val willNotRestart = listOf(
-        "adbd ni la depuración inalámbrica.",
-        "El puerto de ADB, que además puede cambiar.",
+        "El agente no enciende adbd ni elige su interfaz.",
+        "Un puerto de ADB fijo: el que anuncia el teléfono puede cambiar.",
         "La sesión de scrcpy.",
-        "La autorización de depuración si se revocó.",
+        "La autorización de depuración si se revocó, o el emparejamiento si el sistema lo olvida.",
         "El desbloqueo de la pantalla.",
+        "La reactivación de Nightzuku si falta WRITE_SECURE_SETTINGS, el modo de arranque no es ADB, el equipo no es Android 13+, está en modo seguro, o ColorOS no entrega el arranque.",
     )
 }

@@ -12,6 +12,8 @@ import android.os.Environment
 import android.os.StatFs
 import androidx.core.content.ContextCompat
 import com.joselofarias.oppoassist.OppoAssistApp
+import com.joselofarias.oppoassist.adb.AdbWatch
+import com.joselofarias.oppoassist.core.AdbPortReport
 import com.joselofarias.oppoassist.core.AgentInfo
 import com.joselofarias.oppoassist.core.AppBaseline
 import com.joselofarias.oppoassist.core.CapabilityMatrix
@@ -47,6 +49,7 @@ class AndroidRpcHandler(private val app: OppoAssistApp) : RpcHandler {
                     ),
                 )
                 "diagnostics" -> ok(diagnostics())
+                "adb.status" -> ok(adbStatus())
                 "settings.capabilities" -> ok(mapOf("capabilities" to CapabilityMatrix.toJson()))
                 "recovery.status" -> ok(
                     mapOf(
@@ -80,6 +83,11 @@ class AndroidRpcHandler(private val app: OppoAssistApp) : RpcHandler {
         } catch (_: SecurityException) {
             RpcResult(false, "permiso_denegado")
         }
+    }
+
+    private fun adbStatus(): Map<String, JsonValue> {
+        val seen = AdbWatch.current()
+        return AdbPortReport.remoteFields(seen.port, seen.host, AdbWatch.wifiEnabled(app))
     }
 
     private fun diagnostics(): Map<String, JsonValue> {

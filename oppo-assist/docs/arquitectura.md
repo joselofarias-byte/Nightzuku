@@ -34,7 +34,7 @@ App normal, `minSdk` 29. No es device owner, no es servicio de accesibilidad, no
 - Apps: inventario, línea base, lista de desalentadas (no desinstala), abrir, ficha de ajustes y un `ACTION_DELETE` que el sistema confirma en pantalla. Cerrar una app desde el agente responde `usar_adb_shell`.
 - Reinicio y hora no se hacen desde el agente. La matriz de capacidades lo dice y marca `demonstratedOnTargetDevice=false` en todas las filas.
 
-Al arrancar, `BOOT_COMPLETED` y `MY_PACKAGE_REPLACED` piden de nuevo el servicio. Cada 30 segundos se reintenta el socket si volvió Tailscale. Eso no enciende adbd.
+Al arrancar, `BOOT_COMPLETED` y `MY_PACKAGE_REPLACED` piden de nuevo el servicio. Cada 30 segundos se reintenta el socket si volvió Tailscale. El agente no escribe `adb_wifi_enabled`. Quien puede hacerlo es Nightzuku, instalado en el mismo OPPO, por el receptor descrito en la auditoría. El agente solo observa `_adb-tls-connect._tcp` y `adb_wifi_enabled`, y publica `adb.status` por el socket de Tailscale. Si mDNS anuncia una IP que no es Tailscale, esa IP no sale en la respuesta: sale el puerto.
 
 ## Cliente Termux
 
@@ -43,8 +43,8 @@ Al arrancar, `BOOT_COMPLETED` y `MY_PACKAGE_REPLACED` piden de nuevo el servicio
 - El host tiene que ser una IP de Tailscale, o un nombre cuyas direcciones resueltas sean todas de Tailscale. Si una es pública, se niega.
 - `pantalla`, `tocar`, `deslizar` y `texto` solo siguen si `dumpsys window` dice con claridad que el bloqueo no está. Si el volcado no trae las marcas conocidas, se niega.
 - `reiniciar` y `desinstalar` piden `--confirmo`. La lista `shared/protected-packages.list` y el prefijo `com.android.` no se desinstalan.
-- `cerrar-sesion` solo escribe `adb_wifi_enabled=0` y vuelve a leer el valor. No hay un comando que lo ponga en 1.
-- `recuperar` reintenta `adb connect` al puerto ya anotado. No cambia el modo de adbd.
+- `recuperar` reintenta `adb connect`. Si no hay sesión, avisa con `ALERTA` y, si el agente responde, adopta el puerto nuevo sin cambiar el host Tailscale.
+- `cerrar-sesion` solo escribe `adb_wifi_enabled=0` y vuelve a leer el valor. No hay un comando que lo ponga en 1. Nightzuku puede volver a pedirlo en el próximo arranque.
 
 scrcpy se invoca con `--serial` de esa sesión, sin audio. Si no hay `DISPLAY` ni `WAYLAND_DISPLAY`, `jolufa pantalla` no pretende que el video esté andando y deja `jolufa captura` más `tocar`.
 
