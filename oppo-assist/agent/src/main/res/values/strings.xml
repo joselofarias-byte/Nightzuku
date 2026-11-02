@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OPPO Assist</string>
+    <string name="title">JOLUFASOFT OPPO ASSIST</string>
+    <string name="help">Esta pantalla queda en el teléfono de la persona. La notificación de asistencia no se esconde.\n\nLos SMS comunes solo se encolan si marcás la casilla, en persona. Un código de un solo uso nunca sale solo: hay que abrirlo acá y tocarlo.\n\nLos mensajes RCS no se leen.\n\nEn ColorOS, además, activá el inicio automático de OPPO Assist en la batería del sistema. El nombre del menú cambia según el modelo.</string>
+    <string name="permissions">Dar permisos</string>
+    <string name="battery">Permitir en segundo plano</string>
+    <string name="service">Iniciar asistencia</string>
+    <string name="baseline">Guardar lista de apps</string>
+    <string name="show_token">Mostrar clave de esta sesión</string>
+    <string name="forward_sms">Encolar SMS comunes para el cuidador</string>
+    <string name="refresh">Actualizar estado</string>
+    <string name="channel_status">Asistencia</string>
+    <string name="channel_consent">Códigos SMS</string>
+    <string name="channel_apps">Aplicaciones nuevas</string>
+    <string name="consent_title">¿Compartir este código?</string>
+    <string name="consent_body">Solo se envía a la cola del cuidador si tocás Permitir. Si no hacés nada, no sale del teléfono.</string>
+    <string name="allow">Permitir</string>
+    <string name="deny">No enviar</string>
+    <string name="token_warning">Copiala en persona en el HONOR. No la mandes por SMS ni por correo.</string>
+    <string name="notification_title">Asistencia JOLUFA activa</string>
+    <string name="consent_notification">Llegó un código de un solo uso. Abrilo en este teléfono para decidir si se comparte.</string>
+    <string name="new_app">Se instaló %1$s. Revisala con el cuidador. Esta app no la borra sola.</string>
+</resources>

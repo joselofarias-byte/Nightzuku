@@ -1,0 +1,12 @@
+# Paquetes que ni el agente ni jolufa pueden desinstalar.
+com.joselofarias.oppoassist
+com.joselofarias.nightzuku
+com.android.settings
+com.android.phone
+com.android.systemui
+com.android.shell
+com.android.providers.settings
+com.android.providers.telephony
+com.android.providers.contacts
+com.google.android.gms
+com.tailscale.ipn
