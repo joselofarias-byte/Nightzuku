@@ -15,7 +15,7 @@ Corrida en la máquina de desarrollo, el 2026-11-02. No se conectó ningún tel�
 - `bash oppo-assist/termux/tests/test_jolufa_cli.sh`: el host público no arma `adb`; con bloqueo o volcado desconocido no hay `input` ni `scrcpy`; desbloqueado sí; `reiniciar` sin `--confirmo` no arma `reboot`; `cerrar-sesion` no escribe el valor 1; con ADB caído, `recuperar` imprime `ALERTA` y reconecta a `100.64.8.8:39999`.
 - `:agent:assembleDebug` terminó bien. APK resultante:
   - ruta: `oppo-assist/agent/build/outputs/apk/debug/agent-debug.apk`
-  - tamaño: 8538243 bytes
+  - tamaño, después de sumar la observación del puerto: 8624591 bytes
   - `aapt dump badging`: `com.joselofarias.oppoassist`, versionName `1.0.0`, minSdk 29, targetSdk 35, compileSdk 35
   - permisos presentes: SMS, contactos, notificaciones, servicio en primer plano `specialUse`, arranque, `QUERY_ALL_PACKAGES`
 - El APK no se commitea. El workflow `.github/workflows/oppo-assist.yml` vuelve a correr las pruebas y `assembleDebug`.
