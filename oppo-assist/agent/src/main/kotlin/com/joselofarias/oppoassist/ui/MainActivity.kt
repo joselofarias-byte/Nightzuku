@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -40,12 +39,6 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.token).setOnClickListener { showToken() }
         findViewById<Button>(R.id.refresh).setOnClickListener { render() }
-        val forward = findViewById<CheckBox>(R.id.forward_sms)
-        val app = OppoAssistApp.from(this)
-        forward.isChecked = app.prefs.getBoolean(OppoAssistApp.KEY_FORWARD, false)
-        forward.setOnCheckedChangeListener { _, checked ->
-            app.prefs.edit().putBoolean(OppoAssistApp.KEY_FORWARD, checked).apply()
-        }
     }
 
     override fun onResume() {

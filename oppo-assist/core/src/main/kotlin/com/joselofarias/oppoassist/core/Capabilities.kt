@@ -75,7 +75,7 @@ object CapabilityMatrix {
             "agente_con_permiso",
             "solicitado_no_demostrado",
             false,
-            "Solo SMS tradicionales. RCS se descarta. Un código de un solo uso espera un toque en el OPPO.",
+            "Todo SMS tradicional se reenvía, también si parece un código de un solo uso. Ese caso solo se marca con otp=true. RCS se descarta.",
         ),
         Capability(
             "diagnostics",

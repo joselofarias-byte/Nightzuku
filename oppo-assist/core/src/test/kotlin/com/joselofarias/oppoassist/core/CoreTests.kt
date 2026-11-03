@@ -85,49 +85,40 @@ class NetPolicyTest {
 
 class SmsPolicyTest {
     @Test
-    fun holdsOneTimeCodesAndDropsRcs() {
-        assertEquals(SmsDecision.HELD, SmsPolicy.decide(Channel.SMS, "Tu codigo es 847291", true))
-        assertEquals(SmsDecision.HELD, SmsPolicy.decide(Channel.SMS, "847291", true))
-        assertEquals(SmsDecision.FORWARDED, SmsPolicy.decide(Channel.SMS, "El médico te espera a las 15", true))
-        assertEquals(SmsDecision.DROPPED_DISABLED, SmsPolicy.decide(Channel.SMS, "Hola", false))
-        assertEquals(SmsDecision.DROPPED_RCS, SmsPolicy.decide(Channel.RCS, "Tu codigo es 847291", true))
+    fun forwardsOneTimeCodesWithALabelAndDropsRcs() {
+        assertEquals(SmsDecision.FORWARDED, SmsPolicy.decide(Channel.SMS))
+        assertEquals(SmsDecision.DROPPED_RCS, SmsPolicy.decide(Channel.RCS))
+        assertTrue(SensitiveSms.looksLikeOneTimeCode("Tu codigo es 847291"))
+        assertTrue(SensitiveSms.looksLikeOneTimeCode("847291"))
+        assertFalse(SensitiveSms.looksLikeOneTimeCode("El médico te espera a las 15"))
     }
 
     @Test
-    fun remoteViewHidesPendingCodeUntilLocalApproval() {
+    fun oneTimeCodeIsQueuedImmediatelyWithTheFlag() {
         val dir = File("build/sms-test").apply { deleteRecursively(); mkdirs() }
-        var now = 1_700_000_000_000L
-        val queue = FileSmsQueue(dir) { now }
-        val ingress = SmsIngress(queue, { true }, { "code1" }, { now })
+        val now = 1_700_000_000_000L
+        val queue = FileSmsQueue(dir)
+        var serial = 0
+        val ingress = SmsIngress(queue, { "code${serial++}" }, { now })
         val secret = "847291"
-        val held = ingress.accept(Channel.SMS, "+59899000000", "Su codigo de seguridad es $secret")
-        assertEquals(SmsDecision.HELD, held.decision)
-        val pending = JsonCodec.stringify(jarr(queue.pendingMeta().map { it.toPendingMetaJson() }))
-        assertFalse(pending.contains(secret))
-        assertFalse(pending.contains("+59899000000"))
-        assertTrue(queue.approve("code1", now))
+        val result = ingress.accept(Channel.SMS, "+59899000000", "Su codigo de seguridad es $secret")
+        assertEquals(SmsDecision.FORWARDED, result.decision)
         val forwarded = JsonCodec.stringify(jarr(queue.forwardList().map { it.toForwardJson() }))
         assertTrue(forwarded.contains(secret))
-        assertTrue(queue.pendingMeta().isEmpty())
-    }
-
-    @Test
-    fun expiredConsentCannotBeApproved() {
-        val dir = File("build/sms-expire").apply { deleteRecursively(); mkdirs() }
-        var now = 5_000L
-        val queue = FileSmsQueue(dir) { now }
-        val ingress = SmsIngress(queue, { true }, { "once" }, { now })
-        ingress.accept(Channel.SMS, "+59899000000", "otp 445566")
-        now += SmsPolicy.CONSENT_TTL_MS + 1
-        assertFalse(queue.approve("once", now))
-        assertTrue(queue.forwardList().isEmpty())
+        assertTrue(forwarded.contains("\"otp\":true"))
+        val plain = ingress.accept(Channel.SMS, "+59899000000", "El médico te espera a las 15")
+        assertEquals(SmsDecision.FORWARDED, plain.decision)
+        assertTrue(queue.forwardList().any { !it.otp && it.body.contains("médico") })
+        val dropped = ingress.accept(Channel.RCS, "+59899000000", "codigo $secret")
+        assertEquals(SmsDecision.DROPPED_RCS, dropped.decision)
+        assertEquals(2, queue.forwardList().size)
     }
 
     @Test
     fun rejectsPathTraversalIds() {
         val dir = File("build/sms-path").apply { deleteRecursively(); mkdirs() }
         val queue = FileSmsQueue(dir)
-        queue.insertForward(SmsMessage("../x", Channel.SMS, "a", "b", 1, null))
+        queue.insertForward(SmsMessage("../x", Channel.SMS, "a", "b", 1, false))
         assertTrue(queue.forwardList().isEmpty())
         assertFalse(queue.ack("../x"))
     }
@@ -226,10 +217,10 @@ class HttpServerTest {
     }
 
     @Test
-    fun authOpsAndPendingSmsBodyStayOffTheWire() {
+    fun authAndOtpAreForwardedWithoutAnApproveOp() {
         val dir = File("build/http-sms").apply { deleteRecursively(); mkdirs() }
         val queue = FileSmsQueue(dir)
-        val ingress = SmsIngress(queue, { true }, { "m1" }, { 10_000 })
+        val ingress = SmsIngress(queue, { "m1" }, { 10_000 })
         val secret = "847291"
         ingress.accept(Channel.SMS, "+59899000000", "codigo $secret")
         var approved = false
@@ -241,9 +232,9 @@ class HttpServerTest {
             RpcHandler { op, _ ->
                 when (op) {
                     "ping" -> RpcResult(true, data = mapOf("version" to jstr(AgentInfo.VERSION)))
-                    "sms.pending" -> RpcResult(
+                    "sms.recent" -> RpcResult(
                         true,
-                        data = mapOf("pending" to jarr(queue.pendingMeta().map { it.toPendingMetaJson() })),
+                        data = mapOf("messages" to jarr(queue.forwardList().map { it.toForwardJson() })),
                     )
                     "sms.approve" -> {
                         approved = true
@@ -260,8 +251,9 @@ class HttpServerTest {
             val ping = post(port, token, """{"op":"ping"}""")
             assertEquals(200, ping.first)
             assertTrue(ping.second.contains("1.0.0"))
-            val pending = post(port, token, """{"op":"sms.pending"}""")
-            assertFalse(pending.second.contains(secret))
+            val recent = post(port, token, """{"op":"sms.recent"}""")
+            assertTrue(recent.second.contains(secret))
+            assertTrue(recent.second.contains("\"otp\":true"))
             val approve = post(port, token, """{"op":"sms.approve"}""")
             assertTrue(approve.second.contains("operacion_no_permitida"))
             assertFalse(approved)
@@ -307,6 +299,8 @@ class SafetySourceTest {
         assertFalse(text.contains("AccessibilityService"))
         assertFalse(text.contains("locksettings"))
         assertFalse(text.contains("DevicePolicyManager"))
+        assertFalse(text.contains("ConsentActivity"))
+        assertFalse(text.contains("set-device-owner"))
         assertTrue(text.contains("BindPolicy.production()"))
         val server = File("../core/src/main/kotlin/com/joselofarias/oppoassist/core/HttpAgentServer.kt").readText()
         assertTrue(server.contains("isAnyLocalAddress"))

@@ -5,17 +5,17 @@ Corrida en la máquina de desarrollo, el 2026-11-02. No se conectó ningún tel�
 ## Verificado
 
 - Lectura del código de Nightzuku citada en `auditoria-nightzuku.md`, incluido `BootCompleteReceiver`, el otorgamiento de `WRITE_SECURE_SETTINGS` y `NightDogRecovery`.
-- `:core:test` con Gradle 8.11.1 y JDK 21: 18 pruebas, 0 fallos. Incluye que un puerto observado junto a `192.168.1.20` o `8.8.8.8` no copia esa IP al JSON remoto.
+- `:core:test` con Gradle 8.11.1 y JDK 21: 17 pruebas, 0 fallos. Incluye que un puerto observado junto a `192.168.1.20` o `8.8.8.8` no copia esa IP al JSON remoto.
   - JSON, direcciones Tailscale (incluido el archivo `shared/host-cases.list`), elección de interfaz, token.
-  - SMS común, código de un solo uso, RCS, vencimiento del consentimiento, que el HTTP no entrega el código pendiente y que `sms.approve` no llega al manejador.
+  - SMS tradicional, incluido un código de un solo uso, entra a la cola con `otp=true`. RCS no entra. `sms.approve` sigue rechazado.
   - Paquetes protegidos, línea base, contactos mal formados.
   - El servidor rechaza `8.8.8.8` y `0.0.0.0` antes de escuchar.
-  - El fuente del agente no abre `ServerSocket`, no nombra accesibilidad, `locksettings` ni `DevicePolicyManager`, y usa `BindPolicy.production()`.
+  - El fuente del agente no abre `ServerSocket`, no nombra accesibilidad, `locksettings`, `DevicePolicyManager`, `ConsentActivity` ni `set-device-owner`, y usa `BindPolicy.production()`.
 - `python3 -m unittest discover -s oppo-assist/termux/tests`: 8 pruebas, 0 fallos. Una comprueba que un puerto informado no cambia el host Tailscale ni adopta `192.168.1.20`.
 - `bash oppo-assist/termux/tests/test_jolufa_cli.sh`: el host público no arma `adb`; con bloqueo o volcado desconocido no hay `input` ni `scrcpy`; desbloqueado sí; `reiniciar` sin `--confirmo` no arma `reboot`; `cerrar-sesion` no escribe el valor 1; con ADB caído, `recuperar` imprime `ALERTA` y reconecta a `100.64.8.8:39999`.
 - `:agent:assembleDebug` terminó bien. APK resultante:
   - ruta: `oppo-assist/agent/build/outputs/apk/debug/agent-debug.apk`
-  - tamaño, después de sumar la observación del puerto: 8624591 bytes
+  - tamaño de esta corrida: 8804394 bytes
   - `aapt dump badging`: `com.joselofarias.oppoassist`, versionName `1.0.0`, minSdk 29, targetSdk 35, compileSdk 35
   - permisos presentes: SMS, contactos, notificaciones, servicio en primer plano `specialUse`, arranque, `QUERY_ALL_PACKAGES`
 - El APK no se commitea. El workflow `.github/workflows/oppo-assist.yml` vuelve a correr las pruebas y `assembleDebug`.

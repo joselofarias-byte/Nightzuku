@@ -3,7 +3,6 @@ package com.joselofarias.oppoassist
 import android.app.Application
 import android.content.Context
 import com.joselofarias.oppoassist.core.Channel
-import com.joselofarias.oppoassist.sms.SmsAlerts
 import com.joselofarias.oppoassist.core.FileSmsQueue
 import com.joselofarias.oppoassist.core.ProtectedPackages
 import com.joselofarias.oppoassist.core.SmsIngress
@@ -30,7 +29,6 @@ class OppoAssistApp : Application() {
         sms = FileSmsQueue(File(filesDir, "sms"))
         ingress = SmsIngress(
             queue = sms,
-            forwardEnabled = { prefs.getBoolean(KEY_FORWARD, false) },
             ids = { newSmsId() },
             clock = { System.currentTimeMillis() },
         )
@@ -42,8 +40,7 @@ class OppoAssistApp : Application() {
     fun acceptTraditionalSms(from: String, body: String, atMs: Long) {
         val key = fingerprint(from, body, atMs)
         if (!SmsDedup.fresh(File(filesDir, "sms-seen.txt"), key)) return
-        val result = ingress.accept(Channel.SMS, from, body)
-        SmsAlerts.onIngress(this, result)
+        ingress.accept(Channel.SMS, from, body)
     }
 
     private fun newSmsId(): String {
@@ -53,7 +50,6 @@ class OppoAssistApp : Application() {
 
     companion object {
         const val PREFS = "oppo_assist"
-        const val KEY_FORWARD = "forward_sms"
         const val KEY_BASELINE = "baseline"
         const val KEY_STATUS = "status_line"
         const val KEY_TOKEN = "token"

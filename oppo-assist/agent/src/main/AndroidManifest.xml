@@ -38,11 +38,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ui.ConsentActivity"
-            android:exported="false"
-            android:excludeFromRecents="false" />
-
         <service
             android:name=".service.AssistService"
             android:exported="false"

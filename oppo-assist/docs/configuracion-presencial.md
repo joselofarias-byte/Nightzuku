@@ -1,6 +1,6 @@
 # Configuración presencial
 
-Se hace con la persona al lado, el OPPO desbloqueado por ella y el HONOR en la mano. No hace falta entrar por SSH al servidor Oracle ni pedir contraseñas de cuentas.
+Se hace con la persona al lado, el OPPO desbloqueado por ella y el HONOR en la mano. No hace falta entrar por SSH al servidor Oracle. No se usa device owner ni un perfil de trabajo: eso obligaría a sacar las cuentas, y no se pide. Tampoco se restablece el teléfono.
 
 Cuando termine la visita, la notificación **Asistencia JOLUFA activa** tiene que seguir visible. Si no está, el agente no está corriendo.
 
@@ -151,9 +151,9 @@ jolufa tocar 200 400
 
 ## 9. SMS
 
-La casilla de SMS comunes queda apagada hasta que la marques en persona. Aunque esté prendida, un mensaje que parece código de un solo uso no entra a la cola del HONOR. En el OPPO aparece el pedido. Si tocás **Permitir**, `jolufa sms` lo muestra. Si no tocás nada, a los 10 minutos se borra.
+Con el permiso de SMS, cada mensaje tradicional de este número entra solo a la cola del HONOR, también si es un código de un solo uso. `jolufa sms` lo muestra. Si el texto parece un código, el mensaje lleva la marca `otp`. No hay un toque de Permitir.
 
-Los chats RCS no salen por este camino.
+Los chats RCS no salen por este camino. Esta app no los lee.
 
 ## 10. Cerrar y volver a entrar
 

@@ -191,10 +191,9 @@ case "$cmd" in
     if [[ "${1:-}" == "ack" ]]; then
       python3 "$CLIENT" rpc sms.ack "id=$2"
     elif [[ "${JOLUFA_DRY:-}" == "1" ]]; then
-      printf '%s\n' "DRY rpc sms.recent sms.pending"
+      printf '%s\n' "DRY rpc sms.recent"
     else
       python3 "$CLIENT" rpc sms.recent
-      python3 "$CLIENT" rpc sms.pending
     fi
     ;;
   adb)

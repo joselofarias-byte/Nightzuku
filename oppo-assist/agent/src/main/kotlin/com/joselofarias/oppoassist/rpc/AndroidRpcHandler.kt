@@ -33,7 +33,6 @@ import com.joselofarias.oppoassist.core.jnum
 import com.joselofarias.oppoassist.core.jobj
 import com.joselofarias.oppoassist.core.jstr
 import com.joselofarias.oppoassist.core.toForwardJson
-import com.joselofarias.oppoassist.core.toPendingMetaJson
 import java.io.File
 import java.net.NetworkInterface
 import java.util.Collections
@@ -70,9 +69,6 @@ class AndroidRpcHandler(private val app: OppoAssistApp) : RpcHandler {
                 "apps.discourage" -> AppsGateway.discourage(app, fields)
                 "sms.recent" -> ok(
                     mapOf("messages" to jarr(app.sms.forwardList().map { it.toForwardJson() })),
-                )
-                "sms.pending" -> ok(
-                    mapOf("pending" to jarr(app.sms.pendingMeta().map { it.toPendingMetaJson() })),
                 )
                 "sms.ack" -> {
                     val id = fields["id"]?.asString() ?: return RpcResult(false, "falta_id")
@@ -123,7 +119,7 @@ class AndroidRpcHandler(private val app: OppoAssistApp) : RpcHandler {
             "packages.count" to jnum(app.packageManager.getInstalledApplications(0).size.toLong()),
             "tailscale.address" to jstr(chosen ?: ""),
             "sms.rcsObservable" to jbool(false),
-            "sms.forwardEnabled" to jbool(app.prefs.getBoolean(OppoAssistApp.KEY_FORWARD, false)),
+            "sms.otpIsLabelOnly" to jbool(true),
         )
     }
 

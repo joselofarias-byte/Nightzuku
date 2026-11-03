@@ -59,13 +59,6 @@
             android:layout_height="wrap_content"
             android:text="@string/refresh" />
 
-        <CheckBox
-            android:id="@+id/forward_sms"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="8dp"
-            android:text="@string/forward_sms" />
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
