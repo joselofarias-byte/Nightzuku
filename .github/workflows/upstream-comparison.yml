@@ -1,0 +1,49 @@
+name: Upstream comparison (read only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/upstream-comparison.yml'
+permissions:
+  contents: read
+jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare against upstream main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/kerneldroid/Nightzuku.git
+          git fetch --no-tags upstream main
+          {
+            echo "# Upstream comparison"
+            echo
+            echo "Fork: $GITHUB_REPOSITORY"
+            echo "Upstream: kerneldroid/Nightzuku"
+            echo "Fork SHA: $(git rev-parse HEAD)"
+            echo "Upstream SHA: $(git rev-parse FETCH_HEAD)"
+            if git merge-base HEAD FETCH_HEAD >/dev/null; then
+              echo
+              echo "Fork-only / upstream-only commits:"
+              git rev-list --left-right --count HEAD...FETCH_HEAD
+              echo
+              echo "Upstream-only commits:"
+              git log --format='%h %s' HEAD..FETCH_HEAD -n 80
+              echo
+              echo "Changed upstream paths:"
+              git diff --name-status HEAD...FETCH_HEAD
+            else
+              echo
+              echo "NO COMMON ANCESTOR — manual review required. No merge performed."
+            fi
+          } | tee upstream-comparison.txt
+          cat upstream-comparison.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-comparison
+          path: upstream-comparison.txt
