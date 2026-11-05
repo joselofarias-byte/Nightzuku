@@ -21,51 +21,51 @@ object AdbTcpController {
     suspend fun enable(host: String, port: Int): Result = withContext(Dispatchers.IO) {
         val normalizedHost = host.trim()
         if (normalizedHost.isEmpty() || port !in 1..65535) {
-            return@withContext Result(false, "Invalid TCP host or port")
+            return@withContext Result(false, "Host o puerto TCP inválido")
         }
 
-        val source = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-            ?: return@withContext Result(false, "Wireless debugging endpoint is not available")
+        val source = AdbTransportResolver.discoverWireless(moe.shizuku.manager.application)
+            ?: return@withContext Result(false, "No se encontró el endpoint actual de depuración inalámbrica")
 
         // adbd closes the authenticated connection while switching transport.
-        // Reachability of the requested endpoint is the authoritative result.
-        runCatching { executeService(source, "tcpip:$port") }
+        // El nuevo endpoint debe completar autenticación antes de guardarse.
+        runCatching { executeService(source, "tcpip:$port", requireTls = true) }
 
         if (!awaitReachable(normalizedHost, port)) {
             return@withContext Result(
                 false,
-                "TCP port did not become reachable; Nightzuku did not save the endpoint"
+                "No se pudo autenticar el endpoint TCP; Nightzuku no guardó el puerto"
             )
         }
 
         if (!ShizukuSettings.setAdbTcpEndpoint(true, normalizedHost, port)) {
-            return@withContext Result(false, "Unable to save TCP endpoint")
+            return@withContext Result(false, "No se pudo guardar el endpoint TCP")
         }
 
-        Result(true, "ADB TCP enabled at $normalizedHost:$port")
+        Result(true, "ADB TCP habilitado en $normalizedHost:$port")
     }
 
     suspend fun disable(): Result = withContext(Dispatchers.IO) {
         val tcpEndpoint = AdbTransportResolver.persistentTcpEndpoint()
             ?: run {
                 ShizukuSettings.setAdbTcpEnabled(false)
-                return@withContext Result(true, "ADB TCP preference disabled")
+                return@withContext Result(true, "Preferencia ADB TCP deshabilitada")
             }
 
         runCatching { executeService(tcpEndpoint, "usb:") }
 
         delay(RESTART_SETTLE_MS)
         if (isReachable(tcpEndpoint.host, tcpEndpoint.port)) {
-            return@withContext Result(false, "TCP endpoint is still reachable; setting was preserved")
+            return@withContext Result(false, "El endpoint TCP sigue accesible; se conservó la configuración")
         }
 
         ShizukuSettings.setAdbTcpEnabled(false)
-        Result(true, "ADB TCP disabled")
+        Result(true, "ADB TCP deshabilitado")
     }
 
-    private fun executeService(endpoint: AdbEndpoint, service: String) {
+    private fun executeService(endpoint: AdbEndpoint, service: String, requireTls: Boolean = false) {
         val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
-        AdbClient(endpoint.host, endpoint.port, key).use { client ->
+        AdbClient(endpoint.host, endpoint.port, key, requireTls).use { client ->
             client.connect()
             client.serviceCommand(service)
         }
@@ -74,7 +74,13 @@ object AdbTcpController {
     private suspend fun awaitReachable(host: String, port: Int): Boolean {
         repeat(VERIFY_ATTEMPTS) {
             delay(VERIFY_INTERVAL_MS)
-            if (isReachable(host, port)) return true
+            if (isReachable(host, port)) {
+                return runCatching {
+                    val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
+                    AdbClient(host, port, key).use { it.connect() }
+                    true
+                }.getOrDefault(false)
+            }
         }
         return false
     }
