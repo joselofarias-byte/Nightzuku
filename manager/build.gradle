@@ -63,6 +63,9 @@ android {
     lint {
         checkReleaseBuilds false
     }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 def androidSdkDirectory = {
@@ -122,37 +125,39 @@ afterEvaluate {
     tasks.getByName('preDebugBuild').dependsOn(':shell:copyDebugShellDex')
     tasks.getByName('mergeReleaseAssets').dependsOn(':shell:copyReleaseShellDex')
     tasks.getByName('mergeDebugAssets').dependsOn(':shell:copyDebugShellDex')
+}
 
-    ['debug', 'release'].each { variantName ->
-        def capitalized = variantName.capitalize()
-        def copyApk = tasks.register("copy${capitalized}ManagerApk") {
-            mustRunAfter("assemble${capitalized}")
-            doLast {
-                def versionName = rootProject.ext.versionName
-                def apkDir = layout.buildDirectory.dir("outputs/apk/${variantName}").get().asFile
-                def apk = fileTree(apkDir) { include '*.apk' }.files.find { it.name.endsWith('.apk') }
-                if (apk == null) {
-                    throw new GradleException("Manager ${variantName} APK was not found")
-                }
-                copy {
-                    from apk
-                    into rootProject.layout.projectDirectory.dir('out/apk')
-                    rename { "nightzuku-v${versionName}-${variantName}.apk" }
-                }
-                if (variantName == 'release') {
-                    def mapping = layout.buildDirectory.file('outputs/mapping/release/mapping.txt').get().asFile
-                    if (mapping.exists()) {
-                        copy {
-                            from mapping
-                            into rootProject.layout.projectDirectory.dir('out/mapping')
-                            rename { "mapping-${versionName}.txt" }
-                        }
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def variantName = variant.name
+    def apkDirectory = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK.INSTANCE)
+    def capitalized = variantName.capitalize()
+    def copyApk = tasks.register("copy${capitalized}ManagerApk") {
+        mustRunAfter("assemble${capitalized}")
+        doLast {
+            def versionName = rootProject.ext.versionName
+            def apkDir = apkDirectory.get().asFile
+            def apk = fileTree(apkDir) { include '*.apk' }.files.find { it.name.endsWith('.apk') }
+            if (apk == null) {
+                throw new GradleException("Manager ${variantName} APK was not found")
+            }
+            copy {
+                from apk
+                into rootProject.layout.projectDirectory.dir('out/apk')
+                rename { "nightzuku-v${versionName}-${variantName}.apk" }
+            }
+            if (variantName == 'release') {
+                def mapping = layout.buildDirectory.file('outputs/mapping/release/mapping.txt').get().asFile
+                if (mapping.exists()) {
+                    copy {
+                        from mapping
+                        into rootProject.layout.projectDirectory.dir('out/mapping')
+                        rename { "mapping-${versionName}.txt" }
                     }
                 }
             }
         }
-        tasks.getByName("assemble${capitalized}").finalizedBy(copyApk)
     }
+    tasks.matching { it.name == "assemble${capitalized}" }.configureEach { finalizedBy(copyApk) }
 }
 
 tasks.withType(CompileArtProfileTask.class).configureEach {
@@ -164,6 +169,7 @@ configurations.configureEach {
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 
