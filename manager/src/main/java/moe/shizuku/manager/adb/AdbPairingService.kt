@@ -59,9 +59,9 @@ class AdbPairingService : Service() {
         Log.i(tag, "Pairing service port: $port")
         if (port <= 0) return@Observer
 
-        val endpoint = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_PAIRING)
-        val host = endpoint?.host ?: loopbackHost
-        val resolvedPort = endpoint?.port?.takeIf { it > 0 } ?: port
+        val endpoint = adbMdns?.resolvedEndpoint ?: return@Observer
+        val host = endpoint.host
+        val resolvedPort = endpoint.port
         val notification = createInputNotification(host, resolvedPort)
 
         getSystemService(NotificationManager::class.java).notify(notificationId, notification)

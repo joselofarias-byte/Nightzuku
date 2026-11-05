@@ -15,9 +15,7 @@ object AdbRecoveryTestController {
     )
 
     suspend fun killServerProcess(): Result = withContext(Dispatchers.IO) {
-        val endpoint = AdbTransportResolver.persistentTcpEndpoint()
-            ?: AdbTransportResolver.systemAdbTcpEndpoint()
-            ?: AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
+        val endpoint = AdbTransportResolver.discover(moe.shizuku.manager.application)
             ?: return@withContext Result(
                 false,
                 "No hay un endpoint ADB disponible para ejecutar la prueba."
