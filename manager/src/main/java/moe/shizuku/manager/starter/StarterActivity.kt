@@ -27,7 +27,8 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
-import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.adb.AdbTransportResolver
+import moe.shizuku.manager.adb.AdbEndpoint
 import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
@@ -233,11 +234,7 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
             if (root) {
                 startRoot()
             } else {
-                val discovered = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
-                val useDiscovered = discovered != null && (host.isNullOrBlank() || host == LOOPBACK_HOST)
-                val resolvedHost = if (useDiscovered) discovered.host else requireNotNull(host)
-                val resolvedPort = if (useDiscovered) discovered.port else port
-                startAdb(resolvedHost, resolvedPort)
+                startAdb(host, port)
             }
         } catch (e: Throwable) {
             postResult(e)
@@ -305,13 +302,22 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         }
     }
 
-    private fun startAdb(host: String, port: Int) {
-        synchronized(outputLock) {
-            sb.append(context.getString(R.string.starter_starting_wireless_adb, port.toString())).append('\n').append('\n')
-        }
-        postResult()
-
+    private fun startAdb(requestedHost: String?, requestedPort: Int) {
         viewModelScope.launch(Dispatchers.IO) {
+            appendLine("Buscando el puerto ADB inalámbrico local actual…")
+            val endpoint = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                AdbTransportResolver.discover(context)
+            } else {
+                requestedHost?.takeIf { it.isNotBlank() && requestedPort in 1..65535 }
+                    ?.let { AdbEndpoint(it, requestedPort) }
+            }
+            if (endpoint == null) {
+                appendLine("No se encontró ADB local. Revisá Wi-Fi, depuración inalámbrica y emparejamiento.")
+                postResult(java.io.IOException("Descubrimiento ADB agotado (8 s)"))
+                return@launch
+            }
+            val (host, port) = endpoint
+            appendLine(context.getString(R.string.starter_starting_wireless_adb, port.toString()))
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {
@@ -322,15 +328,17 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 return@launch
             }
 
-            AdbClient(host, port, key).runCatching {
-                connect()
-                shellCommand(Starter.internalCommand) {
-                    synchronized(outputLock) {
-                        sb.append(String(it))
+            runCatching {
+                AdbClient(host, port, key, requireTls = android.os.Build.VERSION.SDK_INT >= 30).use { client ->
+                    client.connect()
+                    appendLine("Conexión ADB autenticada; ejecutando el iniciador")
+                    client.shellCommand(Starter.internalCommand) {
+                        synchronized(outputLock) {
+                            sb.append(String(it))
+                        }
+                        postResult()
                     }
-                    postResult()
                 }
-                close()
             }.onFailure {
                 it.printStackTrace()
 
@@ -340,7 +348,4 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         }
     }
 
-    companion object {
-        private const val LOOPBACK_HOST = "127.0.0.1"
-    }
 }
