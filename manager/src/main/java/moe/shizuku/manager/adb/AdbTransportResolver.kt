@@ -1,39 +1,43 @@
 package moe.shizuku.manager.adb
 
+import android.content.Context
+import android.os.Build
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import moe.shizuku.manager.ShizukuSettings
 
-/**
- * Resolves the endpoint used to start Shizuku without duplicating transport policy.
- *
- * Priority for normal startup:
- * 1. Explicit persistent TCP endpoint enabled by the user.
- * 2. Current mDNS endpoint advertised by wireless debugging.
- * 3. Endpoint supplied by the caller.
- *
- * The system ADB TCP endpoint is exposed separately for diagnostics/recovery tests. It must not
- * silently replace the user's normal transport policy.
- */
+/** Descubre el transporte local actual sin reutilizar puertos de operaciones anteriores. */
 internal object AdbTransportResolver {
 
-    private const val LOOPBACK_HOST = "127.0.0.1"
-    private const val GETPROP = "/system/bin/getprop"
-    private const val SERVICE_ADB_TCP_PORT = "service.adb.tcp.port"
 
-    fun resolve(
-        requestedHost: String?,
-        requestedPort: Int,
-        serviceType: String = AdbMdns.TLS_CONNECT
-    ): AdbEndpoint {
-        persistentTcpEndpoint()?.let { return it }
+    // El puerto TLS cambia: cada operación tiene su propia sesión NSD y su limpieza.
+    suspend fun discover(context: Context): AdbEndpoint? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return discoverWireless(context)
+    }
 
-        val discovered = AdbMdns.getResolvedEndpoint(serviceType)
-        if (discovered != null && (requestedHost.isNullOrBlank() || requestedHost == LOOPBACK_HOST)) {
-            return discovered
+    suspend fun discoverWireless(context: Context): AdbEndpoint? = withContext(Dispatchers.Main) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext null
+        var discovery: AdbMdns? = null
+        try {
+            withTimeoutOrNull(8_000L) {
+                suspendCancellableCoroutine { continuation ->
+                    val session = AdbMdns(context.applicationContext, AdbMdns.TLS_CONNECT) { port ->
+                        val endpoint = discovery?.resolvedEndpoint
+                        if (port > 0 && endpoint != null && continuation.isActive) {
+                            continuation.resume(endpoint)
+                        }
+                    }
+                    discovery = session
+                    session.start()
+                }
+            }
+        } finally {
+            discovery?.stop()
         }
-
-        val host = requestedHost?.takeIf { it.isNotBlank() } ?: LOOPBACK_HOST
-        require(requestedPort in 1..65535) { "Invalid ADB port: $requestedPort" }
-        return AdbEndpoint(host, requestedPort)
     }
 
     fun persistentTcpEndpoint(): AdbEndpoint? {
@@ -46,34 +50,4 @@ internal object AdbTransportResolver {
         return AdbEndpoint(host, port)
     }
 
-    /**
-     * Returns Android's currently configured local ADB-over-TCP endpoint, when present.
-     *
-     * `service.adb.tcp.port` describes the live adbd TCP configuration and is intentionally kept
-     * separate from Nightzuku's persistent-TCP preference. Callers still have to authenticate the
-     * returned endpoint with [AdbClient] before treating it as usable.
-     */
-    fun systemAdbTcpEndpoint(): AdbEndpoint? {
-        val process = runCatching {
-            ProcessBuilder(GETPROP, SERVICE_ADB_TCP_PORT)
-                .redirectErrorStream(true)
-                .start()
-        }.getOrNull() ?: return null
-
-        return try {
-            val value = process.inputStream.bufferedReader().use { reader ->
-                reader.readLine()?.trim()
-            }
-            if (process.waitFor() != 0) return null
-
-            val port = value?.toIntOrNull() ?: return null
-            if (port !in 1..65535) return null
-
-            AdbEndpoint(LOOPBACK_HOST, port)
-        } catch (_: Exception) {
-            null
-        } finally {
-            process.destroy()
-        }
-    }
 }
