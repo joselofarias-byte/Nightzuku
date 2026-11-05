@@ -9,10 +9,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.Observer
-import java.io.IOException
-import java.net.InetSocketAddress
 import java.net.NetworkInterface
-import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
 
 internal data class AdbEndpoint(
@@ -27,6 +24,9 @@ class AdbMdns(
     private val observer: Observer<Int>
 ) {
 
+    internal var resolvedEndpoint: AdbEndpoint? = null
+        private set
+
     private var registered = false
     private var running = false
     private var serviceName: String? = null
@@ -38,6 +38,7 @@ class AdbMdns(
 
     fun start() {
         if (running) return
+        resolvedEndpoint = null
         running = true
         restartAttempts = 0
         discover()
@@ -46,6 +47,7 @@ class AdbMdns(
     fun stop() {
         if (!running) return
         running = false
+        resolvedEndpoint = null
         restartScheduled = false
         restartAttempts = 0
         handler.removeCallbacksAndMessages(null)
@@ -81,6 +83,10 @@ class AdbMdns(
 
     private fun onDiscoveryStart() {
         registered = true
+        if (!running) {
+            runCatching { nsdManager.stopServiceDiscovery(listener) }
+            return
+        }
         restartScheduled = false
         restartAttempts = 0
     }
@@ -96,11 +102,14 @@ class AdbMdns(
     }
 
     private fun onServiceFound(info: NsdServiceInfo) {
-        nsdManager.resolveService(info, ResolveListener(this))
+        if (!running) return
+        runCatching { nsdManager.resolveService(info, ResolveListener(this)) }
+            .onFailure { Log.w(TAG, "No se pudo resolver el servicio ADB", it) }
     }
 
     private fun onServiceLost(info: NsdServiceInfo) {
         if (info.serviceName == serviceName) {
+            resolvedEndpoint = null
             endpoints.remove(serviceType)
             observer.onChanged(-1)
         }
@@ -109,28 +118,18 @@ class AdbMdns(
     private fun onServiceResolved(resolvedService: NsdServiceInfo) {
         val host = resolvedService.host?.hostAddress ?: return
         val port = resolvedService.port
-        if (running && NetworkInterface.getNetworkInterfaces()
-                .asSequence()
-                .any { networkInterface ->
-                    networkInterface.inetAddresses
-                        .asSequence()
-                        .any { host == it.hostAddress }
-                }
-            && isPortAvailable(host, port)
-        ) {
+        val localHosts = runCatching {
+            NetworkInterface.getNetworkInterfaces().asSequence()
+                .flatMap { it.inetAddresses.asSequence() }
+                .mapNotNull { it.hostAddress }.toSet()
+        }.getOrDefault(emptySet())
+        if (running && AdbEndpointPolicy.isLocal(host, port, localHosts)) {
             serviceName = resolvedService.serviceName
-            endpoints[serviceType] = AdbEndpoint(host, port)
+            val endpoint = AdbEndpoint(host, port)
+            resolvedEndpoint = endpoint
+            endpoints[serviceType] = endpoint
             observer.onChanged(port)
         }
-    }
-
-    private fun isPortAvailable(host: String, port: Int) = try {
-        ServerSocket().use {
-            it.bind(InetSocketAddress(host, port), 1)
-            false
-        }
-    } catch (e: IOException) {
-        true
     }
 
     internal class DiscoveryListener(private val adbMdns: AdbMdns) : NsdManager.DiscoveryListener {
