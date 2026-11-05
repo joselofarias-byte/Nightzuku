@@ -30,21 +30,20 @@ android {
     }
 }
 
-def registerShellDexCopyTask(String variantName) {
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def variantName = variant.name
     def capitalized = variantName.capitalize()
     tasks.register("copy${capitalized}ShellDex") {
         dependsOn("assemble${capitalized}")
 
-        def apkFiles = fileTree(layout.buildDirectory.dir("outputs/apk/${variantName}")) {
-            include '*.apk'
-        }
+        def apkDirectory = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK.INSTANCE)
         def dexPath = rootProject.layout.projectDirectory.dir("manager/build/generated/rish/${variantName}/assets")
 
-        inputs.files(apkFiles)
+        inputs.dir(apkDirectory)
         outputs.file(dexPath.file("rish_shizuku.dex"))
 
         doLast {
-            def apk = apkFiles.files.find { it.name.endsWith(".apk") }
+            def apk = fileTree(apkDirectory.get().asFile) { include '*.apk' }.singleFile
             if (apk == null) {
                 throw new GradleException("Shell ${variantName} APK was not found")
             }
@@ -57,8 +56,6 @@ def registerShellDexCopyTask(String variantName) {
     }
 }
 
-registerShellDexCopyTask("debug")
-registerShellDexCopyTask("release")
 
 dependencies {
     implementation libs.hidden.compat
