@@ -211,7 +211,10 @@ abstract class HomeActivity : AppActivity() {
                     if (showStopDialog) {
                         HomeStopDialog(
                             onDismiss = { showStopDialog = false },
-                            onConfirm = { runCatching { Shizuku.exit() } }
+                            onConfirm = {
+                                NightDogRecovery.prepareForManualStop(this@HomeActivity)
+                                runCatching { Shizuku.exit() }
+                            }
                         )
                     }
                     if (showAdbCommandDialog) {

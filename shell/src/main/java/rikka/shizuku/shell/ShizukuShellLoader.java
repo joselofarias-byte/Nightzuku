@@ -28,6 +28,7 @@ public class ShizukuShellLoader {
     private static String[] args;
     private static String callingPackage;
     private static Handler handler;
+    private static Runnable binderTimeout;
 
     private static final Binder receiverBinder = new Binder() {
 
@@ -128,6 +129,7 @@ public class ShizukuShellLoader {
     }
 
     private static void onBinderReceived(IBinder binder, String sourceDir) {
+        handler.removeCallbacks(binderTimeout);
         var base = sourceDir.substring(0, sourceDir.lastIndexOf('/'));
         String librarySearchPath = base + "/lib/" + VMRuntimeHidden.getRuntime().vmInstructionSet();
         String systemLibrarySearchPath = System.getProperty("java.library.path");
@@ -189,12 +191,13 @@ public class ShizukuShellLoader {
             System.exit(1);
         }
 
-        handler.postDelayed(() -> abort(
+        binderTimeout = () -> abort(
                 String.format(
                         "Request timeout. No binder reply was received by current app (%1$s) from Nightzuku (" + BuildConfig.MANAGER_APPLICATION_ID + "). " +
                                 "This can be caused by binder-request delivery being blocked or by the Nightzuku server not answering.",
                         packageName)
-        ), 5000);
+        );
+        handler.postDelayed(binderTimeout, 5000);
 
         Looper.loop();
         System.exit(0);
