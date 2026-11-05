@@ -24,7 +24,7 @@ object AdbTcpController {
             return@withContext Result(false, "Invalid TCP host or port")
         }
 
-        val source = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
+        val source = AdbTransportResolver.discoverWireless(moe.shizuku.manager.application)
             ?: return@withContext Result(false, "Wireless debugging endpoint is not available")
 
         // adbd closes the authenticated connection while switching transport.
