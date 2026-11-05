@@ -15,9 +15,7 @@ object AdbRecoveryTestController {
     )
 
     suspend fun killServerProcess(): Result = withContext(Dispatchers.IO) {
-        val endpoint = AdbTransportResolver.persistentTcpEndpoint()
-            ?: AdbTransportResolver.systemAdbTcpEndpoint()
-            ?: AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
+        val endpoint = AdbTransportResolver.discover(moe.shizuku.manager.application)
             ?: return@withContext Result(
                 false,
                 "No hay un endpoint ADB disponible para ejecutar la prueba."
@@ -26,7 +24,7 @@ object AdbRecoveryTestController {
         runCatching {
             val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             val output = ByteArrayOutputStream()
-            AdbClient(endpoint.host, endpoint.port, key).use { client ->
+            AdbClient(endpoint.host, endpoint.port, key, requireTls = true).use { client ->
                 client.connect()
                 client.shellCommand(
                     "pid=\"\$(pidof shizuku_server 2>/dev/null | cut -d' ' -f1)\"; " +
