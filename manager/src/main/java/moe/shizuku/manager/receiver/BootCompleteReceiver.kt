@@ -18,13 +18,12 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.ShizukuSettings.LaunchMethod
 import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
-import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.adb.AdbTransportResolver
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 class BootCompleteReceiver : BroadcastReceiver() {
 
@@ -42,7 +41,8 @@ class BootCompleteReceiver : BroadcastReceiver() {
             return
         }
 
-        if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
+        if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()
+            || !NightDogRecovery.isDesiredRunning(context)) return
 
         if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
             rootStart(context)
@@ -67,39 +67,29 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun adbStart(context: Context) {
-        val cr = context.contentResolver
-        Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
-        Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
-        Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            val latch = CountDownLatch(1)
-            val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
-                if (port <= 0) return@AdbMdns
-                try {
-                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                    val key = AdbKey(keystore, "shizuku")
-                    // AdbMdns already resolved the real interface address. Reuse it
-                    // instead of assuming loopback, which is not valid on every
-                    // Android wireless-debugging implementation.
-                    val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-                    val host = endpoint?.host ?: "127.0.0.1"
-                    val resolvedPort = endpoint?.port ?: port
-                    val client = AdbClient(host, resolvedPort, key)
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
-                    client.close()
-                } catch (error: Exception) {
-                    Log.w(AppConstants.TAG, "ADB start on boot failed", error)
+            try {
+                if (Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled", 0) != 1) {
+                    Log.i(AppConstants.TAG, "ADB inalámbrico desactivado; se respeta el estado del usuario")
+                    return@launch
                 }
-                latch.countDown()
+                val endpoint = AdbTransportResolver.discover(context)
+                if (endpoint == null) {
+                    Log.w(AppConstants.TAG, "Arranque: no se anunció un endpoint ADB local actual")
+                    return@launch
+                }
+                val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
+                AdbClient(endpoint.host, endpoint.port, key).use { client ->
+                    client.connect()
+                    if (!NightDogRecovery.isDesiredRunning(context) || Shizuku.pingBinder()) return@use
+                    client.shellCommand(Starter.internalCommand, null)
+                }
+            } catch (error: Exception) {
+                Log.w(AppConstants.TAG, "Falló el inicio ADB tras el arranque", error)
+            } finally {
+                pending.finish()
             }
-            if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
-                adbMdns.start()
-                latch.await(3, TimeUnit.SECONDS)
-                adbMdns.stop()
-            }
-            pending.finish()
         }
     }
 }
