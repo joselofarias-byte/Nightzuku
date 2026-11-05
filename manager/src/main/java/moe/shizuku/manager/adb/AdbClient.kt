@@ -18,6 +18,7 @@ import rikka.core.util.BuildUtils
 import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -41,7 +42,9 @@ class AdbClient(private val host: String, private val port: Int, private val key
     private val outputStream get() = if (useTls) tlsOutputStream else plainOutputStream
 
     fun connect() {
-        socket = Socket(host, port)
+        socket = Socket()
+        socket.soTimeout = 10_000
+        socket.connect(InetSocketAddress(host, port), 5_000)
         socket.tcpNoDelay = true
         plainInputStream = DataInputStream(socket.getInputStream())
         plainOutputStream = DataOutputStream(socket.getOutputStream())
@@ -57,6 +60,7 @@ class AdbClient(private val host: String, private val port: Int, private val key
 
             val sslContext = key.sslContext
             tlsSocket = sslContext.socketFactory.createSocket(socket, host, port, true) as SSLSocket
+            tlsSocket.soTimeout = 10_000
             tlsSocket.startHandshake()
             Log.d(TAG, "Handshake succeeded.")
 
@@ -135,6 +139,7 @@ class AdbClient(private val host: String, private val port: Int, private val key
         val arg0 = buffer.int
         val arg1 = buffer.int
         val dataLength = buffer.int
+        require(dataLength in 0..(1024 * 1024)) { "Longitud de mensaje ADB inválida" }
         val checksum = buffer.int
         val magic = buffer.int
         val data = if (dataLength > 0) {
@@ -153,7 +158,7 @@ class AdbClient(private val host: String, private val port: Int, private val key
         runCatching { plainOutputStream.close() }
         runCatching { socket.close() }
 
-        if (useTls) {
+        if (::tlsSocket.isInitialized) {
             runCatching { tlsInputStream.close() }
             runCatching { tlsOutputStream.close() }
             runCatching { tlsSocket.close() }
