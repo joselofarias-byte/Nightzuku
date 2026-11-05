@@ -63,6 +63,9 @@ android {
     lint {
         checkReleaseBuilds false
     }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 def androidSdkDirectory = {
@@ -164,6 +167,7 @@ configurations.configureEach {
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 
