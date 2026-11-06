@@ -142,7 +142,10 @@ abstract class HomeActivity : AppActivity() {
             val unauthorizedResource by appsModel.unauthorizedCount.observeAsState()
             val localNetworkPermissionState = remember(permissionRefreshTick.intValue) { buildLocalNetworkPermissionState() }
 
-            LaunchedEffect(runtimeStatus) { homeModel.reload() }
+            // Runtime status carries a fresh lastChecked timestamp on every poll.
+            // Keying the effect to the whole object caused redundant Home reloads
+            // even when the semantic state had not changed.
+            LaunchedEffect(runtimeStatus::class) { homeModel.reload() }
             LaunchedEffect(serviceResource?.status, serviceResource?.data?.uid) {
                 val status = serviceResource?.data ?: return@LaunchedEffect
                 if (serviceResource?.status == Status.SUCCESS && status.isRunning) {
@@ -211,7 +214,10 @@ abstract class HomeActivity : AppActivity() {
                     if (showStopDialog) {
                         HomeStopDialog(
                             onDismiss = { showStopDialog = false },
-                            onConfirm = { runCatching { Shizuku.exit() } }
+                            onConfirm = {
+                                NightDogRecovery.prepareForManualStop(this@HomeActivity)
+                                runCatching { Shizuku.exit() }
+                            }
                         )
                     }
                     if (showAdbCommandDialog) {
@@ -253,6 +259,7 @@ abstract class HomeActivity : AppActivity() {
     }
 
     private fun startAndDismiss(port: Int) {
+        if (!NightDogRecovery.tryBeginStarterAttempt()) return
         startActivity(Intent(this, StarterActivity::class.java).apply {
             putExtra(StarterActivity.EXTRA_IS_ROOT, false)
             putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
@@ -279,6 +286,7 @@ abstract class HomeActivity : AppActivity() {
 
     private fun startRoot() {
         if (!EnvironmentUtils.isRooted()) return
+        if (!NightDogRecovery.tryBeginStarterAttempt()) return
         startActivity(Intent(this, StarterActivity::class.java).apply { putExtra(StarterActivity.EXTRA_IS_ROOT, true) })
     }
 
@@ -286,6 +294,7 @@ abstract class HomeActivity : AppActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { onShowDiscovery(); return }
         val port = EnvironmentUtils.getAdbTcpPort()
         if (port > 0) {
+            if (!NightDogRecovery.tryBeginStarterAttempt()) return
             startActivity(Intent(this, StarterActivity::class.java).apply {
                 putExtra(StarterActivity.EXTRA_IS_ROOT, false)
                 putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
@@ -575,6 +584,7 @@ private fun PhoneHomeScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { StatusCard(serviceResource, status, onStartRoot, onStartWirelessAdb, isRooted, canUseWirelessAdb) }
+            item { MaximumPersistenceCard() }
             if (adbPermission) {
                 item { ManageAppsCard(status, grantedResource, unauthorizedResource, onManageApps) }
                 item {
