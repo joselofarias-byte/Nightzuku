@@ -17,6 +17,7 @@ This is not the original project. It is a personal adaptation focused on Spanish
 - Added accessibility descriptions for icon-only actions.
 - Integrated selected safe improvements from upstream r49.
 - Fixed ADB pairing peer info handling in AdbPairingClient.kt.
+- Hardened Android 16 rish binder delivery: unordered/non-sticky broadcast arguments, correct user id, non-blocking dispatch, and one retry before timeout.
 - Documented the fork clearly as a personal adaptation of the original project.
 
 ## User-facing improvements
@@ -110,6 +111,7 @@ Este no es el proyecto original. Es una adaptación personal enfocada en soporte
 - Se agregaron descripciones de accesibilidad para acciones solo con iconos.
 - Se integraron mejoras seguras seleccionadas desde upstream r49.
 - Se corrigió el manejo de peer info en ADB pairing dentro de AdbPairingClient.kt.
+- Se reforzó la entrega del binder de rish en Android 16: broadcast no ordenado/no sticky, userId correcto, envío no bloqueante y un reintento antes del timeout.
 - Se documentó claramente el repositorio como una adaptación personal del proyecto original.
 
 ## Mejoras visibles para usuarios
