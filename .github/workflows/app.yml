@@ -69,6 +69,9 @@ jobs:
           name: ${{ steps.buildWithGradle.outputs.releaseName }}
           path: "out"
           compression-level: 9
+          # Brief CI copy. Tag APKs also attach to the GitHub Release.
+          # Explicit so Actions does not apply the 90-day default.
+          retention-days: 7
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
