@@ -13,6 +13,10 @@ Proyecto Android de la familia Shizuku mantenido por **JoseloFarias**, con ident
 
 Desarrollo activo. Las funciones nuevas deben validarse en dispositivo y mediante las tareas reales del proyecto.
 
+## JOLUFASOFT OPPO ASSIST
+
+Asistencia remota consentida para un OPPO, controlada desde Termux en un HONOR, con transporte por Tailscale. Nightzuku no es el servidor ADB remoto. La documentación y el código están en `oppo-assist/`.
+
 ## Desarrollo
 
 ```bash

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OPPO Assist</string>
+    <string name="title">JOLUFASOFT OPPO ASSIST</string>
+    <string name="help">Esta pantalla queda en el teléfono de la persona. La notificación de asistencia no se esconde.\n\nLos SMS tradicionales de este número, incluidos los códigos de un solo uso, se encolan solos para el cuidador por Tailscale. Los mensajes RCS no se leen.\n\nEsta app no administra el teléfono como device owner y no pide borrar cuentas.\n\nEn ColorOS, además, activá el inicio automático de OPPO Assist en la batería del sistema. El nombre del menú cambia según el modelo.</string>
+    <string name="permissions">Dar permisos</string>
+    <string name="battery">Permitir en segundo plano</string>
+    <string name="service">Iniciar asistencia</string>
+    <string name="baseline">Guardar lista de apps</string>
+    <string name="show_token">Mostrar clave de esta sesión</string>
+    <string name="refresh">Actualizar estado</string>
+    <string name="channel_status">Asistencia</string>
+    <string name="channel_apps">Aplicaciones nuevas</string>
+    <string name="token_warning">Copiala en persona en el HONOR. No la mandes por SMS ni por correo.</string>
+    <string name="notification_title">Asistencia JOLUFA activa</string>
+    <string name="new_app">Se instaló %1$s. Revisala con el cuidador. Esta app no la borra sola: si hay que sacarla, se usa ADB.</string>
+</resources>

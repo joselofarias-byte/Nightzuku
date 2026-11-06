@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# Cliente Termux para el HONOR. No enciende adbd y no escribe en la pantalla de bloqueo.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+CLIENT="$ROOT/jolufa_client.py"
+
+die() {
+  printf '%s\n' "$1" >&2
+  exit "${2:-1}"
+}
+
+run_build() {
+  local tmp part
+  tmp="$(mktemp)"
+  if ! python3 "$CLIENT" build "$@" >"$tmp"; then
+    rm -f "$tmp"
+    return 2
+  fi
+  local -a cmd=()
+  while IFS= read -r -d '' part; do
+    cmd+=("$part")
+  done < "$tmp"
+  rm -f "$tmp"
+  if [[ ${#cmd[@]} -eq 0 ]]; then
+    die "No se armó ningún comando."
+  fi
+  if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+    printf 'DRY'
+    printf ' %q' "${cmd[@]}"
+    printf '\n'
+    return 0
+  fi
+  "${cmd[@]}"
+}
+
+require_unlocked() {
+  if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+    if [[ -z "${JOLUFA_DUMPSYS_FILE:-}" ]]; then
+      die "No hay un volcado de la ventana. Se niega la entrada." 3
+    fi
+    python3 "$CLIENT" keyguard < "$JOLUFA_DUMPSYS_FILE"
+    return
+  fi
+  local dump
+  dump="$(run_build dumpsys-window)"
+  python3 "$CLIENT" keyguard <<<"$dump"
+}
+
+ayuda() {
+  cat <<'EOF'
+jolufa conectar
+jolufa estado
+jolufa pantalla
+jolufa captura
+jolufa tocar X Y
+jolufa deslizar X1 Y1 X2 Y2
+jolufa texto TEXTO
+jolufa apps listar|abrir|cerrar|ajustes|nuevas PAQUETE
+jolufa apps desinstalar PAQUETE --confirmo
+jolufa reiniciar --confirmo
+jolufa hora ver
+jolufa hora automatica on|off
+jolufa hora manual YYYY-MM-DD HH:MM
+jolufa contactos listar
+jolufa contactos agregar NOMBRE TELEFONO
+jolufa contactos borrar ID
+jolufa diagnostico
+jolufa sms
+jolufa sms ack ID
+jolufa recuperar
+jolufa adb
+jolufa cerrar-sesion
+EOF
+}
+
+cmd="${1:-ayuda}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+
+case "$cmd" in
+  ayuda|-h|--help) ayuda ;;
+  conectar) run_build connect ;;
+  estado)
+    run_build get-state || true
+    if [[ "${JOLUFA_DRY:-}" != "1" ]]; then
+      python3 "$CLIENT" rpc ping
+    fi
+    ;;
+  pantalla)
+    require_unlocked
+    if [[ "${JOLUFA_DRY:-}" != "1" && -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+      die "Falta una pantalla gráfica. En el HONOR instalá Termux:X11 y scrcpy dentro de Debian, como dice la configuración presencial. Mientras tanto: jolufa captura" 4
+    fi
+    run_build scrcpy
+    ;;
+  captura)
+    if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      run_build screencap
+    else
+      dir="${JOLUFA_CAPTURE_DIR:-$HOME/jolufa-capturas}"
+      mkdir -p "$dir"
+      file="$dir/cap-$(date +%Y%m%d-%H%M%S).png"
+      run_build screencap > "$file"
+      printf '%s\n' "$file"
+    fi
+    ;;
+  tocar)
+    require_unlocked
+    run_build tap "$1" "$2"
+    ;;
+  deslizar)
+    require_unlocked
+    run_build swipe "$1" "$2" "$3" "$4"
+    ;;
+  texto)
+    require_unlocked
+    run_build text "$*"
+    ;;
+  apps)
+    sub="${1:-}"
+    case "$sub" in
+      listar) run_build pm-list ;;
+      abrir) run_build am-start "$2" ;;
+      cerrar) run_build force-stop "$2" ;;
+      ajustes) run_build app-details "$2" ;;
+      nuevas)
+        if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+          printf '%s\n' "DRY rpc apps.baseline.diff"
+        else
+          python3 "$CLIENT" rpc apps.baseline.diff
+        fi
+        ;;
+      desinstalar)
+        [[ "${3:-}" == "--confirmo" ]] || die "Para desinstalar: jolufa apps desinstalar PAQUETE --confirmo"
+        run_build uninstall "$2" --confirmo
+        ;;
+      *) die "Subcomando de apps desconocido" ;;
+    esac
+    ;;
+  reiniciar)
+    [[ "${1:-}" == "--confirmo" ]] || die "Este reinicio corta el control. Repetí: jolufa reiniciar --confirmo"
+    run_build reboot --confirmo
+    if [[ "${JOLUFA_DRY:-}" != "1" ]]; then
+      printf '%s\n' "La sesión de adb terminó. Nightzuku en el OPPO puede pedir de nuevo la depuración inalámbrica al arrancar, si ya tenía el permiso y el último arranque fue por ADB. No está demostrado en este teléfono. El puerto puede cambiar: jolufa recuperar lo pide por Tailscale."
+    fi
+    ;;
+  hora)
+    sub="${1:-ver}"
+    case "$sub" in
+      ver) run_build get-date ;;
+      automatica)
+        run_build auto-time "$2"
+        if [[ "${JOLUFA_DRY:-}" != "1" ]]; then
+          got="$(run_build get-auto-time | tr -d '\r\n ')"
+          want="0"
+          [[ "$2" == "on" ]] && want="1"
+          [[ "$got" == "$want" ]] || die "El teléfono no confirmó auto_time=$want (leí '$got')."
+        fi
+        ;;
+      manual)
+        run_build auto-time off
+        run_build set-date "$2" "$3"
+        if [[ "${JOLUFA_DRY:-}" != "1" ]]; then
+          got="$(run_build get-date | tr -d '\r\n ')"
+          [[ "$got" == "$2T$3" ]] || die "No se confirmó la hora. La shell del teléfono suele no poder cambiarla. auto_time puede haber quedado apagado."
+        fi
+        ;;
+      *) die "Usá: jolufa hora ver|automatica|manual" ;;
+    esac
+    ;;
+  contactos)
+    sub="${1:-listar}"
+    case "$sub" in
+      listar) python3 "$CLIENT" rpc contacts.list ;;
+      agregar) python3 "$CLIENT" rpc contacts.upsert "name=$2" "phone=$3" ;;
+      borrar) python3 "$CLIENT" rpc contacts.delete "id=$2" ;;
+      *) die "Usá: jolufa contactos listar|agregar|borrar" ;;
+    esac
+    ;;
+  diagnostico)
+    if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      printf '%s\n' "DRY rpc diagnostics"
+    else
+      python3 "$CLIENT" rpc diagnostics
+    fi
+    ;;
+  sms)
+    if [[ "${1:-}" == "ack" ]]; then
+      python3 "$CLIENT" rpc sms.ack "id=$2"
+    elif [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      printf '%s\n' "DRY rpc sms.recent"
+    else
+      python3 "$CLIENT" rpc sms.recent
+    fi
+    ;;
+  adb)
+    if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      printf '%s\n' "DRY rpc adb.status"
+    else
+      python3 "$CLIENT" rpc adb.status
+    fi
+    ;;
+  recuperar)
+    if [[ "${JOLUFA_DRY:-}" == "1" ]]; then
+      if [[ "${JOLUFA_ADB_DOWN:-}" == "1" ]]; then
+        python3 "$CLIENT" alert-unreachable
+        if [[ -n "${JOLUFA_REPORTED_PORT:-}" ]]; then
+          export JOLUFA_ADB_PORT="$JOLUFA_REPORTED_PORT"
+        fi
+      fi
+      run_build connect
+      python3 "$CLIENT" recovery-text
+    else
+      try_connect() {
+        local out
+        out="$(run_build connect 2>&1)" || true
+        printf '%s\n' "$out"
+        if grep -qi 'failed to connect' <<<"$out"; then
+          return 1
+        fi
+        grep -qiE 'connected to|already connected' <<<"$out"
+      }
+      if ! try_connect; then
+        python3 "$CLIENT" alert-unreachable || true
+        reported="$(python3 "$CLIENT" rpc adb.status 2>/dev/null | python3 -c 'import json,sys; data=json.load(sys.stdin); print(int((data.get("data") or {}).get("port") or 0))' || true)"
+        if [[ "$reported" =~ ^[1-9][0-9]*$ ]]; then
+          export JOLUFA_ADB_PORT="$reported"
+          printf '%s\n' "Puerto informado por el agente: $reported. Se reintenta solo contra la IP de Tailscale."
+        fi
+        sleep 2
+        try_connect || die "ALERTA: el ADB sigue sin responder. No se abre en otra interfaz."
+      fi
+      python3 "$CLIENT" rpc ping || true
+      python3 "$CLIENT" recovery-text
+    fi
+    ;;
+  cerrar-sesion)
+    run_build wifi-adb-off
+    if [[ "${JOLUFA_DRY:-}" != "1" ]]; then
+      got="$(run_build get-wifi-adb | tr -d '\r\n ')"
+      if [[ "$got" == "0" ]]; then
+        printf '%s\n' "La depuración inalámbrica quedó en 0 según settings."
+      else
+        die "No se pudo confirmar el apagado (leí '$got'). Apagala en Ajustes del OPPO, en Opciones de desarrollador."
+      fi
+    fi
+    ;;
+  *)
+    die "Comando desconocido. jolufa ayuda"
+    ;;
+esac

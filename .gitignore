@@ -20,6 +20,7 @@ signing.properties
 *.apk
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
+!oppo-assist/gradle/wrapper/gradle-wrapper.jar
 view.xml
 packages.txt
 
