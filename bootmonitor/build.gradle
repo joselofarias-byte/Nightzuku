@@ -1,0 +1,20 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.joselofarias.nightzuku.monitor'
+    defaultConfig {
+        applicationId 'com.joselofarias.nightzuku.monitor'
+        minSdk 29
+        versionCode 1
+        versionName '1.0.0'
+    }
+    buildFeatures {
+        buildConfig false
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
