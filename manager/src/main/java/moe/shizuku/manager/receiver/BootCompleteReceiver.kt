@@ -1,105 +1,68 @@
 package moe.shizuku.manager.receiver
 
-import android.Manifest.permission.WRITE_SECURE_SETTINGS
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
-import android.provider.Settings
 import android.util.Log
-import androidx.annotation.RequiresApi
-import com.topjohnwu.superuser.Shell
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants
-import moe.shizuku.manager.ShizukuSettings
-import moe.shizuku.manager.ShizukuSettings.LaunchMethod
-import moe.shizuku.manager.adb.AdbClient
-import moe.shizuku.manager.adb.AdbKey
-import moe.shizuku.manager.adb.AdbMdns
-import moe.shizuku.manager.adb.PreferenceAdbKeyStore
-import moe.shizuku.manager.starter.Starter
+import moe.shizuku.manager.shizuku.NightDogBootScheduler
+import moe.shizuku.manager.shizuku.NightDogBootTrace
+import moe.shizuku.manager.shizuku.NightDogForegroundService
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.utils.UserHandleCompat
-import rikka.shizuku.Shizuku
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 class BootCompleteReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (Intent.ACTION_LOCKED_BOOT_COMPLETED != intent.action
-            && Intent.ACTION_BOOT_COMPLETED != intent.action) {
-            return
-        }
+        val action = intent.action ?: return
+        if (action !in SUPPORTED_ACTIONS) return
 
-        // Safe Mode deliberately suppresses third-party recovery paths. Trying to
-        // recreate a privileged service there works against Android's recovery
-        // semantics and can make troubleshooting harder.
+        NightDogBootTrace.note(context, "receiver", action)
+
         if (context.packageManager.isSafeMode) {
             Log.w(AppConstants.TAG, "Skip start on boot while Android is in Safe Mode")
+            NightDogBootTrace.note(context, "receiver_skip", "safe_mode:$action")
             return
         }
 
-        if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
-
-        if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
-            rootStart(context)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-            && context.checkSelfPermission(WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
-            && ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB) {
-            adbStart(context)
-        } else {
-            Log.w(AppConstants.TAG, "No support start on boot")
-        }
-    }
-
-    private fun rootStart(context: Context) {
-        if (!Shell.getShell().isRoot) {
-
-            Shell.getCachedShell()?.close()
+        if (UserHandleCompat.myUserId() > 0) {
+            NightDogBootTrace.note(context, "receiver_skip", "secondary_user:$action")
             return
         }
 
-        Shell.cmd(Starter.internalCommand).exec()
+        if (!NightDogRecovery.isDesiredRunning(context)) {
+            NightDogBootScheduler.cancel(context)
+            NightDogBootTrace.note(context, "receiver_skip", "desired_off:$action")
+            return
+        }
+
+        // Persisted JobScheduler is the OEM fallback if MagicOS suppresses or
+        // delays a later boot broadcast.
+        NightDogBootScheduler.schedule(context)
+
+        try {
+            NightDogForegroundService.start(context)
+            Log.i(AppConstants.TAG, "Boot recovery service requested by $action")
+            NightDogBootTrace.note(context, "receiver_fgs_requested", action)
+        } catch (error: RuntimeException) {
+            Log.w(AppConstants.TAG, "Boot recovery service could not start from $action", error)
+            NightDogBootTrace.note(
+                context,
+                "receiver_fgs_failed",
+                "$action:${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
+        }
     }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun adbStart(context: Context) {
-        val cr = context.contentResolver
-        Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
-        Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
-        Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
-        val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            val latch = CountDownLatch(1)
-            val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
-                if (port <= 0) return@AdbMdns
-                try {
-                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                    val key = AdbKey(keystore, "shizuku")
-                    // AdbMdns already resolved the real interface address. Reuse it
-                    // instead of assuming loopback, which is not valid on every
-                    // Android wireless-debugging implementation.
-                    val endpoint = AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
-                    val host = endpoint?.host ?: "127.0.0.1"
-                    val resolvedPort = endpoint?.port ?: port
-                    val client = AdbClient(host, resolvedPort, key)
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
-                    client.close()
-                } catch (error: Exception) {
-                    Log.w(AppConstants.TAG, "ADB start on boot failed", error)
-                }
-                latch.countDown()
-            }
-            if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
-                adbMdns.start()
-                latch.await(3, TimeUnit.SECONDS)
-                adbMdns.stop()
-            }
-            pending.finish()
-        }
+    companion object {
+        private const val QUICKBOOT_POWERON = "android.intent.action.QUICKBOOT_POWERON"
+
+        private val SUPPORTED_ACTIONS = setOf(
+            Intent.ACTION_LOCKED_BOOT_COMPLETED,
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_USER_UNLOCKED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            QUICKBOOT_POWERON
+        )
     }
 }

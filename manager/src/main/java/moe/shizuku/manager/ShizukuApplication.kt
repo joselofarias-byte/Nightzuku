@@ -10,6 +10,7 @@ import moe.shizuku.manager.shizuku.NightDogRecovery
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.core.util.BuildUtils.atLeast30
 import rikka.material.app.LocaleDelegate
+import java.io.File
 
 lateinit var application: ShizukuApplication
 
@@ -36,9 +37,28 @@ class ShizukuApplication : Application() {
         AppCompatDelegate.setDefaultNightMode(ShizukuSettings.getNightMode())
     }
 
+    private fun isBootDiagnosticsProcess(): Boolean {
+        val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            runCatching {
+                File("/proc/self/cmdline").readBytes()
+                    .takeWhile { it != 0.toByte() }
+                    .toByteArray()
+                    .toString(Charsets.UTF_8)
+            }.getOrNull()
+        }
+        return processName?.endsWith(":bootdiag") == true
+    }
+
     override fun onCreate() {
         super.onCreate()
         application = this
+
+        // The read-only diagnostics provider runs in an isolated app process so
+        // opening the monitor cannot itself start NightDog and contaminate the test.
+        if (isBootDiagnosticsProcess()) return
+
         init(this)
         NightDogRecovery.start(this)
     }
