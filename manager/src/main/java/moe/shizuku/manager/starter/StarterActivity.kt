@@ -234,9 +234,11 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 startRoot()
             } else {
                 val discovered = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
-                val useDiscovered = discovered != null && (host.isNullOrBlank() || host == LOOPBACK_HOST)
-                val resolvedHost = if (useDiscovered) discovered.host else requireNotNull(host)
-                val resolvedPort = if (useDiscovered) discovered.port else port
+                // The caller's explicit endpoint (including NightDog's verified
+                // local port) takes precedence. mDNS is a fallback only.
+                val explicitEndpoint = !host.isNullOrBlank() && port in 1..65535
+                val resolvedHost = if (explicitEndpoint) host!! else requireNotNull(discovered).host
+                val resolvedPort = if (explicitEndpoint) port else requireNotNull(discovered).port
                 startAdb(resolvedHost, resolvedPort)
             }
         } catch (e: Throwable) {
