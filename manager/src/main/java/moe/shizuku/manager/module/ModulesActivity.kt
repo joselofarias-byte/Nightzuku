@@ -2,6 +2,7 @@
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
     androidx.tv.material3.ExperimentalTvMaterial3Api::class
 )
 
@@ -27,9 +28,13 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +73,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -156,9 +162,16 @@ class ModulesActivity : AppActivity() {
 
             val isWatch = moe.shizuku.manager.utils.EnvironmentUtils.isWatch(this@ModulesActivity)
             val isTv = moe.shizuku.manager.utils.EnvironmentUtils.isTV(this@ModulesActivity)
+            var showCatalog by remember { mutableStateOf(false) }
             if (isWatch) {
                 moe.shizuku.manager.ui.compose.WearShizukuTheme {
 
+                if (showCatalog) {
+                    moe.shizuku.manager.module.catalog.WearCatalogScreen(
+                        onBack = { showCatalog = false },
+                        onModuleInstalled = { showCatalog = false; reload() }
+                    )
+                } else {
                 WearModulesScreen(
                     modules = modules,
                     busyId = runningModuleId,
@@ -195,12 +208,14 @@ class ModulesActivity : AppActivity() {
                                 .putExtra(ModuleWebViewActivity.EXTRA_MODULE_ID, module.id)
                         )
                     },
-                    onInstallZip = { zipLauncher.launch(MODULE_MIME_TYPES) }
+                    onInstallZip = { zipLauncher.launch(MODULE_MIME_TYPES) },
+                    onOpenCatalog = { showCatalog = true }
                 )
+                }
 
                 output?.let { (title, text) ->
                     WearAlertDialog(
-                        show = true,
+                        visible = true,
                         onDismissRequest = { output = null },
                         title = { WearText(title) },
                         text = {
@@ -220,7 +235,7 @@ class ModulesActivity : AppActivity() {
 
                 deleteTarget?.let { module ->
                     WearAlertDialog(
-                        show = true,
+                        visible = true,
                         onDismissRequest = { deleteTarget = null },
                         title = { WearText(stringResource(R.string.modules_delete_title)) },
                         text = { WearText(stringResource(R.string.modules_delete_message, module.name)) },
@@ -247,8 +262,19 @@ class ModulesActivity : AppActivity() {
 
                 }
             } else if (isTv) {
+                var showCatalog by remember { mutableStateOf(false) }
+                var showLabFeatures by remember { mutableStateOf(false) }
                 moe.shizuku.manager.ui.compose.TvShizukuTheme {
                     Box(modifier = Modifier.fillMaxSize()) {
+                        if (showCatalog) {
+                            moe.shizuku.manager.module.catalog.TvCatalogScreen(
+                                onNavigateUp = { showCatalog = false }
+                            )
+                        } else if (showLabFeatures) {
+                            moe.shizuku.manager.settings.TvLabMenuScreen(
+                                onNavigateUp = { showLabFeatures = false }
+                            )
+                        } else {
                         TvModulesScreen(
                             modules = modules,
                             onNavigateUp = { finish() },
@@ -295,7 +321,9 @@ class ModulesActivity : AppActivity() {
                                     Intent(this@ModulesActivity, ModuleWebViewActivity::class.java)
                                         .putExtra(ModuleWebViewActivity.EXTRA_MODULE_ID, module.id)
                                 )
-                            }
+                            },
+                            onOpenCatalog = { showCatalog = true },
+                            onLabFeatures = { showLabFeatures = true }
                         )
 
                         output?.let { (title, text) ->
@@ -341,27 +369,73 @@ class ModulesActivity : AppActivity() {
                             )
                         }
                     }
+                    }
                 }
             } else {
+                var showCatalog by remember { mutableStateOf(false) }
+                AnimatedContent(
+                    targetState = showCatalog,
+                    transitionSpec = {
+                        if (targetState) {
+                            slideInHorizontally { it } + fadeIn() togetherWith slideOutHorizontally { -it } + fadeOut()
+                        } else {
+                            slideInHorizontally { -it } + fadeIn() togetherWith slideOutHorizontally { it } + fadeOut()
+                        }
+                    },
+                    label = "catalog-transition"
+                ) { catalogOpen ->
+                    if (catalogOpen) {
+                        moe.shizuku.manager.module.catalog.CatalogScreen(
+                            onNavigateUp = { showCatalog = false }
+                        )
+                    } else {
                 ShizukuExpressiveTheme {
                 ShizukuLazyScaffold(
                     title = stringResource(R.string.modules_title),
                     onNavigateUp = { finish() },
                     actions = {
-                        FilledTonalButton(
-                            modifier = Modifier.height(36.dp),
-                            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-                            onClick = {
-                                zipLauncher.launch(MODULE_MIME_TYPES)
-                            }
+                        Row(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .padding(end = 4.dp)
+                                .clip(MaterialTheme.shapes.small),
+                            horizontalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
-                            ShizukuIcon(
-                                R.drawable.ic_outline_arrow_upward_24,
+                            if (modules.isNotEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .clip(MaterialTheme.shapes.small.copy(topEnd = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)))
+                                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                                        .clickable { zipLauncher.launch(MODULE_MIME_TYPES) }
+                                        .padding(horizontal = 16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        ShizukuIcon(
+                                            R.drawable.ic_outline_arrow_upward_24,
+                                            modifier = Modifier
+                                                .padding(end = 6.dp)
+                                                .size(16.dp)
+                                        )
+                                        Text(
+                                            stringResource(R.string.modules_install_zip),
+                                            style = MaterialTheme.typography.labelLarge
+                                        )
+                                    }
+                                }
+                            }
+                            Box(
                                 modifier = Modifier
-                                    .padding(end = 6.dp)
-                                    .size(16.dp)
-                            )
-                            Text(stringResource(R.string.modules_install_zip))
+                                    .height(36.dp)
+                                    .clip(MaterialTheme.shapes.small.copy(topStart = CornerSize(0.dp), bottomStart = CornerSize(0.dp)))
+                                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                                    .clickable { showCatalog = true }
+                                    .padding(horizontal = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                ShizukuIcon(R.drawable.ic_outline_store_24, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 ) {
@@ -434,9 +508,7 @@ class ModulesActivity : AppActivity() {
                             TextButton(onClick = { output = null }) {
                                 Text(stringResource(android.R.string.ok))
                             }
-                        },
-                        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.extraLarge
+                        }
                     )
                 }
 
@@ -462,9 +534,7 @@ class ModulesActivity : AppActivity() {
                             TextButton(onClick = { deleteTarget = null }) {
                                 Text(stringResource(android.R.string.cancel))
                             }
-                        },
-                        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.extraLarge
+                        }
                     )
                 }
 
@@ -481,7 +551,9 @@ class ModulesActivity : AppActivity() {
                     )
                 }
             }
+                }
             }
+                }
         }
     }
 

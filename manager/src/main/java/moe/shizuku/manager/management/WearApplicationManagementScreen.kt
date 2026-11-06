@@ -38,7 +38,6 @@ data class WearAppItem(
 @Composable
 fun WearApplicationManagementScreen(
     apps: List<WearAppItem>,
-    isLoading: Boolean = false,
     onToggle: (WearAppItem) -> Unit
 ) {
     WearScreenScaffold { state ->
@@ -52,7 +51,7 @@ fun WearApplicationManagementScreen(
                 WearScreenTitle(icon = Icons.Rounded.Apps, title = stringResource(R.string.home_app_management_title))
             }
 
-            if (!isLoading && apps.isEmpty()) {
+            if (apps.isEmpty()) {
                 item {
                     WearText(
                         text = stringResource(R.string.home_app_management_empty),

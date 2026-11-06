@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Security
@@ -35,6 +36,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.material3.lazy.rememberTransformationSpec
+import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.Button as WearButton
 import androidx.wear.compose.material3.ButtonDefaults as WearButtonDefaults
@@ -49,7 +53,6 @@ import androidx.wear.compose.material3.CardDefaults as WearCardDefaults
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ui.compose.WearScreenScaffold
 import moe.shizuku.manager.ui.compose.WearScreenTitle
-import androidx.wear.compose.material3.lazy.scrollTransform
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -62,8 +65,11 @@ fun WearModulesScreen(
     onOpenWebUi: (AdbModule) -> Unit,
     onDelete: (AdbModule) -> Unit,
     onTrustChange: (AdbModule, Boolean) -> Unit,
-    onInstallZip: () -> Unit
+    onInstallZip: () -> Unit,
+    onOpenCatalog: () -> Unit
 ) {
+    val transformationSpec = rememberTransformationSpec()
+
     WearScreenScaffold { state ->
         TransformingLazyColumn(
             state = state,
@@ -72,11 +78,7 @@ fun WearModulesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                WearScreenTitle(
-                    icon = Icons.Rounded.Extension,
-                    title = stringResource(R.string.modules_title),
-                    modifier = Modifier.scrollTransform(this)
-                )
+                WearScreenTitle(icon = Icons.Rounded.Extension, title = stringResource(R.string.modules_title))
             }
 
             item {
@@ -84,7 +86,8 @@ fun WearModulesScreen(
                     onClick = onInstallZip,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                     colors = WearButtonDefaults.filledTonalButtonColors()
                 ) {
                     Row(
@@ -99,14 +102,32 @@ fun WearModulesScreen(
                 }
             }
 
+            item {
+                WearButton(
+                    onClick = onOpenCatalog,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
+                    colors = WearButtonDefaults.filledTonalButtonColors()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        WearIcon(Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        WearText(text = stringResource(R.string.modules_catalog_open))
+                    }
+                }
+            }
+
             if (modules.isEmpty()) {
                 item {
                     WearText(
                         text = stringResource(R.string.modules_empty_title),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp)
-                            .scrollTransform(this),
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                         textAlign = TextAlign.Center,
                         style = WearMaterialTheme.typography.bodyMedium
                     )
@@ -155,8 +176,9 @@ fun WearModulesScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateContentSize()
-                        .scrollTransform(this),
+                        .transformedHeight(this, transformationSpec)
+                        .animateContentSize(),
+                    transformation = SurfaceTransformation(transformationSpec),
                     colors = WearCardDefaults.cardColors(
                         containerColor = containerColor,
                         contentColor = contentColor

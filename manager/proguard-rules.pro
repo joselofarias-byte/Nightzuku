@@ -46,12 +46,8 @@
 -dontwarn androidx.window.extensions.**
 -dontwarn androidx.window.sidecar.**
 
-# Remove Android platform debug/info/verbose log calls from release builds.
-# Warning and error logs are intentionally kept to preserve useful crash/problem diagnostics.
 -assumenosideeffects class android.util.Log {
-    public static int d(...);
-    public static int i(...);
-    public static int v(...);
+    public static *** d(...);
 }
 
 -assumenosideeffects class moe.shizuku.manager.utils.Logger {

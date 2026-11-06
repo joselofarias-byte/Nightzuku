@@ -69,7 +69,7 @@ class ModuleWebViewActivity : AppActivity() {
                                     val wrapper = android.widget.FrameLayout(this@ModuleWebViewActivity)
                                     val webView = try {
                                         WebView(this@ModuleWebViewActivity)
-                                    } catch (e: Exception) {
+                                    } catch (e: Throwable) {
                                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                                             webViewCrashError = e.message ?: "Unknown error"
                                         }

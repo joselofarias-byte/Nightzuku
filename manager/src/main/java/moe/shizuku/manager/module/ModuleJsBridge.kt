@@ -120,11 +120,10 @@ class ModuleJsBridge(
         return try {
             val service = IShizukuService.Stub.asInterface(binder)
             val env = buildEnvironment(mode, options.extraEnv)
-            val cwd = resolveModuleDirectory(options.cwd)
             val remote = service.newProcess(
                 arrayOf("sh", "-c", command),
                 env,
-                cwd.absolutePath
+                "/data/local/tmp"
             )
 
             var stdout = ""
@@ -223,20 +222,22 @@ class ModuleJsBridge(
 
     private fun readStreamTail(fd: ParcelFileDescriptor): String {
         return ParcelFileDescriptor.AutoCloseInputStream(fd).use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            val tail = StringBuilder()
-            while (true) {
-                val read = input.read(buffer)
-                if (read <= 0) break
-                tail.append(String(buffer, 0, read, Charsets.UTF_8))
-                if (tail.length > MAX_OUTPUT_CHARS * 2) {
-                    tail.delete(0, tail.length - MAX_OUTPUT_CHARS)
+            java.io.BufferedReader(java.io.InputStreamReader(input, Charsets.UTF_8)).use { reader ->
+                val tail = StringBuilder()
+                val buffer = CharArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = reader.read(buffer)
+                    if (read <= 0) break
+                    tail.append(buffer, 0, read)
+                    if (tail.length > MAX_OUTPUT_CHARS * 2) {
+                        tail.delete(0, tail.length - MAX_OUTPUT_CHARS)
+                    }
                 }
-            }
-            if (tail.length > MAX_OUTPUT_CHARS) {
-                tail.substring(tail.length - MAX_OUTPUT_CHARS)
-            } else {
-                tail.toString()
+                if (tail.length > MAX_OUTPUT_CHARS) {
+                    tail.substring(tail.length - MAX_OUTPUT_CHARS)
+                } else {
+                    tail.toString()
+                }
             }
         }
     }
@@ -314,7 +315,7 @@ class ModuleJsBridge(
                 require(code in 200..299) { "HTTP $code while downloading $current" }
                 val parent = outFile.parentFile ?: error("Destination has no parent directory.")
                 parent.mkdirs()
-                val tmp = File(parent, "${outFile.name}.download")
+                val tmp = File.createTempFile("download-", ".tmp", parent)
                 var total = 0L
                 try {
                     BufferedInputStream(connection.inputStream).use { input ->

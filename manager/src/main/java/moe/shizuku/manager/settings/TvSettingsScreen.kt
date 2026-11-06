@@ -45,7 +45,9 @@ fun TvSettingsScreen(
     recommandWebUi: Boolean,
     onRecommandWebUiChange: (Boolean) -> Unit,
     recommandAction: Boolean,
-    onRecommandActionChange: (Boolean) -> Unit
+    onRecommandActionChange: (Boolean) -> Unit,
+    onLabFeaturesClick: () -> Unit,
+    onGitHubTokenClick: () -> Unit
 ) {
     Row(modifier = Modifier.fillMaxSize()) {
 
@@ -148,6 +150,28 @@ fun TvSettingsScreen(
                     summary = stringResource(R.string.modules_recommand_action_summary),
                     checked = recommandAction,
                     onCheckedChange = onRecommandActionChange
+                )
+            }
+
+            item {
+                TvSettingsGroupTitle(stringResource(R.string.lab_features_title))
+            }
+            item {
+                TvSettingsClickRow(
+                    title = stringResource(R.string.lab_features_title),
+                    summary = stringResource(R.string.lab_features_summary),
+                    onClick = onLabFeaturesClick
+                )
+            }
+
+            item {
+                TvSettingsGroupTitle(stringResource(R.string.update_settings_github))
+            }
+            item {
+                TvSettingsClickRow(
+                    title = stringResource(R.string.update_settings_github_pat),
+                    summary = stringResource(R.string.update_settings_github_pat_title),
+                    onClick = onGitHubTokenClick
                 )
             }
         }

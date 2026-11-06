@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,25 +38,16 @@ import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface as TvSurface
 import androidx.tv.material3.SurfaceDefaults as TvSurfaceDefaults
 import androidx.tv.material3.Text as TvText
-import androidx.compose.material3.LoadingIndicator
 import moe.shizuku.manager.R
 import moe.shizuku.manager.authorization.AuthorizationManager
 import moe.shizuku.manager.ui.compose.ShizukuIcon
 import moe.shizuku.manager.utils.ShizukuSystemApis
 import moe.shizuku.manager.utils.UserHandleCompat
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-private data class TvAppDisplayInfo(
-    val packageInfo: PackageInfo,
-    val granted: Boolean
-)
 
 @Composable
 fun TvApplicationManagementScreen(
     packages: List<PackageInfo>,
     tick: Int,
-    isLoading: Boolean,
     onNavigateUp: () -> Unit,
     onToggle: (PackageInfo) -> Unit,
     onSelectAll: (Boolean) -> Unit
@@ -79,7 +69,7 @@ fun TvApplicationManagementScreen(
 
             TvMenuButton(
                 icon = R.drawable.ic_arrow_back_24,
-                label = R.string.action_back,
+                label = android.R.string.cancel,
                 onClick = onNavigateUp
             )
 
@@ -98,14 +88,7 @@ fun TvApplicationManagementScreen(
         }
 
 
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                LoadingIndicator(modifier = Modifier.size(48.dp))
-            }
-        } else if (packages.isEmpty()) {
+        if (packages.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -116,18 +99,6 @@ fun TvApplicationManagementScreen(
                 )
             }
         } else {
-            val tvApps by produceState(initialValue = emptyList<TvAppDisplayInfo>(), packages, tick) {
-                value = withContext(Dispatchers.IO) {
-                    packages.mapNotNull { pkg ->
-                        val applicationInfo = pkg.applicationInfo ?: return@mapNotNull null
-                        TvAppDisplayInfo(
-                            packageInfo = pkg,
-                            granted = AuthorizationManager.granted(pkg.packageName, applicationInfo.uid)
-                        )
-                    }
-                }
-            }
-
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(300.dp),
                 modifier = Modifier.fillMaxSize(),
@@ -135,11 +106,11 @@ fun TvApplicationManagementScreen(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(tvApps) { app ->
+                items(packages) { pkg ->
                     TvAppCard(
-                        packageInfo = app.packageInfo,
-                        granted = app.granted,
-                        onClick = { onToggle(app.packageInfo) }
+                        packageInfo = pkg,
+                        tick = tick,
+                        onClick = { onToggle(pkg) }
                     )
                 }
             }
@@ -177,7 +148,7 @@ private fun TvMenuButton(
 @Composable
 private fun TvAppCard(
     packageInfo: PackageInfo,
-    granted: Boolean,
+    tick: Int,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -185,7 +156,9 @@ private fun TvAppCard(
     val applicationInfo = packageInfo.applicationInfo ?: return
     val uid = applicationInfo.uid
     val packageName = packageInfo.packageName
-
+    val granted = remember(packageName, uid, tick) {
+        AuthorizationManager.granted(packageName, uid)
+    }
     val userId = UserHandleCompat.getUserId(uid)
     val title = remember(packageName, userId) {
         val label = applicationInfo.loadLabel(pm).toString()
@@ -251,7 +224,7 @@ private fun TvAppCard(
                 )
                 if (granted) {
                     TvText(
-                        text = stringResource(R.string.app_management_item_authorized),
+                        text = stringResource(android.R.string.ok),
                         style = TvMaterialTheme.typography.labelSmall,
                         color = TvMaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
