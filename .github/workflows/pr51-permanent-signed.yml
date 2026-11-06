@@ -26,6 +26,7 @@ jobs:
           ref: build/pr51-permanent-signed
           submodules: recursive
           persist-credentials: false
+          fetch-depth: 0
       - name: Verify source
         shell: bash
         run: |
