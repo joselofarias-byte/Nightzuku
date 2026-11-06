@@ -1,7 +1,6 @@
 package moe.shizuku.manager.shizuku
 
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
 import androidx.lifecycle.Observer
@@ -21,7 +20,7 @@ import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
-import moe.shizuku.manager.starter.StarterActivity
+import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.shizuku.Shizuku
 
@@ -35,6 +34,7 @@ object NightDogRecovery {
     private const val RECOVERY_SETTLE_MS = 1_500L
     private const val MIN_RETRY_MS = 8_000L
     private const val MAX_RETRY_MS = 60_000L
+    private const val BINDER_WAIT_MS = 8_000L
 
     enum class Stage {
         IDLE,
@@ -88,9 +88,6 @@ object NightDogRecovery {
     }
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        applicationContext?.let { context ->
-            preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
-        }
         val now = SystemClock.elapsedRealtime()
         if (runningSinceAt == 0L) runningSinceAt = now
         if (lastBinderLostAt > 0L) {
@@ -290,8 +287,7 @@ object NightDogRecovery {
         recoveryJob = scope.launch {
             delay(RECOVERY_SETTLE_MS)
             if (Shizuku.pingBinder() || !isDesiredRunning()) return@launch
-
-            val context = applicationContext ?: return@launch
+            if (applicationContext == null) return@launch
             publish(Stage.DISCOVERING_ADB, "Binder ausente; resolviendo TCP persistente, mDNS/TLS y ADB local")
 
             val endpoint = resolveEndpoint()
@@ -316,24 +312,55 @@ object NightDogRecovery {
                 endpoint = "$host:$port"
             )
 
-            val intent = Intent(context, StarterActivity::class.java).apply {
-                putExtra(StarterActivity.EXTRA_IS_ROOT, false)
-                putExtra(StarterActivity.EXTRA_HOST, host)
-                putExtra(StarterActivity.EXTRA_PORT, port)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            }
-
-            runCatching {
-                context.startActivity(intent)
-            }.onFailure { error ->
+            val started = startServerOverAdb(host, port)
+            if (started) {
+                publishRunning("Servicio iniciado vía $transport ($host:$port)")
+            } else {
                 publish(
                     Stage.ERROR,
-                    "No se pudo abrir el iniciador: ${error.javaClass.simpleName}",
+                    "No se pudo iniciar el servicio en $host:$port",
                     transport = transport,
-                    endpoint = "$host:$port"
+                    endpoint = "$host:$port",
+                    binderAlive = false
                 )
             }
         }
+    }
+
+    /**
+     * Start the Shizuku server over an already-resolved wireless ADB endpoint.
+     * Used by NightDog recovery and BOOT_COMPLETED so neither path depends on
+     * launching [StarterActivity] from the background.
+     */
+    fun startServerOverAdb(host: String, port: Int): Boolean {
+        val output = ByteArrayOutputStream()
+        val started = runCatching {
+            val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
+            AdbClient(host, port, key).use { client ->
+                client.connect()
+                client.shellCommand(Starter.internalCommand, output::write)
+            }
+            val deadline = SystemClock.elapsedRealtime() + BINDER_WAIT_MS
+            while (SystemClock.elapsedRealtime() < deadline) {
+                if (Shizuku.pingBinder()) return@runCatching true
+                Thread.sleep(250)
+            }
+            Shizuku.pingBinder()
+        }.onFailure { error ->
+            publish(
+                Stage.ERROR,
+                "Fallo ADB ${error.javaClass.simpleName} en $host:$port",
+                binderAlive = false,
+                transport = "ADB",
+                endpoint = "$host:$port"
+            )
+        }.getOrDefault(false)
+
+        if (started) {
+            failedAttempts = 0
+            lastAttemptAt = 0L
+        }
+        return started
     }
 
     private fun publishRunning(result: String) {

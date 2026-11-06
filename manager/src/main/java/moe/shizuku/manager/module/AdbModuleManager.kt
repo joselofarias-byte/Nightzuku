@@ -22,6 +22,7 @@ object AdbModuleManager {
     private const val DISABLE_FILE = "disable"
     private const val MAX_ENTRY_COUNT = 2048
     private const val MAX_EXTRACTED_BYTES = 200L * 1024L * 1024L
+    private const val MAX_ZIP_BYTES = 50L * 1024L * 1024L
     private const val MAX_SCRIPT_SECONDS = 120L
     private const val MAX_OUTPUT_CHARS = 64 * 1024
     private const val MAX_SCRIPT_BYTES = 256 * 1024
@@ -46,7 +47,9 @@ object AdbModuleManager {
         try {
             context.contentResolver.openInputStream(uri).use { input ->
                 requireNotNull(input) { "Unable to open module ZIP." }
-                temp.outputStream().use { output -> input.copyTo(output) }
+                temp.outputStream().use { output ->
+                    copyWithLimit(input, output, MAX_ZIP_BYTES)
+                }
             }
 
             ZipFile(temp).use { zip ->
@@ -76,17 +79,40 @@ object AdbModuleManager {
                         } else {
                             outFile.parentFile?.mkdirs()
                             BufferedInputStream(zip.getInputStream(entry)).use { input ->
-                                outFile.outputStream().use { output -> input.copyTo(output) }
+                                outFile.outputStream().use { output ->
+                                    extractedBytes = copyWithLimit(
+                                        input,
+                                        output,
+                                        MAX_EXTRACTED_BYTES,
+                                        extractedBytes
+                                    )
+                                }
                             }
-                            extractedBytes += outFile.length()
-                            require(extractedBytes <= MAX_EXTRACTED_BYTES) { "Module ZIP is too large." }
                         }
                     }
 
                     markScriptsExecutable(staging)
-                    target.deleteRecursively()
-                    check(staging.renameTo(target)) { "Unable to move module into storage." }
-                    readModule(target) ?: error("Installed module is unreadable.")
+                    val backup = File(modulesRoot(context), ".$id.backup")
+                    backup.deleteRecursively()
+                    if (target.exists()) {
+                        check(target.renameTo(backup)) { "Unable to backup existing module." }
+                    }
+                    if (!staging.renameTo(target)) {
+                        if (backup.exists()) backup.renameTo(target)
+                        error("Unable to move module into storage.")
+                    }
+                    val installed = readModule(target)
+                    if (installed == null) {
+                        target.deleteRecursively()
+                        if (backup.exists()) backup.renameTo(target)
+                        error("Installed module is unreadable.")
+                    }
+                    // ponytail: drop leftover backup only after the new tree is readable.
+                    backup.deleteRecursively()
+                    if (ModuleSettings.isModuleTrusted(installed.id)) {
+                        ModuleSettings.setModuleTrusted(installed.id, false)
+                    }
+                    installed
                 }
             }
         } finally {
@@ -268,9 +294,7 @@ object AdbModuleManager {
     }
 
     private fun ensureInside(root: File, child: File) {
-        val rootPath = root.canonicalPath
-        val childPath = child.canonicalPath
-        require(childPath == rootPath || childPath.startsWith("$rootPath/")) {
+        require(ModulePathPolicy.isInside(root, child)) {
             "Unsafe module path: ${child.name}"
         }
     }
@@ -307,12 +331,31 @@ object AdbModuleManager {
         )
     }
 
-    private fun findFirstExisting(directory: File, vararg paths: String?): File? {
+    internal fun findFirstExisting(directory: File, vararg paths: String?): File? {
         return paths.asSequence()
             .filterNotNull()
             .map { it.trim().trim('/') }
             .filter { it.isNotBlank() }
             .map { directory.resolve(it) }
+            .filter { ModulePathPolicy.isInside(directory, it) }
             .firstOrNull { it.exists() }
+    }
+
+    internal fun copyWithLimit(
+        input: java.io.InputStream,
+        output: java.io.OutputStream,
+        maxBytes: Long,
+        alreadyCopied: Long = 0L
+    ): Long {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = alreadyCopied
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            total += read
+            require(total <= maxBytes) { "Module ZIP is too large." }
+            output.write(buffer, 0, read)
+        }
+        return total
     }
 }

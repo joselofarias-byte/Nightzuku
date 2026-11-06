@@ -46,8 +46,8 @@ Dialogs in **Settings** and **Modules** have been redesigned for TV:
 ## Package Identity
 
 All TV features respect the Nightzuku package identity:
-- Package Name: `kerneldroid.nightzuku`
-- Shared User ID: `kerneldroid.nightzuku.uid` (if applicable)
+- Package Name: `com.joselofarias.nightzuku`
+- Shared User ID: not used
 
 ## Verification
 

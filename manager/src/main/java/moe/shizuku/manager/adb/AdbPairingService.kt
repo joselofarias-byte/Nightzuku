@@ -9,8 +9,9 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.Observer
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
@@ -54,6 +55,8 @@ class AdbPairingService : Service() {
     }
 
     private var adbMdns: AdbMdns? = null
+    private val pairingJob = SupervisorJob()
+    private val pairingScope = CoroutineScope(pairingJob + Dispatchers.IO)
 
     private val observer = Observer<Int> { port ->
         Log.i(tag, "Pairing service port: $port")
@@ -137,6 +140,7 @@ class AdbPairingService : Service() {
     }
 
     override fun onDestroy() {
+        pairingJob.cancel()
         super.onDestroy()
         stopSearch()
     }
@@ -147,7 +151,7 @@ class AdbPairingService : Service() {
     }
 
     private fun onInput(code: String, host: String, port: Int): Notification {
-        GlobalScope.launch(Dispatchers.IO) {
+        pairingScope.launch {
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {

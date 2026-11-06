@@ -90,7 +90,7 @@ Working directory is the module directory.
 Environment variables:
 
 ```sh
-MODDIR=/data/user/0/kerneldroid.nightzuku/files/adb_modules/<id>
+MODDIR=/data/user/0/com.joselofarias.nightzuku/files/adb_modules/<id>
 ASH_STANDALONE=1
 SHIZUKU_MODULE_ID=<id>
 SHIZUKU_MODULE_MODE=safe|full

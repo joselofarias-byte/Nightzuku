@@ -414,7 +414,7 @@ Decision:
 
 The rish loader targets the package ID used by this fork:
 
-- kerneldroid.nightzuku
+- com.joselofarias.nightzuku
 
 This is consistent with the current applicationId of the fork.
 
@@ -502,7 +502,7 @@ Decisión:
 
 El loader de rish apunta al package ID usado por este fork:
 
-- kerneldroid.nightzuku
+- com.joselofarias.nightzuku
 
 Esto es coherente con el applicationId actual del fork.
 

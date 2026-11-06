@@ -282,9 +282,7 @@ class ModuleJsBridge(
     }
 
     private fun ensureInside(root: File, file: File) {
-        val rootPath = root.canonicalFile.toPath()
-        val filePath = file.canonicalFile.toPath()
-        require(filePath.startsWith(rootPath)) { "Path escapes module directory." }
+        require(ModulePathPolicy.isInside(root, file)) { "Path escapes module directory." }
     }
 
     private fun downloadHttpsToFile(rawUrl: String, outFile: File): Long {
