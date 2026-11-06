@@ -19,19 +19,19 @@ object ShellBinderRequestHandler {
             Shizuku.getBinder()
         } catch (e: Throwable) {
             LOGGER.w(e, "Binder not received or Shizuku service not running")
-            return false
+            null
         }
         if (shizukuBinder == null) {
             LOGGER.w("Binder not received or Shizuku service not running")
-            return false
         }
 
+        // Always reply. A missing server must not stall rish for the 5s timeout.
         val data = Parcel.obtain()
         return try {
             data.writeStrongBinder(shizukuBinder)
             data.writeString(context.applicationInfo.sourceDir)
             binder.transact(1, data, null, IBinder.FLAG_ONEWAY)
-            true
+            shizukuBinder != null
         } catch (e: Throwable) {
             e.printStackTrace()
             false
