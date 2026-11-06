@@ -2,8 +2,11 @@ package moe.shizuku.manager.shizuku
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import androidx.lifecycle.Observer
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CoroutineScope
@@ -18,11 +21,20 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.AdbClient
+import moe.shizuku.manager.adb.AdbEndpoint
 import moe.shizuku.manager.adb.AdbKey
+import moe.shizuku.manager.adb.AdbLocalWirelessDiscovery
 import moe.shizuku.manager.adb.AdbMdns
+import moe.shizuku.manager.adb.AdbTcpProbe
+import moe.shizuku.manager.adb.AdbTransportResolver
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
+import moe.shizuku.manager.persistence.DeveloperOptionsController
+import moe.shizuku.manager.persistence.NetworkChangePolicy
+import moe.shizuku.manager.persistence.NightDogBackoff
+import moe.shizuku.manager.persistence.RecoveryTransport
+import moe.shizuku.manager.persistence.RecoveryTransportPolicy
+import moe.shizuku.manager.persistence.TransportCandidate
 import moe.shizuku.manager.starter.StarterActivity
-import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.shizuku.Shizuku
 
 /** Process-level watchdog that keeps the service aligned with the persisted desired state. */
@@ -30,11 +42,12 @@ object NightDogRecovery {
 
     private const val PREFS_NAME = "nightdog_recovery"
     private const val KEY_DESIRED_RUNNING = "desired_running"
-
-    private const val POLL_INTERVAL_MS = 4_000L
-    private const val RECOVERY_SETTLE_MS = 1_500L
-    private const val MIN_RETRY_MS = 8_000L
-    private const val MAX_RETRY_MS = 60_000L
+    private const val STARTER_IN_FLIGHT_GUARD_MS = 15_000L
+    // ponytail: one short settle absorbs the onLost+onAvailable pair from a
+    // Wi-Fi/data switch. Replace with a network-id debounce if switches arrive
+    // slower than this on MagicOS.
+    private const val NETWORK_CHANGE_SETTLE_MS = 750L
+    private const val TAG = "NightDogRecovery"
 
     enum class Stage {
         IDLE,
@@ -52,16 +65,45 @@ object NightDogRecovery {
         val desiredRunning: Boolean = true,
         val binderAlive: Boolean = false,
         val transport: String? = null,
+        val transportKind: RecoveryTransport = RecoveryTransport.NONE,
         val endpoint: String? = null,
         val failedAttempts: Int = 0,
-        val lastResult: String = "Sin comprobaciones todavía",
+        val lastResult: String = "No checks yet",
+        val lastResultKey: String = RESULT_NO_CHECKS,
+        val lastFailure: String? = null,
         val lastAttemptElapsedRealtime: Long = 0L,
+        val nextRetryElapsedRealtime: Long = 0L,
         val runningSinceElapsedRealtime: Long = 0L,
         val serverPid: Int? = null,
         val recoveryCount: Int = 0,
         val lastBinderLostElapsedRealtime: Long = 0L,
-        val lastRecoveryElapsedRealtime: Long = 0L
+        val lastRecoveryElapsedRealtime: Long = 0L,
+        val reactivationRequired: Boolean = false,
+        val networkChangePending: Boolean = false
     )
+
+    const val RESULT_NO_CHECKS = "no_checks"
+    const val RESULT_BINDER_RECEIVED = "binder_received"
+    const val RESULT_BINDER_RESPONDING = "binder_responding"
+    const val RESULT_BINDER_ALREADY_ALIVE = "binder_already_alive"
+    const val RESULT_BINDER_LOST = "binder_lost"
+    const val RESULT_BINDER_UNRESPONSIVE = "binder_unresponsive"
+    const val RESULT_MANUALLY_STOPPED = "manually_stopped"
+    const val RESULT_RECOVERY_SKIPPED = "recovery_skipped_manual_stop"
+    const val RESULT_WATCHDOG_STOPPED = "watchdog_stopped"
+    const val RESULT_MDNS_FOUND = "mdns_found"
+    const val RESULT_DISCOVERING = "discovering"
+    const val RESULT_START_REQUESTED = "start_requested"
+    const val RESULT_NO_USABLE_ENDPOINT = "no_usable_endpoint"
+    const val RESULT_STARTER_FAILED = "starter_failed"
+    const val RESULT_WAITING_RETRY = "waiting_retry"
+    const val RESULT_APP_START = "app_start"
+    const val RESULT_MANUAL_START = "manual_start"
+    const val RESULT_RECOVER_NOW = "recover_now"
+    const val RESULT_DEBUG_SETTINGS_RESTORING = "debug_settings_restoring"
+    const val RESULT_DEBUG_SETTINGS_RESTORED = "debug_settings_restored"
+    const val RESULT_DEBUG_SETTINGS_RESTORE_FAILED = "debug_settings_restore_failed"
+    const val RESULT_NETWORK_CHANGED = "network_changed"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -76,13 +118,26 @@ object NightDogRecovery {
     @Volatile private var recoveryCount = 0
     @Volatile private var lastBinderLostAt = 0L
     @Volatile private var lastRecoveryAt = 0L
+    @Volatile private var lastFailure: String? = null
+    @Volatile private var starterInFlightUntil = 0L
+    @Volatile private var pendingNetworkChange = false
+    @Volatile private var networkChangeVisible = false
+    @Volatile private var bypassBackoff = false
+    @Volatile private var lastDefaultNetwork: Network? = null
+    @Volatile private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var connectivityManager: ConnectivityManager? = null
+    @Volatile private var networkChangeJob: Job? = null
 
     private val _snapshot = MutableStateFlow(Snapshot())
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
 
     private val mdnsObserver = Observer<Int> { port ->
         if (port != null && port > 0) {
-            publish(Stage.DISCOVERING_ADB, "mDNS encontró un endpoint ADB; preparando inicio")
+            publish(
+                Stage.DISCOVERING_ADB,
+                RESULT_MDNS_FOUND,
+                "mDNS found an ADB endpoint; preparing start"
+            )
             requestRecovery()
         }
     }
@@ -91,6 +146,12 @@ object NightDogRecovery {
         applicationContext?.let { context ->
             preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
         }
+        pendingNetworkChange = false
+        networkChangeVisible = false
+        bypassBackoff = false
+        networkChangeJob?.cancel()
+        networkChangeJob = null
+        ShizukuSettings.setAdbReactivationRequired(false)
         val now = SystemClock.elapsedRealtime()
         if (runningSinceAt == 0L) runningSinceAt = now
         if (lastBinderLostAt > 0L) {
@@ -99,9 +160,11 @@ object NightDogRecovery {
         }
         failedAttempts = 0
         lastAttemptAt = 0L
+        lastFailure = null
+        starterInFlightUntil = 0L
         recoveryJob?.cancel()
         recoveryJob = null
-        publishRunning("Binder recibido; servicio activo")
+        publishRunning(RESULT_BINDER_RECEIVED, "Binder received; service is active")
         refreshServerPid()
     }
 
@@ -109,7 +172,12 @@ object NightDogRecovery {
         lastBinderLostAt = SystemClock.elapsedRealtime()
         runningSinceAt = 0L
         currentServerPid = null
-        publish(Stage.CHECKING_BINDER, "Binder perdido; iniciando recuperación", binderAlive = false)
+        publish(
+            Stage.CHECKING_BINDER,
+            RESULT_BINDER_LOST,
+            "Binder lost; starting recovery",
+            binderAlive = false
+        )
         requestRecovery()
     }
 
@@ -125,6 +193,7 @@ object NightDogRecovery {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && adbMdns == null) {
             adbMdns = AdbMdns(applicationContext!!, AdbMdns.TLS_CONNECT, mdnsObserver).also { it.start() }
         }
+        registerNetworkCallback(applicationContext!!)
 
         pollingJob = scope.launch {
             while (isActive) {
@@ -133,7 +202,8 @@ object NightDogRecovery {
                     if (runningSinceAt == 0L) runningSinceAt = SystemClock.elapsedRealtime()
                     failedAttempts = 0
                     lastAttemptAt = 0L
-                    publishRunning("Binder responde correctamente")
+                    lastFailure = null
+                    publishRunning(RESULT_BINDER_RESPONDING, "Binder is responding")
                     if (currentServerPid == null) refreshServerPid()
                 } else if (isDesiredRunning()) {
                     if (_snapshot.value.binderAlive) {
@@ -141,19 +211,34 @@ object NightDogRecovery {
                         runningSinceAt = 0L
                         currentServerPid = null
                     }
-                    publish(Stage.CHECKING_BINDER, "Binder no responde; buscando transporte ADB", binderAlive = false)
+                    publish(
+                        Stage.CHECKING_BINDER,
+                        RESULT_BINDER_UNRESPONSIVE,
+                        "Binder is not responding; looking for an ADB transport",
+                        binderAlive = false
+                    )
                     requestRecovery()
                 } else {
                     runningSinceAt = 0L
                     currentServerPid = null
-                    publish(Stage.MANUALLY_STOPPED, "Servicio detenido manualmente", binderAlive = false)
+                    publish(
+                        Stage.MANUALLY_STOPPED,
+                        RESULT_MANUALLY_STOPPED,
+                        "Service was stopped manually",
+                        binderAlive = false
+                    )
                 }
-                delay(POLL_INTERVAL_MS)
+                delay(NightDogBackoff.POLL_INTERVAL_MS)
             }
         }
 
         if (isDesiredRunning(context) && !Shizuku.pingBinder()) {
-            publish(Stage.CHECKING_BINDER, "Inicio de la app: servicio deseado activo; comprobando ADB", binderAlive = false)
+            publish(
+                Stage.CHECKING_BINDER,
+                RESULT_APP_START,
+                "App start: desired running is on; checking ADB",
+                binderAlive = false
+            )
             requestRecovery()
         }
     }
@@ -164,8 +249,32 @@ object NightDogRecovery {
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
         failedAttempts = 0
         lastAttemptAt = 0L
-        publish(Stage.CHECKING_BINDER, "Inicio solicitado; comprobando Binder y ADB")
+        publish(
+            Stage.CHECKING_BINDER,
+            RESULT_MANUAL_START,
+            "Start requested; checking Binder and ADB"
+        )
         if (!Shizuku.pingBinder()) requestRecovery()
+    }
+
+    @Synchronized
+    fun requestImmediateRecovery(context: Context) {
+        applicationContext = context.applicationContext
+        preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, true).apply()
+        failedAttempts = 0
+        lastAttemptAt = 0L
+        recoveryJob?.cancel()
+        recoveryJob = null
+        publish(
+            Stage.CHECKING_BINDER,
+            RESULT_RECOVER_NOW,
+            "Recover now; checking Binder and ADB immediately"
+        )
+        if (Shizuku.pingBinder()) {
+            publishRunning(RESULT_BINDER_ALREADY_ALIVE, "Binder is already active")
+            return
+        }
+        requestRecovery()
     }
 
     @Synchronized
@@ -174,11 +283,21 @@ object NightDogRecovery {
         preferences(context).edit().putBoolean(KEY_DESIRED_RUNNING, false).apply()
         recoveryJob?.cancel()
         recoveryJob = null
+        networkChangeJob?.cancel()
+        networkChangeJob = null
+        pendingNetworkChange = false
+        networkChangeVisible = false
+        bypassBackoff = false
         failedAttempts = 0
         lastAttemptAt = 0L
         runningSinceAt = 0L
         currentServerPid = null
-        publish(Stage.MANUALLY_STOPPED, "Detenido manualmente; recuperación deshabilitada", binderAlive = false)
+        publish(
+            Stage.MANUALLY_STOPPED,
+            RESULT_MANUALLY_STOPPED,
+            "Stopped manually; recovery disabled",
+            binderAlive = false
+        )
     }
 
     fun prepareForManualStop() {
@@ -201,15 +320,51 @@ object NightDogRecovery {
         recoveryJob = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) adbMdns?.stop()
         adbMdns = null
+        unregisterNetworkCallback()
+        networkChangeJob?.cancel()
+        networkChangeJob = null
         applicationContext = null
         failedAttempts = 0
         lastAttemptAt = 0L
+        pendingNetworkChange = false
+        networkChangeVisible = false
+        bypassBackoff = false
+        lastDefaultNetwork = null
         runningSinceAt = 0L
         currentServerPid = null
         recoveryCount = 0
         lastBinderLostAt = 0L
         lastRecoveryAt = 0L
-        _snapshot.value = Snapshot(stage = Stage.IDLE, lastResult = "Watchdog detenido")
+        lastFailure = null
+        starterInFlightUntil = 0L
+        _snapshot.value = Snapshot(
+            stage = Stage.IDLE,
+            lastResult = "Watchdog stopped",
+            lastResultKey = RESULT_WATCHDOG_STOPPED
+        )
+    }
+
+    @Synchronized
+    fun tryBeginStarterAttempt(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (starterInFlightUntil > now) return false
+        starterInFlightUntil = now + STARTER_IN_FLIGHT_GUARD_MS
+        return true
+    }
+
+    @Synchronized
+    fun noteStarterAttempt() {
+        val until = SystemClock.elapsedRealtime() + STARTER_IN_FLIGHT_GUARD_MS
+        if (until > starterInFlightUntil) starterInFlightUntil = until
+    }
+
+    @Synchronized
+    fun clearStarterAttempt() {
+        starterInFlightUntil = 0L
+    }
+
+    private fun starterAttemptInFlight(now: Long = SystemClock.elapsedRealtime()): Boolean {
+        return starterInFlightUntil > now
     }
 
     private fun ensureDesiredStateInitialized(context: Context) {
@@ -222,37 +377,219 @@ object NightDogRecovery {
     private fun preferences(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private fun retryDelayMs(): Long {
-        if (failedAttempts <= 0) return 0L
-        val shift = (failedAttempts - 1).coerceAtMost(3)
-        return (MIN_RETRY_MS shl shift).coerceAtMost(MAX_RETRY_MS)
+    private fun resolveCandidate(): TransportCandidate {
+        val networkChanged = pendingNetworkChange
+        val persistentEndpoint = AdbTransportResolver.persistentTcpEndpoint()
+        val mdnsEndpoint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            AdbMdns.getDiscoveredEndpoint(AdbMdns.TLS_CONNECT)
+        } else {
+            null
+        }
+        val systemEndpoint = AdbTransportResolver.systemAdbTcpEndpoint()
+
+        var persistent = probeCandidate(
+            RecoveryTransport.PERSISTENT_LOCAL_TCP,
+            persistentEndpoint,
+            configured = true,
+            allowRemote = !networkChanged
+        )
+        var mdns = probeCandidate(
+            RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+            mdnsEndpoint,
+            configured = true,
+            allowRemote = !networkChanged
+        )
+        var system = probeCandidate(
+            RecoveryTransport.SYSTEM_ADB_TCP,
+            systemEndpoint,
+            configured = true,
+            allowRemote = !networkChanged
+        )
+        val dynamicLocal = discoverDynamicLocal(persistent, mdns, system, networkChanged)
+        var selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
+            persistent = persistent,
+            mdns = mdns,
+            systemTcp = system,
+            dynamicLocal = dynamicLocal,
+            networkChanged = networkChanged
+        )
+
+        // ponytail: probe the old LAN address only after loopback misses.
+        // sufficient while wireless debugging stays on 127.0.0.1 across Wi-Fi/data
+        // changes. Probe remote first again if a device advertises no loopback adbd.
+        if (networkChanged && selected.kind == RecoveryTransport.NONE) {
+            persistent = probeCandidate(
+                RecoveryTransport.PERSISTENT_LOCAL_TCP,
+                persistentEndpoint,
+                configured = true,
+                allowRemote = true
+            )
+            mdns = probeCandidate(
+                RecoveryTransport.MDNS_WIRELESS_DEBUGGING,
+                mdnsEndpoint,
+                configured = true,
+                allowRemote = true
+            )
+            system = probeCandidate(
+                RecoveryTransport.SYSTEM_ADB_TCP,
+                systemEndpoint,
+                configured = true,
+                allowRemote = true
+            )
+            selected = RecoveryTransportPolicy.selectForRecoveryAttempt(
+                persistent = persistent,
+                mdns = mdns,
+                systemTcp = system,
+                dynamicLocal = dynamicLocal,
+                networkChanged = false
+            )
+        }
+        return selected
     }
 
-    private fun resolveEndpoint(): Triple<String, Int, String>? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)?.let { endpoint ->
-                val transport = if (endpoint.host == "127.0.0.1" || endpoint.host == "localhost") {
-                    "TCP persistente/local"
-                } else {
-                    "ADB mDNS/TLS"
+    private fun probeCandidate(
+        kind: RecoveryTransport,
+        endpoint: AdbEndpoint?,
+        configured: Boolean,
+        allowRemote: Boolean
+    ): TransportCandidate? {
+        if (endpoint == null) return null
+        val loopback = NetworkChangePolicy.isLoopbackHost(endpoint.host)
+        if (!allowRemote && !loopback) {
+            return TransportCandidate(
+                kind = kind,
+                host = endpoint.host,
+                port = endpoint.port,
+                configured = configured,
+                socketReachable = false
+            )
+        }
+        return TransportCandidate(
+            kind = kind,
+            host = endpoint.host,
+            port = endpoint.port,
+            configured = configured,
+            socketReachable = AdbTcpProbe.isReachable(endpoint.host, endpoint.port)
+        )
+    }
+
+    private fun discoverDynamicLocal(
+        persistent: TransportCandidate?,
+        mdns: TransportCandidate?,
+        system: TransportCandidate?,
+        networkChanged: Boolean
+    ): TransportCandidate? {
+        // HONOR 200 / Android 16: mDNS and service.adb.tls.port can both be
+        // unavailable to the app while adbd is still listening on a rotated
+        // loopback port. Discover that port locally, without scanning the LAN.
+        val shouldDiscover = NetworkChangePolicy.shouldDiscoverDynamicLocal(
+            networkChanged = networkChanged,
+            persistentReachable = persistent?.socketReachable == true,
+            persistentHost = persistent?.host,
+            mdnsReachable = mdns?.socketReachable == true,
+            mdnsHost = mdns?.host,
+            systemReachable = system?.socketReachable == true,
+            systemHost = system?.host
+        )
+        if (!shouldDiscover) return null
+        return AdbLocalWirelessDiscovery.discover()?.let { endpoint ->
+            TransportCandidate(
+                kind = RecoveryTransport.DYNAMIC_LOCAL_WIRELESS_ADB,
+                host = endpoint.host,
+                port = endpoint.port,
+                configured = false,
+                socketReachable = true
+            )
+        }
+    }
+
+    private fun registerNetworkCallback(context: Context) {
+        if (networkCallback != null) return
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                val previous = lastDefaultNetwork
+                lastDefaultNetwork = network
+                if (previous != null && previous != network) {
+                    scheduleNetworkChangeRecovery()
                 }
-                return Triple(endpoint.host, endpoint.port, transport)
+            }
+
+            override fun onLost(network: Network) {
+                if (lastDefaultNetwork == null || lastDefaultNetwork == network) {
+                    lastDefaultNetwork = null
+                    scheduleNetworkChangeRecovery()
+                }
             }
         }
+        val registered = runCatching {
+            manager.registerDefaultNetworkCallback(callback)
+        }.onFailure { error ->
+            Log.w(TAG, "Default network callback was not registered: ${error.javaClass.simpleName}")
+        }.isSuccess
+        if (!registered) return
+        connectivityManager = manager
+        networkCallback = callback
+    }
 
-        val port = EnvironmentUtils.getAdbTcpPort()
-        if (port > 0) return Triple("127.0.0.1", port, "ADB local")
-        return null
+    private fun unregisterNetworkCallback() {
+        val callback = networkCallback
+        val manager = connectivityManager
+        networkCallback = null
+        connectivityManager = null
+        if (callback != null && manager != null) {
+            runCatching { manager.unregisterNetworkCallback(callback) }
+        }
+    }
+
+    private fun scheduleNetworkChangeRecovery() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            AdbMdns.invalidateWhere { endpoint ->
+                NetworkChangePolicy.shouldDropCachedEndpoint(endpoint.host)
+            }
+        }
+        if (Shizuku.pingBinder() || !isDesiredRunning()) {
+            pendingNetworkChange = false
+            networkChangeVisible = false
+            return
+        }
+        pendingNetworkChange = true
+        networkChangeVisible = true
+        networkChangeJob?.cancel()
+        networkChangeJob = scope.launch {
+            delay(NETWORK_CHANGE_SETTLE_MS)
+            if (Shizuku.pingBinder() || !isDesiredRunning()) {
+                pendingNetworkChange = false
+                networkChangeVisible = false
+                return@launch
+            }
+            bypassBackoff = true
+            if (!starterAttemptInFlight()) {
+                recoveryJob?.cancel()
+                recoveryJob = null
+            }
+            publish(
+                Stage.DISCOVERING_ADB,
+                RESULT_NETWORK_CHANGED,
+                "Wi-Fi or mobile data changed; retrying on loopback",
+                binderAlive = false,
+                transportKind = RecoveryTransport.NONE,
+                endpoint = null
+            )
+            requestRecovery()
+        }
     }
 
     private fun refreshServerPid() {
         if (!Shizuku.pingBinder()) return
         scope.launch {
-            val endpoint = resolveEndpoint() ?: return@launch
+            val candidate = resolveCandidate().takeIf { it.kind != RecoveryTransport.NONE } ?: return@launch
+            val host = candidate.host ?: return@launch
+            val port = candidate.port ?: return@launch
             val pid = runCatching {
                 val key = AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
                 val output = ByteArrayOutputStream()
-                AdbClient(endpoint.first, endpoint.second, key).use { client ->
+                AdbClient(host, port, key).use { client ->
                     client.connect()
                     client.shellCommand(
                         "pidof shizuku_server 2>/dev/null | cut -d' ' -f1",
@@ -264,56 +601,127 @@ object NightDogRecovery {
 
             if (pid != null && Shizuku.pingBinder()) {
                 currentServerPid = pid
-                publishRunning("Binder responde correctamente")
+                publishRunning(RESULT_BINDER_RESPONDING, "Binder is responding")
             }
         }
     }
 
     private fun requestRecovery() {
         if (Shizuku.pingBinder()) {
-            publishRunning("Binder ya está activo")
+            publishRunning(RESULT_BINDER_ALREADY_ALIVE, "Binder is already active")
             return
         }
         if (!isDesiredRunning()) {
-            publish(Stage.MANUALLY_STOPPED, "Recuperación omitida: detención manual")
+            publish(
+                Stage.MANUALLY_STOPPED,
+                RESULT_RECOVERY_SKIPPED,
+                "Recovery skipped: manual stop"
+            )
             return
         }
         if (recoveryJob?.isActive == true) return
 
         val now = SystemClock.elapsedRealtime()
-        val retryDelay = retryDelayMs()
-        if (lastAttemptAt != 0L && now - lastAttemptAt < retryDelay) {
-            publish(Stage.WAITING_FOR_ADB, "Esperando ${((retryDelay - (now - lastAttemptAt)) / 1000).coerceAtLeast(1)} s antes del próximo intento")
+        val skipBackoff = bypassBackoff
+        if (skipBackoff) bypassBackoff = false
+        if (starterAttemptInFlight(now)) {
+            publish(
+                Stage.STARTING_SERVICE,
+                RESULT_START_REQUESTED,
+                "Starter is already active; waiting for Binder"
+            )
+            return
+        }
+        val retryDelay = NightDogBackoff.retryDelayMs(failedAttempts)
+        if (!skipBackoff && lastAttemptAt != 0L && now - lastAttemptAt < retryDelay) {
+            val remainingSeconds = ((retryDelay - (now - lastAttemptAt)) / 1000).coerceAtLeast(1)
+            publish(
+                Stage.WAITING_FOR_ADB,
+                RESULT_WAITING_RETRY,
+                "Waiting ${remainingSeconds}s before the next attempt"
+            )
             return
         }
 
         recoveryJob = scope.launch {
-            delay(RECOVERY_SETTLE_MS)
+            delay(NightDogBackoff.RECOVERY_SETTLE_MS)
             if (Shizuku.pingBinder() || !isDesiredRunning()) return@launch
 
             val context = applicationContext ?: return@launch
-            publish(Stage.DISCOVERING_ADB, "Binder ausente; resolviendo TCP persistente, mDNS/TLS y ADB local")
+            publish(
+                Stage.DISCOVERING_ADB,
+                RESULT_DISCOVERING,
+                "Binder absent; resolving persistent TCP, mDNS/TLS and dynamic local ADB"
+            )
 
-            val endpoint = resolveEndpoint()
+            var candidate = resolveCandidate()
+            pendingNetworkChange = false
+            if (!isActive) return@launch
+
+            // If Nightzuku itself temporarily disabled Developer options / ADB,
+            // recover the transport before giving up. WRITE_SECURE_SETTINGS is
+            // package-scoped and survives toggling these settings off, so this
+            // path does not need an already-running ADB connection.
+            if (candidate.kind == RecoveryTransport.NONE) {
+                val debugState = DeveloperOptionsController.snapshot(context)
+                if (DeveloperOptionsController.shouldRestoreForRecovery(debugState)) {
+                    publish(
+                        Stage.DISCOVERING_ADB,
+                        RESULT_DEBUG_SETTINGS_RESTORING,
+                        "No ADB endpoint; restoring Developer options, USB debugging and wireless debugging",
+                        transportKind = RecoveryTransport.NONE,
+                        endpoint = null
+                    )
+
+                    val restored = DeveloperOptionsController.enableForRecovery(context)
+                    if (restored.success) {
+                        ShizukuSettings.setAdbReactivationRequired(false)
+                        publish(
+                            Stage.DISCOVERING_ADB,
+                            RESULT_DEBUG_SETTINGS_RESTORED,
+                            "Debug settings restored; waiting for adbd and rediscovering transport",
+                            transportKind = RecoveryTransport.NONE,
+                            endpoint = null
+                        )
+                        delay(1_500L)
+                        if (!isActive) return@launch
+                        candidate = resolveCandidate()
+                    } else {
+                        lastFailure = restored.detail ?: "Could not restore debug settings"
+                        publish(
+                            Stage.ERROR,
+                            RESULT_DEBUG_SETTINGS_RESTORE_FAILED,
+                            "Could not restore Developer options / ADB: ${lastFailure}",
+                            transportKind = RecoveryTransport.NONE,
+                            endpoint = null
+                        )
+                    }
+                }
+            }
+
             failedAttempts++
             lastAttemptAt = SystemClock.elapsedRealtime()
 
-            if (endpoint == null) {
+            if (candidate.kind == RecoveryTransport.NONE) {
+                lastFailure = lastFailure ?: "No usable ADB endpoint"
                 publish(
                     Stage.WAITING_FOR_ADB,
-                    "Sin endpoint ADB utilizable. Se seguirá buscando automáticamente",
-                    transport = "ninguno",
+                    RESULT_NO_USABLE_ENDPOINT,
+                    "No usable ADB endpoint. Automatic search will continue",
+                    transportKind = RecoveryTransport.NONE,
                     endpoint = null
                 )
                 return@launch
             }
 
-            val (host, port, transport) = endpoint
+            val host = candidate.host!!
+            val port = candidate.port!!
             publish(
                 Stage.STARTING_SERVICE,
-                "Endpoint disponible; iniciando servicio",
-                transport = transport,
-                endpoint = "$host:$port"
+                RESULT_START_REQUESTED,
+                "Endpoint available; starting service",
+                transportKind = candidate.kind,
+                endpoint = candidate.endpoint
             )
 
             val intent = Intent(context, StarterActivity::class.java).apply {
@@ -323,50 +731,81 @@ object NightDogRecovery {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
 
+            if (!tryBeginStarterAttempt()) {
+                publish(
+                    Stage.STARTING_SERVICE,
+                    RESULT_START_REQUESTED,
+                    "Another Starter attempt is already active; waiting for Binder"
+                )
+                return@launch
+            }
             runCatching {
                 context.startActivity(intent)
             }.onFailure { error ->
+                clearStarterAttempt()
+                lastFailure = error.javaClass.simpleName
                 publish(
                     Stage.ERROR,
-                    "No se pudo abrir el iniciador: ${error.javaClass.simpleName}",
-                    transport = transport,
-                    endpoint = "$host:$port"
+                    RESULT_STARTER_FAILED,
+                    "Could not open the starter: ${error.javaClass.simpleName}",
+                    transportKind = candidate.kind,
+                    endpoint = candidate.endpoint
                 )
             }
         }
     }
 
-    private fun publishRunning(result: String) {
+    private fun publishRunning(resultKey: String, result: String) {
+        pendingNetworkChange = false
+        networkChangeVisible = false
+        networkChangeJob?.cancel()
+        networkChangeJob = null
+        val tcp = AdbTransportResolver.persistentTcpEndpoint()
         publish(
             Stage.RUNNING,
+            resultKey,
             result,
             binderAlive = true,
-            transport = "Binder activo",
-            endpoint = "no requerido"
+            transportKind = RecoveryTransport.BINDER_ALIVE,
+            endpoint = tcp?.let { "${it.host}:${it.port}" }
         )
     }
 
     private fun publish(
         stage: Stage,
+        resultKey: String,
         result: String,
         binderAlive: Boolean = Shizuku.pingBinder(),
-        transport: String? = _snapshot.value.transport,
-        endpoint: String? = _snapshot.value.endpoint
-    ) {
+            transportKind: RecoveryTransport = _snapshot.value.transportKind,
+            endpoint: String? = _snapshot.value.endpoint,
+            networkChangePending: Boolean = networkChangeVisible
+        ) {
+        val now = SystemClock.elapsedRealtime()
         _snapshot.value = Snapshot(
             stage = stage,
             desiredRunning = isDesiredRunning(),
             binderAlive = binderAlive,
-            transport = transport,
+            transport = transportKind.name,
+            transportKind = transportKind,
             endpoint = endpoint,
             failedAttempts = failedAttempts,
             lastResult = result,
+            lastResultKey = resultKey,
+            lastFailure = lastFailure,
             lastAttemptElapsedRealtime = lastAttemptAt,
+            nextRetryElapsedRealtime = NightDogBackoff.nextRetryElapsedRealtime(
+                now,
+                lastAttemptAt,
+                failedAttempts
+            ),
             runningSinceElapsedRealtime = runningSinceAt,
             serverPid = currentServerPid,
             recoveryCount = recoveryCount,
             lastBinderLostElapsedRealtime = lastBinderLostAt,
-            lastRecoveryElapsedRealtime = lastRecoveryAt
+            lastRecoveryElapsedRealtime = lastRecoveryAt,
+            reactivationRequired = runCatching { ShizukuSettings.isAdbReactivationRequired() }
+                .getOrDefault(false),
+            networkChangePending = networkChangePending
         )
     }
 }
