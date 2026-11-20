@@ -24,13 +24,18 @@ import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
+import moe.shizuku.manager.adb.AdbAuthorizationException
 import moe.shizuku.manager.adb.AdbClient
+import moe.shizuku.manager.adb.AdbDiscoveryResult
+import moe.shizuku.manager.adb.AdbEndpoint
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
-import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.AdbPairingTutorialActivity
+import moe.shizuku.manager.adb.AdbShellUnavailableException
+import moe.shizuku.manager.adb.AdbTransportResolver
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppActivity
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.ui.compose.ExpressiveCard
 import moe.shizuku.manager.ui.compose.HtmlText
 import moe.shizuku.manager.ui.compose.MonospaceLog
@@ -40,7 +45,9 @@ import rikka.lifecycle.Resource
 import rikka.lifecycle.Status
 import rikka.lifecycle.viewModels
 import rikka.shizuku.Shizuku
+import java.io.IOException
 import java.net.ConnectException
+import javax.net.ssl.SSLException
 import javax.net.ssl.SSLProtocolException
 
 private class NotRootedException : Exception()
@@ -99,8 +106,11 @@ class StarterActivity : AppActivity() {
         setContent {
             val outputResource by viewModel.output.observeAsState()
             val output = outputResource?.data.orEmpty()
-            val pairRequired = outputResource?.status == Status.ERROR &&
-                    outputResource?.error is SSLProtocolException
+            val pairRequired = outputResource?.status == Status.ERROR && (
+                    outputResource?.error is SSLProtocolException ||
+                    outputResource?.error is SSLException ||
+                    outputResource?.error is AdbAuthorizationException
+            )
             val failed = outputResource?.status == Status.ERROR && !pairRequired
             var errorToShow by remember(outputResource) {
                 mutableIntStateOf(if (outputResource?.status == Status.ERROR) {
@@ -108,7 +118,9 @@ class StarterActivity : AppActivity() {
                         is AdbKeyException -> R.string.adb_error_key_store
                         is NotRootedException -> R.string.start_with_root_failed
                         is ConnectException -> R.string.cannot_connect_port
-                        is SSLProtocolException -> 0
+                        is SSLProtocolException,
+                        is SSLException,
+                        is AdbAuthorizationException -> 0
                         else -> 0
                     }
                 } else 0)
@@ -230,14 +242,11 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
 
     init {
         try {
+            NightDogRecovery.requestManualStart(context, recoverImmediately = false)
             if (root) {
                 startRoot()
             } else {
-                val discovered = AdbMdns.getResolvedEndpoint(AdbMdns.TLS_CONNECT)
-                val useDiscovered = discovered != null && (host.isNullOrBlank() || host == LOOPBACK_HOST)
-                val resolvedHost = if (useDiscovered) discovered.host else requireNotNull(host)
-                val resolvedPort = if (useDiscovered) discovered.port else port
-                startAdb(resolvedHost, resolvedPort)
+                startAdb(host, port)
             }
         } catch (e: Throwable) {
             postResult(e)
@@ -305,13 +314,35 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         }
     }
 
-    private fun startAdb(host: String, port: Int) {
-        synchronized(outputLock) {
-            sb.append(context.getString(R.string.starter_starting_wireless_adb, port.toString())).append('\n').append('\n')
-        }
-        postResult()
-
+    private fun startAdb(requestedHost: String?, requestedPort: Int) {
         viewModelScope.launch(Dispatchers.IO) {
+            appendLine("Buscando el transporte ADB local actual…")
+            val endpoint = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                when (val discovery = AdbTransportResolver.discoverDetailed(context)) {
+                    is AdbDiscoveryResult.Found -> discovery.endpoint
+                    is AdbDiscoveryResult.WirelessDebuggingDisabled -> {
+                        appendLine("La depuración inalámbrica está desactivada. Actívala en Opciones de desarrollador.")
+                        postResult(IOException("Depuración inalámbrica desactivada"))
+                        return@launch
+                    }
+                    is AdbDiscoveryResult.Absent -> {
+                        appendLine("No se encontró un endpoint ADB local. Comprueba Wi-Fi, depuración inalámbrica y emparejamiento.")
+                        postResult(IOException("Descubrimiento ADB agotado (8 s)"))
+                        return@launch
+                    }
+                }
+            } else {
+                requestedHost?.takeIf { it.isNotBlank() && requestedPort in 1..65535 }
+                    ?.let { AdbEndpoint(it, requestedPort, requireTls = false) }
+                    ?: run {
+                        appendLine("No se proporcionó un endpoint ADB válido.")
+                        postResult(IOException("Endpoint ADB inválido"))
+                        return@launch
+                    }
+            }
+
+            val (host, port) = endpoint
+            appendLine(context.getString(R.string.starter_starting_wireless_adb, port.toString()))
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {
@@ -322,15 +353,20 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 return@launch
             }
 
-            AdbClient(host, port, key).runCatching {
-                connect()
-                shellCommand(Starter.internalCommand) {
-                    synchronized(outputLock) {
-                        sb.append(String(it))
+            runCatching {
+                AdbClient(host, port, key, requireTls = endpoint.requireTls).use { client ->
+                    client.connect()
+                    if (!client.verifyShell()) {
+                        throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
                     }
-                    postResult()
+                    appendLine("Conexión ADB autenticada y shell verificado; ejecutando el iniciador")
+                    client.shellCommand(Starter.internalCommand) {
+                        synchronized(outputLock) {
+                            sb.append(String(it))
+                        }
+                        postResult()
+                    }
                 }
-                close()
             }.onFailure {
                 it.printStackTrace()
 
@@ -338,9 +374,5 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 postResult(it)
             }
         }
-    }
-
-    companion object {
-        private const val LOOPBACK_HOST = "127.0.0.1"
     }
 }

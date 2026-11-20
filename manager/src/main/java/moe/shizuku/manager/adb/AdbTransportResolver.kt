@@ -1,39 +1,105 @@
 package moe.shizuku.manager.adb
 
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
+import java.net.NetworkInterface
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import moe.shizuku.manager.ShizukuSettings
 
+internal object AdbEndpointPolicy {
+    fun isLocal(host: String, port: Int, localHosts: Set<String>): Boolean =
+        port in 1..65535 && host in localHosts
+}
+
+internal sealed class AdbDiscoveryResult {
+    data class Found(val endpoint: AdbEndpoint) : AdbDiscoveryResult()
+    object WirelessDebuggingDisabled : AdbDiscoveryResult()
+    object Absent : AdbDiscoveryResult()
+}
+
 /**
- * Resolves the endpoint used to start Shizuku without duplicating transport policy.
- *
- * Priority for normal startup:
- * 1. Explicit persistent TCP endpoint enabled by the user.
- * 2. Current mDNS endpoint advertised by wireless debugging.
- * 3. Endpoint supplied by the caller.
- *
- * The system ADB TCP endpoint is exposed separately for diagnostics/recovery tests. It must not
- * silently replace the user's normal transport policy.
+ * Redescubre el endpoint ADB local en cada operación mediante una sesión NSD fresca.
+ * Conserva el fallback TCP legacy únicamente si fue habilitado explícitamente y su host
+ * pertenece a una interfaz local actual.
  */
 internal object AdbTransportResolver {
 
-    private const val LOOPBACK_HOST = "127.0.0.1"
-    private const val GETPROP = "/system/bin/getprop"
-    private const val SERVICE_ADB_TCP_PORT = "service.adb.tcp.port"
+    internal const val DISCOVERY_TIMEOUT_MS = 8_000L
+    private const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
 
-    fun resolve(
-        requestedHost: String?,
-        requestedPort: Int,
-        serviceType: String = AdbMdns.TLS_CONNECT
-    ): AdbEndpoint {
-        persistentTcpEndpoint()?.let { return it }
+    fun currentLocalHosts(): Set<String> = runCatching {
+        NetworkInterface.getNetworkInterfaces()
+            ?.asSequence()
+            ?.flatMap { it.inetAddresses.asSequence() }
+            ?.mapNotNull { it.hostAddress }
+            ?.toSet()
+            .orEmpty()
+    }.getOrDefault(emptySet())
 
-        val discovered = AdbMdns.getResolvedEndpoint(serviceType)
-        if (discovered != null && (requestedHost.isNullOrBlank() || requestedHost == LOOPBACK_HOST)) {
-            return discovered
+    /**
+     * Devuelve 1 si la depuración inalámbrica está activa, 0 si está explícitamente
+     * desactivada, o -1 si no se pudo determinar.
+     */
+    fun wirelessDebuggingState(context: Context): Int = runCatching {
+        Settings.Global.getInt(context.contentResolver, ADB_WIFI_ENABLED, -1)
+    }.getOrDefault(-1)
+
+    suspend fun discover(context: Context, timeoutMs: Long = DISCOVERY_TIMEOUT_MS): AdbEndpoint? =
+        (discoverDetailed(context, timeoutMs) as? AdbDiscoveryResult.Found)?.endpoint
+
+    suspend fun discoverDetailed(
+        context: Context,
+        timeoutMs: Long = DISCOVERY_TIMEOUT_MS
+    ): AdbDiscoveryResult {
+        val wirelessState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wirelessDebuggingState(context)
+        } else {
+            -1
         }
 
-        val host = requestedHost?.takeIf { it.isNotBlank() } ?: LOOPBACK_HOST
-        require(requestedPort in 1..65535) { "Invalid ADB port: $requestedPort" }
-        return AdbEndpoint(host, requestedPort)
+        if (wirelessState != 0) {
+            discoverWireless(context, timeoutMs)?.let { return AdbDiscoveryResult.Found(it) }
+        }
+
+        localPersistentTcpEndpoint()?.let { return AdbDiscoveryResult.Found(it) }
+
+        return if (wirelessState == 0) {
+            AdbDiscoveryResult.WirelessDebuggingDisabled
+        } else {
+            AdbDiscoveryResult.Absent
+        }
+    }
+
+    suspend fun discoverWireless(
+        context: Context,
+        timeoutMs: Long = DISCOVERY_TIMEOUT_MS
+    ): AdbEndpoint? = withContext(Dispatchers.Main) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext null
+        var discovery: AdbMdns? = null
+        try {
+            withTimeoutOrNull(timeoutMs) {
+                suspendCancellableCoroutine { continuation ->
+                    val resumed = AtomicBoolean(false)
+                    val session = AdbMdns(context.applicationContext, AdbMdns.TLS_CONNECT) { port ->
+                        val endpoint = discovery?.resolvedEndpoint
+                        if (port > 0 && endpoint != null && resumed.compareAndSet(false, true) && continuation.isActive) {
+                            continuation.resume(endpoint)
+                        }
+                    }
+                    discovery = session
+                    continuation.invokeOnCancellation { session.stop() }
+                    session.start()
+                }
+            }
+        } finally {
+            discovery?.stop()
+        }
     }
 
     fun persistentTcpEndpoint(): AdbEndpoint? {
@@ -43,37 +109,11 @@ internal object AdbTransportResolver {
         val port = ShizukuSettings.getAdbTcpPort()
         if (host.isEmpty() || port !in 1..65535) return null
 
-        return AdbEndpoint(host, port)
+        return AdbEndpoint(host, port, requireTls = false)
     }
 
-    /**
-     * Returns Android's currently configured local ADB-over-TCP endpoint, when present.
-     *
-     * `service.adb.tcp.port` describes the live adbd TCP configuration and is intentionally kept
-     * separate from Nightzuku's persistent-TCP preference. Callers still have to authenticate the
-     * returned endpoint with [AdbClient] before treating it as usable.
-     */
-    fun systemAdbTcpEndpoint(): AdbEndpoint? {
-        val process = runCatching {
-            ProcessBuilder(GETPROP, SERVICE_ADB_TCP_PORT)
-                .redirectErrorStream(true)
-                .start()
-        }.getOrNull() ?: return null
-
-        return try {
-            val value = process.inputStream.bufferedReader().use { reader ->
-                reader.readLine()?.trim()
-            }
-            if (process.waitFor() != 0) return null
-
-            val port = value?.toIntOrNull() ?: return null
-            if (port !in 1..65535) return null
-
-            AdbEndpoint(LOOPBACK_HOST, port)
-        } catch (_: Exception) {
-            null
-        } finally {
-            process.destroy()
-        }
+    fun localPersistentTcpEndpoint(localHosts: Set<String> = currentLocalHosts()): AdbEndpoint? {
+        val endpoint = persistentTcpEndpoint() ?: return null
+        return endpoint.takeIf { AdbEndpointPolicy.isLocal(it.host, it.port, localHosts) }
     }
 }

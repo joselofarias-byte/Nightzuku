@@ -17,6 +17,7 @@ import android.text.TextUtils;
 
 import java.io.File;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import rikka.shizuku.shell.BuildConfig;
 import dalvik.system.BaseDexClassLoader;
@@ -25,9 +26,55 @@ import stub.dalvik.system.VMRuntimeHidden;
 
 public class ShizukuShellLoader {
 
+    static final long BINDER_ACQUISITION_TIMEOUT_MS = 5000L;
+
+    interface TimeoutScheduler {
+        void schedule(Runnable task, long delayMs);
+        void cancel(Runnable task);
+    }
+
+    static final class BinderAcquisitionGuard {
+        private final TimeoutScheduler scheduler;
+        private final Runnable onTimeout;
+        private final AtomicBoolean acquired = new AtomicBoolean(false);
+        private final AtomicBoolean finished = new AtomicBoolean(false);
+        private final Runnable timeoutTask;
+
+        BinderAcquisitionGuard(TimeoutScheduler scheduler, Runnable onTimeout) {
+            this.scheduler = scheduler;
+            this.onTimeout = onTimeout;
+            this.timeoutTask = () -> {
+                if (!acquired.get() && finished.compareAndSet(false, true)) {
+                    this.onTimeout.run();
+                }
+            };
+        }
+
+        void arm(long timeoutMs) {
+            if (!acquired.get() && !finished.get()) {
+                scheduler.schedule(timeoutTask, timeoutMs);
+            }
+        }
+
+        boolean markBinderReceived() {
+            if (!finished.compareAndSet(false, true)) {
+                return false;
+            }
+            acquired.set(true);
+            scheduler.cancel(timeoutTask);
+            return true;
+        }
+
+        void cancel() {
+            finished.set(true);
+            scheduler.cancel(timeoutTask);
+        }
+    }
+
     private static String[] args;
     private static String callingPackage;
     private static Handler handler;
+    private static volatile BinderAcquisitionGuard acquisitionGuard;
 
     private static final Binder receiverBinder = new Binder() {
 
@@ -37,9 +84,16 @@ public class ShizukuShellLoader {
                 IBinder binder = data.readStrongBinder();
 
                 String sourceDir = data.readString();
+                BinderAcquisitionGuard guard = acquisitionGuard;
                 if (binder != null) {
+                    if (guard != null && !guard.markBinderReceived()) {
+                        return true;
+                    }
                     handler.post(() -> onBinderReceived(binder, sourceDir));
                 } else {
+                    if (guard != null) {
+                        guard.cancel();
+                    }
                     System.err.println("Server is not running");
                     System.err.flush();
                     System.exit(1);
@@ -128,6 +182,10 @@ public class ShizukuShellLoader {
     }
 
     private static void onBinderReceived(IBinder binder, String sourceDir) {
+        BinderAcquisitionGuard guard = acquisitionGuard;
+        if (guard != null) {
+            guard.cancel();
+        }
         var base = sourceDir.substring(0, sourceDir.lastIndexOf('/'));
         String librarySearchPath = base + "/lib/" + VMRuntimeHidden.getRuntime().vmInstructionSet();
         String systemLibrarySearchPath = System.getProperty("java.library.path");
@@ -181,6 +239,26 @@ public class ShizukuShellLoader {
 
         handler = new Handler(Looper.getMainLooper());
 
+        acquisitionGuard = new BinderAcquisitionGuard(
+                new TimeoutScheduler() {
+                    @Override
+                    public void schedule(Runnable task, long delayMs) {
+                        handler.postDelayed(task, delayMs);
+                    }
+
+                    @Override
+                    public void cancel(Runnable task) {
+                        handler.removeCallbacks(task);
+                    }
+                },
+                () -> abort(
+                        String.format(
+                                "Request timeout. No binder reply was received by current app (%1$s) from Nightzuku (" + BuildConfig.MANAGER_APPLICATION_ID + "). " +
+                                        "This can be caused by binder-request delivery being blocked or by the Nightzuku server not answering.",
+                                packageName)
+                )
+        );
+
         try {
             requestForBinder();
         } catch (Throwable tr) {
@@ -189,12 +267,7 @@ public class ShizukuShellLoader {
             System.exit(1);
         }
 
-        handler.postDelayed(() -> abort(
-                String.format(
-                        "Request timeout. No binder reply was received by current app (%1$s) from Nightzuku (" + BuildConfig.MANAGER_APPLICATION_ID + "). " +
-                                "This can be caused by binder-request delivery being blocked or by the Nightzuku server not answering.",
-                        packageName)
-        ), 5000);
+        acquisitionGuard.arm(BINDER_ACQUISITION_TIMEOUT_MS);
 
         Looper.loop();
         System.exit(0);

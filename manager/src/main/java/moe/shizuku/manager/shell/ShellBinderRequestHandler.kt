@@ -16,7 +16,7 @@ object ShellBinderRequestHandler {
 
         val binder = intent.getBundleExtra("data")?.getBinder("binder") ?: return false
         val shizukuBinder = try {
-            Shizuku.getBinder()
+            Shizuku.getBinder()?.takeIf { it.pingBinder() }
         } catch (e: Throwable) {
             LOGGER.w(e, "Binder not received or Shizuku service not running")
             return false

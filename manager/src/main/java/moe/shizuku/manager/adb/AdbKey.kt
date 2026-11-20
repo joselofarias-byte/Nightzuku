@@ -38,7 +38,13 @@ import javax.net.ssl.X509ExtendedTrustManager
 
 private const val TAG = "AdbKey"
 
-class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
+internal interface AdbCredentials {
+    val adbPublicKey: ByteArray
+    val sslContext: SSLContext
+    fun sign(data: ByteArray?): ByteArray
+}
+
+class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) : AdbCredentials {
 
     companion object {
 
@@ -96,7 +102,7 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
                 .generateCertificate(ByteArrayInputStream(x509Certificate.encoded)) as X509Certificate
     }
 
-    val adbPublicKey: ByteArray by unsafeLazy {
+    override val adbPublicKey: ByteArray by unsafeLazy {
         publicKey.adbEncoded(name)
     }
 
@@ -170,7 +176,7 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
         return privateKey
     }
 
-    fun sign(data: ByteArray?): ByteArray {
+    override fun sign(data: ByteArray?): ByteArray {
         val cipher = Cipher.getInstance("RSA/ECB/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, privateKey)
         cipher.update(PADDING)
@@ -248,7 +254,7 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
             }
 
     @delegate:RequiresApi(Build.VERSION_CODES.R)
-    val sslContext: SSLContext by unsafeLazy {
+    override val sslContext: SSLContext by unsafeLazy {
         val sslContext = SSLContext.getInstance("TLSv1.3")
         sslContext.init(arrayOf(keyManager), arrayOf(trustManager), SecureRandom())
         sslContext

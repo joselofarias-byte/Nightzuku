@@ -9,15 +9,11 @@ import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.Observer
-import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.NetworkInterface
-import java.net.ServerSocket
-import java.util.concurrent.ConcurrentHashMap
 
 internal data class AdbEndpoint(
     val host: String,
-    val port: Int
+    val port: Int,
+    val requireTls: Boolean = true
 )
 
 @RequiresApi(Build.VERSION_CODES.R)
@@ -27,46 +23,68 @@ class AdbMdns(
     private val observer: Observer<Int>
 ) {
 
+    @Volatile
+    internal var resolvedEndpoint: AdbEndpoint? = null
+        private set
+
     private var registered = false
     private var running = false
+    private var sessionGeneration = 0L
+    private var activeListener: DiscoveryListener? = null
     private var serviceName: String? = null
     private var restartScheduled = false
     private var restartAttempts = 0
     private val handler = Handler(Looper.getMainLooper())
-    private val listener = DiscoveryListener(this)
     private val nsdManager: NsdManager = context.getSystemService(NsdManager::class.java)
 
+    @Synchronized
     fun start() {
         if (running) return
+        sessionGeneration++
+        resolvedEndpoint = null
+        serviceName = null
         running = true
+        restartScheduled = false
         restartAttempts = 0
-        discover()
+        discover(sessionGeneration)
     }
 
+    @Synchronized
     fun stop() {
-        if (!running) return
+        if (!running && !registered) return
         running = false
+        sessionGeneration++
+        resolvedEndpoint = null
+        serviceName = null
         restartScheduled = false
         restartAttempts = 0
         handler.removeCallbacksAndMessages(null)
-        if (registered) {
-            runCatching { nsdManager.stopServiceDiscovery(listener) }
+        val listenerToStop = activeListener
+        activeListener = null
+        if (registered && listenerToStop != null) {
+            registered = false
+            runCatching { nsdManager.stopServiceDiscovery(listenerToStop) }
                 .onFailure { error -> Log.v(TAG, "stopServiceDiscovery failed", error) }
         }
     }
 
-    private fun discover() {
-        if (!running || registered) return
+    @Synchronized
+    private fun discover(generation: Long) {
+        if (!running || registered || generation != sessionGeneration) return
+        val listener = DiscoveryListener(this, generation)
+        activeListener = listener
         runCatching {
             nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
+            if (activeListener === listener) activeListener = null
             Log.w(TAG, "discoverServices threw for $serviceType; scheduling retry", error)
-            scheduleRestart("exception")
+            scheduleRestart(generation, "exception")
         }
     }
 
-    private fun scheduleRestart(reason: String) {
-        if (!running || restartScheduled) return
+    @Synchronized
+    private fun scheduleRestart(generation: Long, reason: String) {
+        if (!running || restartScheduled || generation != sessionGeneration) return
 
         val delayMs = restartDelayMs(restartAttempts)
         restartAttempts++
@@ -74,79 +92,101 @@ class AdbMdns(
         Log.w(TAG, "Scheduling mDNS restart for $serviceType in ${delayMs}ms ($reason)")
 
         handler.postDelayed({
-            restartScheduled = false
-            if (running && !registered) discover()
+            synchronized(this@AdbMdns) {
+                if (generation != sessionGeneration) return@postDelayed
+                restartScheduled = false
+                if (running && !registered) discover(generation)
+            }
         }, delayMs)
     }
 
-    private fun onDiscoveryStart() {
+    @Synchronized
+    private fun onDiscoveryStart(generation: Long, listener: DiscoveryListener) {
+        if (!running || generation != sessionGeneration) {
+            runCatching { nsdManager.stopServiceDiscovery(listener) }
+            return
+        }
         registered = true
         restartScheduled = false
         restartAttempts = 0
     }
 
-    private fun onDiscoveryStop() {
-        registered = false
-        if (running) scheduleRestart("discovery stopped unexpectedly")
+    @Synchronized
+    private fun onDiscoveryStop(generation: Long, listener: DiscoveryListener) {
+        if (activeListener === listener) {
+            registered = false
+            activeListener = null
+        }
+        if (running && generation == sessionGeneration) {
+            scheduleRestart(generation, "discovery stopped unexpectedly")
+        }
     }
 
-    private fun onStartDiscoveryFailed(errorCode: Int) {
-        registered = false
-        scheduleRestart("start failed: $errorCode")
+    @Synchronized
+    private fun onStartDiscoveryFailed(generation: Long, listener: DiscoveryListener, errorCode: Int) {
+        if (activeListener === listener) {
+            registered = false
+            activeListener = null
+        }
+        if (running && generation == sessionGeneration) {
+            scheduleRestart(generation, "start failed: $errorCode")
+        }
     }
 
-    private fun onServiceFound(info: NsdServiceInfo) {
-        nsdManager.resolveService(info, ResolveListener(this))
+    @Synchronized
+    private fun onServiceFound(generation: Long, info: NsdServiceInfo) {
+        if (!running || generation != sessionGeneration) return
+        runCatching { nsdManager.resolveService(info, ResolveListener(this, generation)) }
+            .onFailure { Log.w(TAG, "No se pudo resolver el servicio ADB", it) }
     }
 
-    private fun onServiceLost(info: NsdServiceInfo) {
-        if (info.serviceName == serviceName) {
-            endpoints.remove(serviceType)
+    private fun onServiceLost(generation: Long, info: NsdServiceInfo) {
+        val shouldNotify = synchronized(this) {
+            if (!running || generation != sessionGeneration) return
+            if (info.serviceName == serviceName) {
+                resolvedEndpoint = null
+                serviceName = null
+                true
+            } else {
+                false
+            }
+        }
+        if (shouldNotify) {
             observer.onChanged(-1)
         }
     }
 
-    private fun onServiceResolved(resolvedService: NsdServiceInfo) {
+    private fun onServiceResolved(generation: Long, resolvedService: NsdServiceInfo) {
         val host = resolvedService.host?.hostAddress ?: return
         val port = resolvedService.port
-        if (running && NetworkInterface.getNetworkInterfaces()
-                .asSequence()
-                .any { networkInterface ->
-                    networkInterface.inetAddresses
-                        .asSequence()
-                        .any { host == it.hostAddress }
-                }
-            && isPortAvailable(host, port)
-        ) {
+        val localHosts = AdbTransportResolver.currentLocalHosts()
+        val resolvedPort = synchronized(this) {
+            if (!running || generation != sessionGeneration) return
+            if (!AdbEndpointPolicy.isLocal(host, port, localHosts)) return
             serviceName = resolvedService.serviceName
-            endpoints[serviceType] = AdbEndpoint(host, port)
-            observer.onChanged(port)
+            resolvedEndpoint = AdbEndpoint(host, port, requireTls = true)
+            port
         }
+        observer.onChanged(resolvedPort)
     }
 
-    private fun isPortAvailable(host: String, port: Int) = try {
-        ServerSocket().use {
-            it.bind(InetSocketAddress(host, port), 1)
-            false
-        }
-    } catch (e: IOException) {
-        true
-    }
-
-    internal class DiscoveryListener(private val adbMdns: AdbMdns) : NsdManager.DiscoveryListener {
+    internal class DiscoveryListener(
+        private val adbMdns: AdbMdns,
+        private val generation: Long
+    ) : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String) {
             Log.v(TAG, "onDiscoveryStarted: $serviceType")
-            adbMdns.onDiscoveryStart()
+            adbMdns.onDiscoveryStart(generation, this)
         }
 
         override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
             Log.v(TAG, "onStartDiscoveryFailed: $serviceType, $errorCode")
-            adbMdns.onStartDiscoveryFailed(errorCode)
+            adbMdns.onStartDiscoveryFailed(generation, this, errorCode)
         }
 
         override fun onDiscoveryStopped(serviceType: String) {
             Log.v(TAG, "onDiscoveryStopped: $serviceType")
-            adbMdns.onDiscoveryStop()
+            adbMdns.onDiscoveryStop(generation, this)
         }
 
         override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
@@ -155,22 +195,25 @@ class AdbMdns(
 
         override fun onServiceFound(serviceInfo: NsdServiceInfo) {
             Log.v(TAG, "onServiceFound: ${serviceInfo.serviceName}")
-            adbMdns.onServiceFound(serviceInfo)
+            adbMdns.onServiceFound(generation, serviceInfo)
         }
 
         override fun onServiceLost(serviceInfo: NsdServiceInfo) {
             Log.v(TAG, "onServiceLost: ${serviceInfo.serviceName}")
-            adbMdns.onServiceLost(serviceInfo)
+            adbMdns.onServiceLost(generation, serviceInfo)
         }
     }
 
-    internal class ResolveListener(private val adbMdns: AdbMdns) : NsdManager.ResolveListener {
+    internal class ResolveListener(
+        private val adbMdns: AdbMdns,
+        private val generation: Long
+    ) : NsdManager.ResolveListener {
         override fun onResolveFailed(nsdServiceInfo: NsdServiceInfo, errorCode: Int) {
             Log.v(TAG, "onResolveFailed: ${nsdServiceInfo.serviceName}, $errorCode")
         }
 
         override fun onServiceResolved(nsdServiceInfo: NsdServiceInfo) {
-            adbMdns.onServiceResolved(nsdServiceInfo)
+            adbMdns.onServiceResolved(generation, nsdServiceInfo)
         }
     }
 
@@ -181,20 +224,10 @@ class AdbMdns(
 
         private const val MIN_RESTART_DELAY_MS = 2_000L
         private const val MAX_RESTART_DELAY_MS = 30_000L
-        private val endpoints = ConcurrentHashMap<String, AdbEndpoint>()
 
         internal fun restartDelayMs(attempt: Int): Long {
             val shift = attempt.coerceIn(0, 4)
             return (MIN_RESTART_DELAY_MS shl shift).coerceAtMost(MAX_RESTART_DELAY_MS)
-        }
-
-        internal fun getDiscoveredEndpoint(serviceType: String): AdbEndpoint? = endpoints[serviceType]
-
-        internal fun getResolvedEndpoint(serviceType: String): AdbEndpoint? {
-            if (serviceType == TLS_CONNECT) {
-                AdbTransportResolver.persistentTcpEndpoint()?.let { return it }
-            }
-            return getDiscoveredEndpoint(serviceType)
         }
     }
 }

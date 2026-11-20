@@ -62,6 +62,7 @@ import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.AdbPairingClient
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
+import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.EnvironmentUtils
 import java.net.ConnectException
@@ -143,6 +144,11 @@ fun HomeStopDialog(
     val context = LocalContext.current
     val isWatch = EnvironmentUtils.isWatch(context)
     val isTv = EnvironmentUtils.isTV(context)
+    val confirmStop = {
+        NightDogRecovery.prepareForManualStop(context)
+        onConfirm()
+        onDismiss()
+    }
 
     if (isWatch) {
         moe.shizuku.manager.ui.compose.WearShizukuTheme {
@@ -153,7 +159,7 @@ fun HomeStopDialog(
                 text = { WearText(stringResource(R.string.dialog_stop_message)) }
             ) {
                 item {
-                    WearButton(onClick = { onConfirm(); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                    WearButton(onClick = confirmStop, modifier = Modifier.fillMaxWidth()) {
                         WearText(stringResource(android.R.string.ok))
                     }
                 }
@@ -171,7 +177,7 @@ fun HomeStopDialog(
                 title = { TvText(stringResource(R.string.action_stop)) },
                 text = { TvText(stringResource(R.string.dialog_stop_message)) },
                 confirmButton = {
-                    TvButton(onClick = { onConfirm(); onDismiss() }) {
+                    TvButton(onClick = confirmStop) {
                         TvText(stringResource(android.R.string.ok))
                     }
                 },
@@ -190,7 +196,7 @@ fun HomeStopDialog(
             title = { Text(stringResource(R.string.action_stop)) },
             text = { Text(stringResource(R.string.dialog_stop_message)) },
             confirmButton = {
-                TextButton(onClick = { onConfirm(); onDismiss() }) {
+                TextButton(onClick = confirmStop) {
                     Text(stringResource(android.R.string.ok))
                 }
             },
