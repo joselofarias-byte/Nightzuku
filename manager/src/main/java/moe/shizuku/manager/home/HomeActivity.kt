@@ -283,7 +283,15 @@ abstract class HomeActivity : AppActivity() {
     }
 
     private fun startWirelessAdb(onShowDiscovery: () -> Unit, onShowNotEnabled: () -> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { onShowDiscovery(); return }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (EnvironmentUtils.isWatch(this) || EnvironmentUtils.isTV(this)) {
+                onShowDiscovery()
+            } else {
+                NightDogRecovery.start(this)
+                NightDogRecovery.requestManualStart(this, recoverImmediately = true)
+            }
+            return
+        }
         val port = EnvironmentUtils.getAdbTcpPort()
         if (port > 0) {
             startActivity(Intent(this, StarterActivity::class.java).apply {
@@ -539,6 +547,13 @@ private fun PhoneHomeScreen(
                     Box {
                         IconButton(onClick = { moreOpen = true }) { ShizukuIcon(icon = R.drawable.ic_more_vert_24, contentDescription = stringResource(R.string.more_options)) }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                            if (running || recoverySnapshot.desiredRunning) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_stop)) },
+                                    leadingIcon = { ShizukuIcon(icon = R.drawable.ic_close_24, contentDescription = null) },
+                                    onClick = { moreOpen = false; onStop() }
+                                )
+                            }
                             if (!running) {
                                 if (isRooted) {
                                     DropdownMenuItem(
@@ -574,7 +589,12 @@ private fun PhoneHomeScreen(
             contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { StatusCard(serviceResource, status, onStartRoot, onStartWirelessAdb, isRooted, canUseWirelessAdb) }
+            item {
+                StatusCard(
+                    serviceResource, status, onStartRoot, onStartWirelessAdb,
+                    isRooted, canUseWirelessAdb, onStop
+                )
+            }
             if (adbPermission) {
                 item { ManageAppsCard(status, grantedResource, unauthorizedResource, onManageApps) }
                 item {
@@ -629,7 +649,8 @@ private fun StatusCard(
     onStartRoot: () -> Unit,
     onStartWirelessAdb: () -> Unit,
     isRooted: Boolean,
-    canUseWirelessAdb: Boolean
+    canUseWirelessAdb: Boolean,
+    onStop: () -> Unit
 ) {
     val context = LocalContext.current
     val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
@@ -666,7 +687,11 @@ private fun StatusCard(
         titleColor = semanticColor,
         bodyColor = semanticColor.copy(alpha = 0.82f)
     ) {
-        if (isLoading && !recovering) {
+        if (running) {
+            HomeButtons(
+                listOf(HomeButtonSpec(R.string.action_stop, R.drawable.ic_close_24, false, onClick = onStop))
+            )
+        } else if (isLoading && !recovering) {
             Spacer(Modifier.height(12.dp)); LoadingIndicator(Modifier.size(32.dp))
         } else if (!running && !desiredRunning) {
             val button = when {
@@ -727,9 +752,8 @@ private fun StatusCard(
                     onClick = { NightDogRecovery.requestManualStart(context, recoverImmediately = true) }
                 )
             }
-            if (recoveryButtons.isNotEmpty()) {
-                HomeButtons(recoveryButtons)
-            }
+            recoveryButtons += HomeButtonSpec(R.string.action_stop, R.drawable.ic_close_24, false, onClick = onStop)
+            HomeButtons(recoveryButtons)
         }
     }
 }

@@ -133,7 +133,8 @@ internal class NightDogRecoveryEngine(
     private val binderConfirmPollMs: Long = BINDER_CONFIRM_POLL_MS,
     private val minRetryMs: Long = MIN_RETRY_MS,
     private val maxRetryMs: Long = MAX_RETRY_MS,
-    private val discoverAlternateEndpoint: suspend (AdbEndpoint) -> AdbEndpoint? = { null }
+    private val discoverAlternateEndpoint: suspend (AdbEndpoint) -> AdbEndpoint? = { null },
+    private val isWirelessDebuggingDisabled: () -> Boolean = { false }
 ) {
 
     private val lock = Any()
@@ -1023,6 +1024,37 @@ internal class NightDogRecoveryEngine(
                     if (usedAlternate || !AdbTransportResolver.canTryAlternate(error, launchSubmitted)) {
                         throw error
                     }
+                    if (!previous.requireTls) {
+                        val restored = synchronized(lock) {
+                            if (!isCurrentAttemptLocked(attemptId)) return
+                            if (pingBinder()) {
+                                markRunningLocked("Binder ya está activo")
+                                return
+                            }
+
+                            val now = clockElapsedMs()
+                            val cooldownElapsed = lastAutoRestoreAt == 0L ||
+                                now - lastAutoRestoreAt >= AUTO_ENABLE_COOLDOWN_MS
+                            if (!isWirelessDebuggingDisabled() ||
+                                !systemEnv.isAutoRestoreWirelessEnabled() ||
+                                wirelessDisabledByUser || autoRestoreRejectedInEpoch ||
+                                !systemEnv.isWifiConnected() || !cooldownElapsed
+                            ) {
+                                false
+                            } else {
+                                lastAutoRestoreAt = now
+                                wirelessAutoRestoreAttempted = true
+                                val result = systemEnv.tryEnableWirelessDebugging()
+                                if (result is WirelessDebuggingRestoreResult.SystemRejected) {
+                                    autoRestoreRejectedInEpoch = true
+                                }
+                                recordRetryEventLocked("TCP local falló · restauración de ADB inalámbrico: $result")
+                                result is WirelessDebuggingRestoreResult.Enabled ||
+                                    result is WirelessDebuggingRestoreResult.AlreadyEnabled
+                            }
+                        }
+                        if (restored && wirelessEnableSettleMs > 0L) delayMs(wirelessEnableSettleMs)
+                    }
                     val alternate = discoverAlternateEndpoint(previous) ?: throw error
                     synchronized(lock) {
                         if (!isCurrentAttemptLocked(attemptId)) return
@@ -1438,6 +1470,9 @@ object NightDogRecovery {
         discoverAlternateEndpoint = { previous ->
             val context = applicationContext
             if (context == null) null else AdbTransportResolver.alternateLocalEndpoint(context, previous)
+        },
+        isWirelessDebuggingDisabled = {
+            applicationContext?.let { AdbTransportResolver.wirelessDebuggingState(it) == 0 } ?: false
         },
         systemEnv = systemEnv,
         scheduler = schedulerPort
