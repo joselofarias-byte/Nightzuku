@@ -39,8 +39,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           git merge-base --is-ancestor "$EXPECTED_BASELINE_COMMIT" HEAD
-          [[ "${{ github.event_name == 'push' && '52' || inputs.version_code }}" =~ ^[0-9]+$ ]]
-          test "${{ github.event_name == 'push' && '52' || inputs.version_code }}" -gt 48
+          [[ "${{ github.event_name == 'push' && '53' || inputs.version_code }}" =~ ^[0-9]+$ ]]
+          test "${{ github.event_name == 'push' && '53' || inputs.version_code }}" -gt 48
           echo "HEAD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
@@ -86,7 +86,7 @@ jobs:
           from pathlib import Path
           p = Path("build.gradle")
           s = p.read_text()
-          updated, count = re.subn(r'def gitCommitCount = \d+', 'def gitCommitCount = ${{ github.event_name == 'push' && '52' || inputs.version_code }}', s)
+          updated, count = re.subn(r'def gitCommitCount = \d+', 'def gitCommitCount = ${{ github.event_name == 'push' && '53' || inputs.version_code }}', s)
           assert count == 1, f"Expected 1 gitCommitCount definition, got {count}"
           p.write_text(updated)
           PY
@@ -130,8 +130,8 @@ jobs:
             exit 1
           fi
           grep -F "package: name='${EXPECTED_APP_ID}'" out/release-final/badging.txt
-          grep -F "versionCode='${{ github.event_name == 'push' && '52' || inputs.version_code }}'" out/release-final/badging.txt
-          grep -F ".r${{ github.event_name == 'push' && '52' || inputs.version_code }}.${SHORT_SHA}'" out/release-final/badging.txt
+          grep -F "versionCode='${{ github.event_name == 'push' && '53' || inputs.version_code }}'" out/release-final/badging.txt
+          grep -F ".r${{ github.event_name == 'push' && '53' || inputs.version_code }}.${SHORT_SHA}'" out/release-final/badging.txt
           grep -Fx "native-code: 'arm64-v8a'" out/release-final/badging.txt
 
           # 4. Verify required native libraries and assets/rish_shizuku.dex
@@ -151,7 +151,7 @@ jobs:
           commit=${HEAD_SHA}
           run_id=${GITHUB_RUN_ID}
           application_id=${EXPECTED_APP_ID}
-          version_code=${{ github.event_name == 'push' && '52' || inputs.version_code }}
+          version_code=${{ github.event_name == 'push' && '53' || inputs.version_code }}
           version_name=${VERSION_NAME}
           abi=arm64-v8a
           apk_name=${OUTPUT_APK_NAME}

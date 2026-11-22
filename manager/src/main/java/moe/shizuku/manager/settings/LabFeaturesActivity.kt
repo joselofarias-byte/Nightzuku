@@ -30,11 +30,13 @@ import androidx.wear.compose.material3.FilledTonalButton as WearFilledTonalButto
 import androidx.wear.compose.material3.Icon as WearIcon
 import androidx.wear.compose.material3.SwitchButton as WearSwitchButton
 import androidx.wear.compose.material3.Text as WearText
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
-import moe.shizuku.manager.adb.AdbRecoveryTestController
 import moe.shizuku.manager.adb.AdbTcpController
 import moe.shizuku.manager.app.AppActivity
 import moe.shizuku.manager.module.ModuleSettings
@@ -284,28 +286,26 @@ class LabFeaturesActivity : AppActivity() {
                                         killStatus = "Preparando prueba…"
                                         showKillDialog = false
                                         scope.launch {
-                                            val result = runCatching { killServerProcessForRecoveryTest() }
-                                            val killed = result.getOrElse { error ->
+                                            val result = runCatching { stopServerForRecoveryTest() }
+                                            val previousBinder = result.getOrElse { error ->
+                                                if (error is CancellationException) throw error
                                                 killBusy = false
                                                 killStatus = "Error: ${error.message ?: error.javaClass.simpleName}"
                                                 return@launch
                                             }
 
-                                            val killedPid = killed.pid
-                                            killStatus = if (killedPid != null) {
-                                                "Servidor detenido · PID $killedPid · esperando a NightDog…"
-                                            } else {
-                                                "Servidor detenido · esperando a NightDog…"
-                                            }
+                                            killStatus = "Esperando la parada del servidor…"
 
                                             for (second in 1..30) {
                                                 delay(1_000L)
                                                 val snapshot = NightDogRecovery.snapshot.value
-                                                val binderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+                                                val currentBinder = Shizuku.getBinder()
                                                 val newPid = snapshot.serverPid
-                                                val pidChanged = killedPid == null || (newPid != null && newPid != killedPid)
+                                                val recovered = !previousBinder.isBinderAlive &&
+                                                    currentBinder != null && currentBinder != previousBinder &&
+                                                    currentBinder.pingBinder() && snapshot.binderAlive
 
-                                                if (binderAlive && pidChanged) {
+                                                if (recovered) {
                                                     killBusy = false
                                                     killStatus = buildString {
                                                         append("Recuperado en ${second}s")
@@ -318,7 +318,11 @@ class LabFeaturesActivity : AppActivity() {
                                             }
 
                                             killBusy = false
-                                            killStatus = "No se confirmó la recuperación en 30 s."
+                                            killStatus = if (previousBinder.isBinderAlive) {
+                                                "La prueba no confirmó la parada del servidor."
+                                            } else {
+                                                "Servidor detenido. NightDog aún no confirmó un Binder nuevo."
+                                            }
                                         }
                                     }
                                 ) { Text("Iniciar prueba") }
@@ -407,19 +411,31 @@ class LabFeaturesActivity : AppActivity() {
         }
     }
 
-    private suspend fun killServerProcessForRecoveryTest(): AdbRecoveryTestController.Result {
-        check(Shizuku.pingBinder()) {
+    private suspend fun stopServerForRecoveryTest(): android.os.IBinder {
+        val previousBinder = checkNotNull(Shizuku.getBinder()) {
             "Nightzuku no está en ejecución."
         }
+        check(previousBinder.pingBinder()) { "El servidor no responde." }
 
         NightDogRecovery.requestManualStart(applicationContext)
         check(NightDogRecovery.snapshot.value.desiredRunning) {
             "No se pudo activar NightDog."
         }
 
-        val result = AdbRecoveryTestController.killServerProcess()
-        check(result.success) { result.message }
-        return result
+        withContext(Dispatchers.IO) {
+            check(Shizuku.getBinder() == previousBinder && previousBinder.pingBinder()) {
+                "El servidor cambió antes de iniciar la prueba."
+            }
+            try {
+                Shizuku.exit()
+            } catch (error: RuntimeException) {
+                val binderDied = !previousBinder.isBinderAlive ||
+                    generateSequence<Throwable>(error) { it.cause }
+                        .any { it is android.os.DeadObjectException }
+                if (!binderDied) throw error
+            }
+        }
+        return previousBinder
     }
 
     private fun recoveryStageLabel(stage: NightDogRecovery.Stage): String = when (stage) {

@@ -592,7 +592,7 @@ private fun PhoneHomeScreen(
             item {
                 StatusCard(
                     serviceResource, status, onStartRoot, onStartWirelessAdb,
-                    isRooted, canUseWirelessAdb, onStop
+                    isRooted, canUseWirelessAdb
                 )
             }
             if (adbPermission) {
@@ -649,8 +649,7 @@ private fun StatusCard(
     onStartRoot: () -> Unit,
     onStartWirelessAdb: () -> Unit,
     isRooted: Boolean,
-    canUseWirelessAdb: Boolean,
-    onStop: () -> Unit
+    canUseWirelessAdb: Boolean
 ) {
     val context = LocalContext.current
     val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
@@ -687,11 +686,7 @@ private fun StatusCard(
         titleColor = semanticColor,
         bodyColor = semanticColor.copy(alpha = 0.82f)
     ) {
-        if (running) {
-            HomeButtons(
-                listOf(HomeButtonSpec(R.string.action_stop, R.drawable.ic_close_24, false, onClick = onStop))
-            )
-        } else if (isLoading && !recovering) {
+        if (isLoading && !recovering) {
             Spacer(Modifier.height(12.dp)); LoadingIndicator(Modifier.size(32.dp))
         } else if (!running && !desiredRunning) {
             val button = when {
@@ -752,8 +747,9 @@ private fun StatusCard(
                     onClick = { NightDogRecovery.requestManualStart(context, recoverImmediately = true) }
                 )
             }
-            recoveryButtons += HomeButtonSpec(R.string.action_stop, R.drawable.ic_close_24, false, onClick = onStop)
-            HomeButtons(recoveryButtons)
+            if (recoveryButtons.isNotEmpty()) {
+                HomeButtons(recoveryButtons)
+            }
         }
     }
 }
