@@ -165,6 +165,7 @@ internal class NightDogRecoveryEngine(
     private var lastAutoRestoreAt = 0L
     private var wirelessAutoRestoreAttempted = false
 
+    private val recoveryTimeline = java.util.ArrayDeque<String>()
     private val _snapshot = MutableStateFlow(NightDogRecovery.Snapshot())
     val snapshot: StateFlow<NightDogRecovery.Snapshot> = _snapshot.asStateFlow()
 
@@ -724,6 +725,7 @@ internal class NightDogRecoveryEngine(
 
     private suspend fun runRecoveryAttempt(attemptId: Long) {
         var currentEndpoint: AdbEndpoint? = null
+        var attemptPhase = "descubrimiento ADB"
         try {
             if (recoverySettleMs > 0L) {
                 delayMs(recoverySettleMs)
@@ -963,6 +965,7 @@ internal class NightDogRecoveryEngine(
             }
 
             try {
+                attemptPhase = "conexión y autenticación ADB"
                 session.connect()
                 synchronized(lock) {
                     if (!isCurrentAttemptLocked(attemptId)) return
@@ -971,6 +974,7 @@ internal class NightDogRecoveryEngine(
                         return
                     }
                 }
+                attemptPhase = "verificación de shell"
                 if (!session.verifyShell()) {
                     throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
                 }
@@ -995,6 +999,7 @@ internal class NightDogRecoveryEngine(
                         actionHint = NightDogRecovery.ActionHint.NONE
                     )
                 }
+                attemptPhase = "inicio del servidor"
                 session.startServer()
             } finally {
                 synchronized(lock) {
@@ -1003,6 +1008,7 @@ internal class NightDogRecoveryEngine(
                 runCatching { session.close() }
             }
 
+            attemptPhase = "confirmación de Binder"
             val confirmed = awaitBinderConfirmation(attemptId)
             var shouldRefreshPid = false
             var retryAfterNoBinderDelay: Long? = null
@@ -1044,6 +1050,10 @@ internal class NightDogRecoveryEngine(
                 val category = AdbFailureClassifier.classify(error)
                 val endpointText = currentEndpoint?.let { "${it.host}:${it.port}" }
                 val nextDelay = retryDelayMs()
+                recordRecoveryEventLocked(
+                    "Intento $failedAttempts · $attemptPhase · $category · " +
+                        "${endpointText ?: "sin endpoint"} · ${error.javaClass.simpleName}"
+                )
                 logWarning("Recuperación fallida ($category): ${error.javaClass.simpleName}")
                 when (category) {
                     NightDogRecovery.FailureCategory.AUTH_FAILED -> {
@@ -1191,6 +1201,14 @@ internal class NightDogRecoveryEngine(
         }
     }
 
+    private fun recordRecoveryEventLocked(detail: String) {
+        if (recoveryTimeline.lastOrNull()?.substringAfter(' ') == detail) return
+        val time = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT)
+            .format(java.util.Date())
+        if (recoveryTimeline.size >= 32) recoveryTimeline.removeFirst()
+        recoveryTimeline.addLast("$time $detail")
+    }
+
     private fun publishLocked(
         stage: NightDogRecovery.Stage,
         result: String,
@@ -1202,6 +1220,18 @@ internal class NightDogRecoveryEngine(
     ) {
         if (!started && stage != NightDogRecovery.Stage.MANUALLY_STOPPED) return
         val desired = isDesiredRunning()
+        val previous = _snapshot.value
+        val changed = stage != previous.stage || failureCategory != previous.failureCategory ||
+            failedAttempts != previous.failedAttempts || endpoint != previous.endpoint
+        if (desired && changed) {
+            val delay = retryDelayMs()
+            val retry = if (delay > 0L && failureCategory != NightDogRecovery.FailureCategory.NONE &&
+                failureCategory != NightDogRecovery.FailureCategory.AUTH_FAILED
+            ) " · espera mínima interna ${delay / 1000}s" else ""
+            recordRecoveryEventLocked(
+                "$stage · $failureCategory · ${endpoint ?: "sin endpoint"} · $result$retry"
+            )
+        }
         _snapshot.value = NightDogRecovery.Snapshot(
             stage = if (desired) stage else NightDogRecovery.Stage.MANUALLY_STOPPED,
             desiredRunning = desired,
@@ -1220,7 +1250,8 @@ internal class NightDogRecoveryEngine(
             actionHint = if (desired) actionHint else NightDogRecovery.ActionHint.NONE,
             wifiConnected = lastWifiConnected,
             wirelessAutoRestoreAttempted = wirelessAutoRestoreAttempted,
-            batteryOptimizationIgnored = systemEnv.isIgnoringBatteryOptimizations()
+            batteryOptimizationIgnored = systemEnv.isIgnoringBatteryOptimizations(),
+            recoveryTimeline = recoveryTimeline.toList()
         )
     }
 
@@ -1296,7 +1327,8 @@ object NightDogRecovery {
         val actionHint: ActionHint = ActionHint.NONE,
         val wifiConnected: Boolean? = null,
         val wirelessAutoRestoreAttempted: Boolean = false,
-        val batteryOptimizationIgnored: Boolean? = null
+        val batteryOptimizationIgnored: Boolean? = null,
+        val recoveryTimeline: List<String> = emptyList()
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

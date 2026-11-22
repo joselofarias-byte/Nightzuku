@@ -1,5 +1,8 @@
 name: Nightzuku PR51 permanent signed APK
 on:
+  push:
+    branches:
+      - fix/honor200-nightdog-diagnostico-r50
   workflow_dispatch:
     inputs:
       version_code:
@@ -36,8 +39,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           git merge-base --is-ancestor "$EXPECTED_BASELINE_COMMIT" HEAD
-          [[ "${{ inputs.version_code }}" =~ ^[0-9]+$ ]]
-          test "${{ inputs.version_code }}" -gt 48
+          [[ "${{ github.event_name == 'push' && '50' || inputs.version_code }}" =~ ^[0-9]+$ ]]
+          test "${{ github.event_name == 'push' && '50' || inputs.version_code }}" -gt 48
           echo "HEAD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
@@ -83,11 +86,11 @@ jobs:
           from pathlib import Path
           p = Path("build.gradle")
           s = p.read_text()
-          updated, count = re.subn(r'def gitCommitCount = \d+', 'def gitCommitCount = ${{ inputs.version_code }}', s)
+          updated, count = re.subn(r'def gitCommitCount = \d+', 'def gitCommitCount = ${{ github.event_name == 'push' && '50' || inputs.version_code }}', s)
           assert count == 1, f"Expected 1 gitCommitCount definition, got {count}"
           p.write_text(updated)
           PY
-          bash ./gradlew --no-daemon -Pandroid.injected.build.abi=arm64-v8a :manager:assembleRelease
+          bash ./gradlew --no-daemon -Pandroid.injected.build.abi=arm64-v8a -Pandroid.injected.testOnly=false :manager:assembleRelease
 
       - name: Strictly verify Release APK, zipalign, certificate, ABI, native libs and rish dex
         shell: bash
@@ -108,14 +111,27 @@ jobs:
           test "$ACTUAL_CERT" = "$EXPECTED_CERT"
 
           # 3. Verify badging: non-debuggable, applicationId, versionCode, versionName, arm64-v8a
+          "$TOOLS/aapt2" dump xmltree "$APK" --file AndroidManifest.xml > out/release-final/manifest-xmltree.txt
+          python3 - <<'PY_MANIFEST'
+          import re
+          from pathlib import Path
+          xmltree = Path("out/release-final/manifest-xmltree.txt").read_text()
+          if not re.search(r"^\s*E: application(?:\s|$)", xmltree, re.MULTILINE):
+              raise SystemExit("ERROR: no se pudo verificar el elemento application")
+          for line in xmltree.splitlines():
+              if re.search(r"\bA:\s+(?:\S+:)?testOnly(?:\([^)]*\))?=", line):
+                  value = line.split("=", 1)[1].strip()
+                  if not re.fullmatch(r"(?:\(type 0x12\)\s*)?(?:0x0+|false)", value, re.IGNORECASE):
+                      raise SystemExit(f"ERROR: testOnly presente con valor {value}")
+          PY_MANIFEST
           "$TOOLS/aapt" dump badging "$APK" > out/release-final/badging.txt
           if grep -Fq "application-debuggable" out/release-final/badging.txt; then
             echo "ERROR: APK is debuggable; rejecting build"
             exit 1
           fi
           grep -F "package: name='${EXPECTED_APP_ID}'" out/release-final/badging.txt
-          grep -F "versionCode='${{ inputs.version_code }}'" out/release-final/badging.txt
-          grep -F ".r${{ inputs.version_code }}.${SHORT_SHA}'" out/release-final/badging.txt
+          grep -F "versionCode='${{ github.event_name == 'push' && '50' || inputs.version_code }}'" out/release-final/badging.txt
+          grep -F ".r${{ github.event_name == 'push' && '50' || inputs.version_code }}.${SHORT_SHA}'" out/release-final/badging.txt
           grep -Fx "native-code: 'arm64-v8a'" out/release-final/badging.txt
 
           # 4. Verify required native libraries and assets/rish_shizuku.dex
@@ -135,7 +151,7 @@ jobs:
           commit=${HEAD_SHA}
           run_id=${GITHUB_RUN_ID}
           application_id=${EXPECTED_APP_ID}
-          version_code=${{ inputs.version_code }}
+          version_code=${{ github.event_name == 'push' && '50' || inputs.version_code }}
           version_name=${VERSION_NAME}
           abi=arm64-v8a
           apk_name=${OUTPUT_APK_NAME}

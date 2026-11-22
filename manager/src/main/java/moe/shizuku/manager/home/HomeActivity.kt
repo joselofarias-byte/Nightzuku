@@ -1027,6 +1027,11 @@ private fun buildDiagnostics(
         appendLine(line("Última recuperación", lastRecovery))
         appendLine(line("Intentos fallidos", recoverySnapshot.failedAttempts))
         appendLine(line("Resultado", recoverySnapshot.lastResult))
+        if (recoverySnapshot.recoveryTimeline.isNotEmpty()) {
+            appendLine()
+            appendLine("CRONOLOGÍA NIGHTDOG")
+            recoverySnapshot.recoveryTimeline.forEach { appendLine(it) }
+        }
         appendLine()
         appendLine("DISPOSITIVO")
         appendLine(line("Android", "${Build.VERSION.RELEASE} · SDK ${Build.VERSION.SDK_INT}"))
