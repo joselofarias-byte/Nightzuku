@@ -221,6 +221,22 @@ internal object AdbTransportResolver {
         }
     }
 
+    suspend fun alternateLocalEndpoint(context: Context, previous: AdbEndpoint): AdbEndpoint? {
+        val alternate = if (previous.requireTls) {
+            localPersistentTcpEndpoint()
+        } else if (wirelessDebuggingState(context) != 0) {
+            discoverWireless(context)
+        } else {
+            null
+        }
+        return alternate?.takeIf { it != previous }
+    }
+
+    fun canTryAlternate(error: Exception, launchSubmitted: Boolean): Boolean =
+        error is AdbShellUnavailableException ||
+            (!launchSubmitted && (error is java.net.ConnectException ||
+                error is java.net.SocketTimeoutException || error is AdbOfflineException))
+
     fun persistentTcpEndpoint(): AdbEndpoint? {
         if (!ShizukuSettings.isAdbTcpEnabled()) return null
 

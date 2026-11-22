@@ -132,7 +132,8 @@ internal class NightDogRecoveryEngine(
     private val binderConfirmTimeoutMs: Long = BINDER_CONFIRM_TIMEOUT_MS,
     private val binderConfirmPollMs: Long = BINDER_CONFIRM_POLL_MS,
     private val minRetryMs: Long = MIN_RETRY_MS,
-    private val maxRetryMs: Long = MAX_RETRY_MS
+    private val maxRetryMs: Long = MAX_RETRY_MS,
+    private val discoverAlternateEndpoint: suspend (AdbEndpoint) -> AdbEndpoint? = { null }
 ) {
 
     private val lock = Any()
@@ -375,7 +376,7 @@ internal class NightDogRecoveryEngine(
             }
         }
         if (shouldSchedulePeriodic) scheduler.schedulePeriodicHealthCheck()
-        if (shouldScheduleNetwork) scheduler.scheduleNetworkRecovery(minRetryMs)
+        if (shouldScheduleNetwork) scheduleNetworkRetry(minRetryMs)
     }
 
     fun onNetworkChanged(wifiConnected: Boolean, networkFingerprint: String) {
@@ -434,7 +435,7 @@ internal class NightDogRecoveryEngine(
             }
         }
         if (shouldScheduleNetwork) {
-            scheduler.scheduleNetworkRecovery(minRetryMs)
+            scheduleNetworkRetry(minRetryMs)
         }
     }
 
@@ -516,6 +517,7 @@ internal class NightDogRecoveryEngine(
     fun onScheduledWakeup(reason: String) {
         synchronized(lock) {
             if (!started || !isDesiredRunning()) return
+            recordRetryEventLocked("Aviso programado recibido · $reason")
             if (pingBinder()) {
                 markRunningLocked("Binder verificado en comprobación programada ($reason)")
                 return
@@ -717,6 +719,7 @@ internal class NightDogRecoveryEngine(
 
         val attemptId = ++attemptSequence
         activeAttemptId = attemptId
+        recordRetryEventLocked("Intento $attemptId aceptado")
 
         recoveryJob = scope.launch {
             runRecoveryAttempt(attemptId)
@@ -767,7 +770,7 @@ internal class NightDogRecoveryEngine(
                 }
             }
             if (skipForNoWifi) {
-                scheduler.scheduleNetworkRecovery(retryDelayMs())
+                scheduleNetworkRetry(retryDelayMs())
                 return
             }
 
@@ -873,7 +876,7 @@ internal class NightDogRecoveryEngine(
                                     actionHint = NightDogRecovery.ActionHint.CONNECT_WIFI
                                 )
                             }
-                            scheduler.scheduleNetworkRecovery(retryDelayMs())
+                            scheduleNetworkRetry(retryDelayMs())
                             return
                         }
                         is WirelessDebuggingRestoreResult.NotPermitted -> {
@@ -932,7 +935,7 @@ internal class NightDogRecoveryEngine(
                             actionHint = NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING
                         )
                         postDiscoverySchedule = {
-                            scheduler.scheduleNetworkRecovery(delayForJob)
+                            scheduleNetworkRetry(delayForJob)
                             scheduler.scheduleWirelessSettingTrigger()
                         }
                     }
@@ -946,66 +949,90 @@ internal class NightDogRecoveryEngine(
                 return
             }
 
-            val endpoint = currentEndpoint ?: return
-            val session = openSession(endpoint)
-            val registered = synchronized(lock) {
-                if (!isCurrentAttemptLocked(attemptId)) {
-                    false
-                } else if (pingBinder()) {
-                    markRunningLocked("Binder ya está activo")
-                    false
-                } else {
-                    recoverySession = session
-                    true
-                }
-            }
-            if (!registered) {
-                runCatching { session.close() }
-                return
-            }
+            var usedAlternate = false
+            while (true) {
+                var launchSubmitted = false
+                try {
+                    val endpoint = currentEndpoint ?: return
+                    val session = openSession(endpoint)
+                    val registered = synchronized(lock) {
+                        if (!isCurrentAttemptLocked(attemptId)) {
+                            false
+                        } else if (pingBinder()) {
+                            markRunningLocked("Binder ya está activo")
+                            false
+                        } else {
+                            recoverySession = session
+                            true
+                        }
+                    }
+                    if (!registered) {
+                        runCatching { session.close() }
+                        return
+                    }
 
-            try {
-                attemptPhase = "conexión y autenticación ADB"
-                session.connect()
-                synchronized(lock) {
-                    if (!isCurrentAttemptLocked(attemptId)) return
-                    if (pingBinder()) {
-                        markRunningLocked("Binder ya está activo")
-                        return
+                    try {
+                        attemptPhase = "conexión y autenticación ADB"
+                        session.connect()
+                        synchronized(lock) {
+                            if (!isCurrentAttemptLocked(attemptId)) return
+                            if (pingBinder()) {
+                                markRunningLocked("Binder ya está activo")
+                                return
+                            }
+                        }
+                        attemptPhase = "verificación de shell"
+                        if (!session.verifyShell()) {
+                            throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
+                        }
+                        synchronized(lock) {
+                            if (!isCurrentAttemptLocked(attemptId)) return
+                            if (pingBinder()) {
+                                markRunningLocked("Binder ya está activo")
+                                return
+                            }
+                            val transportLabel = if (endpoint.requireTls) {
+                                "ADB TLS verificado"
+                            } else {
+                                "ADB TCP local verificado"
+                            }
+                            publishLocked(
+                                stage = NightDogRecovery.Stage.STARTING_SERVICE,
+                                result = "ADB autenticado y shell verificado; iniciando servicio",
+                                binderAlive = false,
+                                transport = transportLabel,
+                                endpoint = "${endpoint.host}:${endpoint.port}",
+                                failureCategory = NightDogRecovery.FailureCategory.NONE,
+                                actionHint = NightDogRecovery.ActionHint.NONE
+                            )
+                        }
+                        attemptPhase = "inicio del servidor"
+                        launchSubmitted = true
+                    session.startServer()
+                    } finally {
+                        synchronized(lock) {
+                            if (recoverySession === session) recoverySession = null
+                        }
+                        runCatching { session.close() }
                     }
-                }
-                attemptPhase = "verificación de shell"
-                if (!session.verifyShell()) {
-                    throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
-                }
-                synchronized(lock) {
-                    if (!isCurrentAttemptLocked(attemptId)) return
-                    if (pingBinder()) {
-                        markRunningLocked("Binder ya está activo")
-                        return
+                    break
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    val previous = currentEndpoint ?: throw error
+                    if (usedAlternate || !AdbTransportResolver.canTryAlternate(error, launchSubmitted)) {
+                        throw error
                     }
-                    val transportLabel = if (endpoint.requireTls) {
-                        "ADB TLS verificado"
-                    } else {
-                        "ADB TCP local verificado"
+                    val alternate = discoverAlternateEndpoint(previous) ?: throw error
+                    synchronized(lock) {
+                        if (!isCurrentAttemptLocked(attemptId)) return
+                        recordRetryEventLocked(
+                            "Intento $attemptId · ${previous.host}:${previous.port} → ${alternate.host}:${alternate.port}"
+                        )
                     }
-                    publishLocked(
-                        stage = NightDogRecovery.Stage.STARTING_SERVICE,
-                        result = "ADB autenticado y shell verificado; iniciando servicio",
-                        binderAlive = false,
-                        transport = transportLabel,
-                        endpoint = "${endpoint.host}:${endpoint.port}",
-                        failureCategory = NightDogRecovery.FailureCategory.NONE,
-                        actionHint = NightDogRecovery.ActionHint.NONE
-                    )
+                    currentEndpoint = alternate
+                    usedAlternate = true
                 }
-                attemptPhase = "inicio del servidor"
-                session.startServer()
-            } finally {
-                synchronized(lock) {
-                    if (recoverySession === session) recoverySession = null
-                }
-                runCatching { session.close() }
             }
 
             attemptPhase = "confirmación de Binder"
@@ -1034,7 +1061,7 @@ internal class NightDogRecoveryEngine(
                 scheduler.schedulePeriodicHealthCheck()
                 refreshServerPid()
             } else if (retryAfterNoBinderDelay != null) {
-                scheduler.scheduleNetworkRecovery(retryAfterNoBinderDelay!!)
+                scheduleNetworkRetry(retryAfterNoBinderDelay!!)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -1087,7 +1114,7 @@ internal class NightDogRecoveryEngine(
                             failureCategory = category,
                             actionHint = NightDogRecovery.ActionHint.NONE
                         )
-                        postErrorAction = { scheduler.scheduleNetworkRecovery(nextDelay) }
+                        postErrorAction = { scheduleNetworkRetry(nextDelay) }
                     }
                     NightDogRecovery.FailureCategory.SHELL_UNAVAILABLE -> {
                         publishLocked(
@@ -1098,7 +1125,7 @@ internal class NightDogRecoveryEngine(
                             failureCategory = category,
                             actionHint = NightDogRecovery.ActionHint.NONE
                         )
-                        postErrorAction = { scheduler.scheduleNetworkRecovery(nextDelay) }
+                        postErrorAction = { scheduleNetworkRetry(nextDelay) }
                     }
                     else -> {
                         publishLocked(
@@ -1109,7 +1136,7 @@ internal class NightDogRecoveryEngine(
                             failureCategory = category,
                             actionHint = NightDogRecovery.ActionHint.NONE
                         )
-                        postErrorAction = { scheduler.scheduleNetworkRecovery(nextDelay) }
+                        postErrorAction = { scheduleNetworkRetry(nextDelay) }
                     }
                 }
             }
@@ -1199,6 +1226,20 @@ internal class NightDogRecoveryEngine(
                 }
             }
         }
+    }
+
+    private fun scheduleNetworkRetry(delayMs: Long) {
+        synchronized(lock) {
+            if (started && isDesiredRunning()) {
+                recordRetryEventLocked("Solicitado reintento de red · espera mínima ${delayMs}ms")
+            }
+        }
+        scheduler.scheduleNetworkRecovery(delayMs)
+    }
+
+    private fun recordRetryEventLocked(detail: String) {
+        recordRecoveryEventLocked(detail)
+        _snapshot.value = _snapshot.value.copy(recoveryTimeline = recoveryTimeline.toList())
     }
 
     private fun recordRecoveryEventLocked(detail: String) {
@@ -1394,6 +1435,10 @@ object NightDogRecovery {
             AdbTransportResolver.discoverDetailed(context)
         },
         openSession = { endpoint -> RealRecoveryAdbSession(endpoint) },
+        discoverAlternateEndpoint = { previous ->
+            val context = applicationContext
+            if (context == null) null else AdbTransportResolver.alternateLocalEndpoint(context, previous)
+        },
         systemEnv = systemEnv,
         scheduler = schedulerPort
     )

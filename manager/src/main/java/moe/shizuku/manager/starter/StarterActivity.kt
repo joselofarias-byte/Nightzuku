@@ -19,6 +19,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants.EXTRA
@@ -320,7 +321,7 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
     private fun startAdb(requestedHost: String?, requestedPort: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             appendLine("Buscando el transporte ADB local actual…")
-            val endpoint = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val primary = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 when (val discovery = AdbTransportResolver.discoverDetailed(context)) {
                     is AdbDiscoveryResult.Found -> discovery.endpoint
                     is AdbDiscoveryResult.WirelessDebuggingDisabled -> {
@@ -344,8 +345,6 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                     }
             }
 
-            val (host, port) = endpoint
-            appendLine(context.getString(R.string.starter_starting_wireless_adb, port.toString()))
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {
@@ -356,25 +355,43 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 return@launch
             }
 
-            runCatching {
-                AdbClient(host, port, key, requireTls = endpoint.requireTls).use { client ->
-                    client.connect()
-                    if (!client.verifyShell()) {
-                        throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
-                    }
-                    appendLine("Conexión ADB autenticada y shell verificado; ejecutando el iniciador")
-                    client.shellCommand(Starter.internalCommand) {
-                        synchronized(outputLock) {
-                            sb.append(String(it))
+            var endpoint = primary
+            while (true) {
+                val (host, port) = endpoint
+                appendLine("Iniciando con ADB local en $host:$port…")
+                var launchSubmitted = false
+                try {
+                    AdbClient(host, port, key, requireTls = endpoint.requireTls).use { client ->
+                        client.connect()
+                        if (!client.verifyShell()) {
+                            throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
                         }
-                        postResult()
+                        appendLine("Conexión ADB autenticada y shell verificado; ejecutando el iniciador")
+                        launchSubmitted = true
+                        client.shellCommand(Starter.internalCommand) {
+                            synchronized(outputLock) {
+                                sb.append(String(it))
+                            }
+                            postResult()
+                        }
                     }
+                    return@launch
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    val alternate = if (endpoint == primary &&
+                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R &&
+                        AdbTransportResolver.canTryAlternate(error, launchSubmitted)
+                    ) AdbTransportResolver.alternateLocalEndpoint(context, endpoint) else null
+                    if (alternate != null) {
+                        appendLine("Falló $host:$port; probando otro transporte ADB local.")
+                        endpoint = alternate
+                        continue
+                    }
+                    appendLine("\n${Log.getStackTraceString(error)}")
+                    postResult(error)
+                    return@launch
                 }
-            }.onFailure {
-                it.printStackTrace()
-
-                appendLine("\n${Log.getStackTraceString(it)}")
-                postResult(it)
             }
         }
     }
