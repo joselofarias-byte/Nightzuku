@@ -17,6 +17,7 @@ import moe.shizuku.manager.adb.AdbEndpoint
 import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.AdbOfflineException
 import moe.shizuku.manager.adb.AdbShellUnavailableException
+import moe.shizuku.manager.adb.WirelessDebuggingRestoreResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -497,5 +498,531 @@ class NightDogRecoveryEngineTest {
         assertEquals(NightDogRecovery.FailureCategory.OFFLINE, AdbFailureClassifier.classify(AdbOfflineException("offline")))
         assertEquals(NightDogRecovery.FailureCategory.SHELL_UNAVAILABLE, AdbFailureClassifier.classify(AdbShellUnavailableException("closed")))
         assertEquals(NightDogRecovery.FailureCategory.UNKNOWN, AdbFailureClassifier.classify(IllegalStateException("other")))
+    }
+
+    private class FakeSystemEnv(
+        var wifiConnected: Boolean = true,
+        var localPersistentTcp: Boolean = false,
+        var autoRestoreWireless: Boolean = false,
+        var restoreResult: WirelessDebuggingRestoreResult = WirelessDebuggingRestoreResult.NotPermitted,
+        var batteryIgnored: Boolean? = true
+    ) : NightDogSystemEnvironment {
+        var restoreAttempts = 0
+        var confirmedRunningCalls = 0
+        var onTryRestore: (() -> WirelessDebuggingRestoreResult)? = null
+
+        override fun isWifiConnected(): Boolean = wifiConnected
+        override fun hasLocalPersistentTcpEndpoint(): Boolean = localPersistentTcp
+        override fun isAutoRestoreWirelessEnabled(): Boolean = autoRestoreWireless
+        override fun tryEnableWirelessDebugging(): WirelessDebuggingRestoreResult {
+            restoreAttempts++
+            return onTryRestore?.invoke() ?: restoreResult
+        }
+        override fun isIgnoringBatteryOptimizations(): Boolean? = batteryIgnored
+        override fun onServiceConfirmedRunning() {
+            confirmedRunningCalls++
+        }
+    }
+
+    private class FakeSchedulerPort : NightDogSchedulerPort {
+        val networkRecoveryDelays = mutableListOf<Long>()
+        var wirelessSettingTriggerCalls = 0
+        var periodicHealthCalls = 0
+        var cancelRecoveryRetriesCalls = 0
+        var cancelAllJobsCalls = 0
+        val notifications = mutableListOf<Triple<NightDogRecovery.FailureCategory, NightDogRecovery.ActionHint, String>>()
+        var clearNotificationsCalls = 0
+
+        override fun scheduleNetworkRecovery(delayMs: Long) {
+            networkRecoveryDelays.add(delayMs)
+        }
+
+        override fun scheduleWirelessSettingTrigger() {
+            wirelessSettingTriggerCalls++
+        }
+
+        override fun schedulePeriodicHealthCheck() {
+            periodicHealthCalls++
+        }
+
+        override fun cancelRecoveryRetries() {
+            cancelRecoveryRetriesCalls++
+        }
+
+        override fun cancelAllJobs() {
+            cancelAllJobsCalls++
+        }
+
+        override fun notifyActionRequired(
+            category: NightDogRecovery.FailureCategory,
+            actionHint: NightDogRecovery.ActionHint,
+            message: String
+        ) {
+            notifications.add(Triple(category, actionHint, message))
+        }
+
+        override fun clearActionNotification() {
+            clearNotificationsCalls++
+        }
+    }
+
+    @Test
+    fun wifiDesconectadoYReconectadoConservaDesiredRunningYRedescubreSinEsperarBackoff() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 10_000L
+            var desired = true
+            var binderAlive = false
+            val env = FakeSystemEnv(wifiConnected = false)
+            val sched = FakeSchedulerPort()
+            val discoveryCalls = AtomicInteger(0)
+
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    discoveryCalls.incrementAndGet()
+                    AdbDiscoveryResult.Found(AdbEndpoint("192.168.1.70", 42100))
+                },
+                openSession = { endpoint ->
+                    FakeSession(endpoint, onStartServer = { binderAlive = true })
+                },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L
+            )
+
+            // Sin Wi-Fi: no desperdicia escaneo mDNS, conserva desiredRunning y programa job de red
+            engine.start(startPollingLoop = false)
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertTrue(desired)
+            assertEquals(0, discoveryCalls.get())
+            assertEquals(NightDogRecovery.Stage.WAITING_FOR_ADB, engine.snapshot.value.stage)
+            assertEquals(NightDogRecovery.FailureCategory.WIFI_DISCONNECTED, engine.snapshot.value.failureCategory)
+            assertEquals(NightDogRecovery.ActionHint.CONNECT_WIFI, engine.snapshot.value.actionHint)
+            assertFalse(engine.snapshot.value.binderAlive)
+            assertTrue(sched.networkRecoveryDelays.isNotEmpty())
+
+            // Reconexión Wi-Fi inmediata (sin esperar backoff de 8s): redescubre y confirma Binder
+            nowMs += 1_000L
+            env.wifiConnected = true
+            engine.onNetworkChanged(wifiConnected = true, networkFingerprint = "wifi:192.168.1.70")
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertTrue(desired)
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+            assertTrue(engine.snapshot.value.binderAlive)
+            assertTrue(sched.cancelRecoveryRetriesCalls >= 1)
+            assertTrue(sched.clearNotificationsCalls >= 1)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun cambioDeRedOIpRedescubrePuertoFrescoYNoPerturbaBinderYaActivo() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 5_000L
+            var desired = true
+            var binderAlive = false
+            val env = FakeSystemEnv(wifiConnected = true)
+            val sched = FakeSchedulerPort()
+            val endpoints = ArrayDeque(
+                listOf(
+                    AdbDiscoveryResult.Absent,
+                    AdbDiscoveryResult.Found(AdbEndpoint("10.0.0.42", 44999))
+                )
+            )
+            val openedEndpoints = mutableListOf<AdbEndpoint>()
+
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    if (endpoints.isNotEmpty()) endpoints.removeFirst() else AdbDiscoveryResult.Absent
+                },
+                openSession = { endpoint ->
+                    openedEndpoints.add(endpoint)
+                    FakeSession(endpoint, onStartServer = { binderAlive = true })
+                },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L
+            )
+
+            engine.start(startPollingLoop = false)
+            engine.activeRecoveryJobForTest()?.join()
+            assertEquals(NightDogRecovery.FailureCategory.ENDPOINT_ABSENT, engine.snapshot.value.failureCategory)
+            assertEquals(0, openedEndpoints.size)
+
+            // Cambio de red / IP (AP distinto) antes de agotar el backoff -> dispara descubrimiento inmediato
+            nowMs += 2_000L
+            engine.onNetworkChanged(wifiConnected = true, networkFingerprint = "wifi:192.168.1.10")
+            engine.activeRecoveryJobForTest()?.join()
+            // Si aún estaba ausente, cambiamos a la segunda red
+            nowMs += 2_000L
+            engine.onNetworkChanged(wifiConnected = true, networkFingerprint = "wifi:10.0.0.42")
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertEquals(1, openedEndpoints.size)
+            assertEquals("10.0.0.42", openedEndpoints[0].host)
+            assertEquals(44999, openedEndpoints[0].port)
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+
+            // Otro cambio de red mientras Binder ya está activo NO abre sesiones ni cambia estado
+            nowMs += 5_000L
+            engine.onNetworkChanged(wifiConnected = true, networkFingerprint = "wifi:172.16.0.8")
+            assertEquals(1, openedEndpoints.size)
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun autoRestauracionDepuracionInalambricaSoloConPermisoYRespetaDesactivacionManual() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 20_000L
+            var desired = true
+            var binderAlive = false
+            var wirelessEnabled = false
+            val env = FakeSystemEnv(wifiConnected = true, autoRestoreWireless = true).apply {
+                onTryRestore = {
+                    wirelessEnabled = true
+                    WirelessDebuggingRestoreResult.Enabled
+                }
+            }
+            val sched = FakeSchedulerPort()
+
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    if (!wirelessEnabled) {
+                        AdbDiscoveryResult.WirelessDebuggingDisabled
+                    } else {
+                        AdbDiscoveryResult.Found(AdbEndpoint("192.168.1.50", 43210))
+                    }
+                },
+                openSession = { endpoint ->
+                    FakeSession(endpoint, onStartServer = { binderAlive = true })
+                },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L,
+                wirelessEnableSettleMs = 0L
+            )
+
+            // 1. Con permiso WRITE_SECURE_SETTINGS (simulado por Enabled) y sin desactivación manual -> recupera automáticamente
+            engine.start(startPollingLoop = false)
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertEquals(1, env.restoreAttempts)
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+            assertTrue(engine.snapshot.value.wirelessAutoRestoreAttempted)
+
+            // 2. Usuario desactiva explícitamente depuración inalámbrica con Wi-Fi estable -> NO reactivar contra su decisión
+            nowMs += 70_000L
+            binderAlive = false
+            wirelessEnabled = false
+            engine.onWirelessDebuggingSettingChanged(enabled = false)
+            assertTrue(engine.isWirelessDisabledByUserForTest())
+            engine.onBinderDead()
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertEquals("No debe reactivar adb_wifi_enabled tras desactivación manual del usuario", 1, env.restoreAttempts)
+            assertEquals(NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED, engine.snapshot.value.failureCategory)
+            assertEquals(NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING, engine.snapshot.value.actionHint)
+            assertTrue("desiredRunning se conserva aunque depuración inalámbrica esté apagada", desired)
+            assertTrue(sched.wirelessSettingTriggerCalls >= 1)
+
+            // 3. Usuario vuelve a activar depuración inalámbrica -> redescubrimiento y recuperación inmediata
+            nowMs += 1_000L
+            wirelessEnabled = true
+            engine.onWirelessDebuggingSettingChanged(enabled = true)
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertFalse(engine.isWirelessDisabledByUserForTest())
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+            assertTrue(engine.snapshot.value.binderAlive)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun diagnosticoClaroYNotificacionCuandoAndroidRechazaOExigeIntervencionManual() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 10_000L
+            var desired = true
+            val env = FakeSystemEnv(
+                wifiConnected = true,
+                autoRestoreWireless = true,
+                restoreResult = WirelessDebuggingRestoreResult.SystemRejected("SecurityException")
+            )
+            val sched = FakeSchedulerPort()
+
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { false },
+                discoverEndpoint = { AdbDiscoveryResult.WirelessDebuggingDisabled },
+                openSession = { FakeSession(it) },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L
+            )
+
+            engine.start(startPollingLoop = false)
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertEquals(1, env.restoreAttempts)
+            assertEquals(NightDogRecovery.Stage.WAITING_FOR_ADB, engine.snapshot.value.stage)
+            assertEquals(NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED, engine.snapshot.value.failureCategory)
+            assertEquals(NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING, engine.snapshot.value.actionHint)
+            assertFalse(engine.snapshot.value.binderAlive)
+            assertEquals(1, sched.notifications.size)
+            assertEquals(NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING, sched.notifications[0].second)
+            assertTrue(sched.wirelessSettingTriggerCalls >= 1)
+
+            // Segundo intento en el mismo ciclo de red no reintenta putInt repetidamente tras rechazo del sistema
+            nowMs += 70_000L
+            engine.pollOnce()
+            engine.activeRecoveryJobForTest()?.join()
+            assertEquals("No debe spamear escritura rechazada por el sistema", 1, env.restoreAttempts)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun binderTardioConPingFalsoNoCancelaRecuperacionNiDeclaraRunning() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 1_000L
+            var desired = true
+            var binderAlive = false
+            val discoveryEntered = CompletableDeferred<Unit>()
+            val releaseDiscovery = CompletableDeferred<AdbDiscoveryResult>()
+
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    discoveryEntered.complete(Unit)
+                    releaseDiscovery.await()
+                },
+                openSession = { endpoint ->
+                    FakeSession(endpoint, onStartServer = { binderAlive = true })
+                },
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L
+            )
+
+            engine.start(startPollingLoop = false)
+            discoveryEntered.await()
+
+            // Callback onBinderReceived tardío cuando pingBinder() sigue siendo false
+            engine.onBinderReceived()
+            assertNotEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+            assertTrue("El intento activo no debe cancelarse ante Binder muerto", engine.activeRecoveryJobForTest()?.isActive == true)
+
+            releaseDiscovery.complete(AdbDiscoveryResult.Found(AdbEndpoint("192.168.1.50", 41888)))
+            engine.activeRecoveryJobForTest()?.join()
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+            assertTrue(engine.snapshot.value.binderAlive)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun reinicioDeProcesoRecuperacionPostBootYRestriccionesDeBateria() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 1_000L
+            // Estado persistido en SharedPreferences sobrevive al reinicio del proceso
+            var persistedDesired = true
+            var binderAlive = false
+            val sched = FakeSchedulerPort()
+            val env = FakeSystemEnv(
+                wifiConnected = true,
+                autoRestoreWireless = true,
+                restoreResult = WirelessDebuggingRestoreResult.Enabled,
+                batteryIgnored = false
+            )
+
+            // 1. Proceso original detenido inesperadamente (kill por MagicOS) -> desiredRunning sigue true
+            val process1 = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { persistedDesired },
+                setDesiredRunning = { persistedDesired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = { AdbDiscoveryResult.Absent },
+                openSession = { FakeSession(it) },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L
+            )
+            process1.start(startPollingLoop = false)
+            process1.activeRecoveryJobForTest()?.join()
+            assertEquals(false, process1.snapshot.value.batteryOptimizationIgnored)
+            assertTrue(persistedDesired)
+            // Simula terminación del proceso sin parada manual
+            process1.stop()
+            assertTrue("Terminar el proceso no debe borrar desiredRunning persistido", persistedDesired)
+
+            // 2. Nuevo proceso tras reinicio / boot desbloqueado / wakeup por JobScheduler o Doze
+            var wirelessRestoredAfterBoot = false
+            env.onTryRestore = {
+                wirelessRestoredAfterBoot = true
+                WirelessDebuggingRestoreResult.Enabled
+            }
+            val process2 = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { persistedDesired },
+                setDesiredRunning = { persistedDesired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    if (!wirelessRestoredAfterBoot) {
+                        AdbDiscoveryResult.WirelessDebuggingDisabled
+                    } else {
+                        AdbDiscoveryResult.Found(AdbEndpoint("192.168.1.60", 45123))
+                    }
+                },
+                openSession = { endpoint ->
+                    FakeSession(endpoint, onStartServer = { binderAlive = true })
+                },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L,
+                wirelessEnableSettleMs = 0L
+            )
+            process2.start(startPollingLoop = false)
+            process2.onBootUnlocked()
+            process2.activeRecoveryJobForTest()?.join()
+
+            assertEquals(NightDogRecovery.Stage.RUNNING, process2.snapshot.value.stage)
+            assertTrue(process2.snapshot.value.binderAlive)
+            assertEquals(false, process2.snapshot.value.batteryOptimizationIgnored)
+            assertTrue(sched.periodicHealthCalls >= 1)
+
+            // 3. Parada manual prevalece sobre boot, red, reanudación y wakeups programados
+            process2.prepareForManualStop()
+            assertFalse(persistedDesired)
+            assertTrue(sched.cancelAllJobsCalls >= 1)
+
+            binderAlive = false
+            process2.onBootUnlocked()
+            process2.onNetworkChanged(true, "wifi:192.168.1.99")
+            process2.onDeviceResume()
+            process2.onScheduledWakeup("vigilancia periódica")
+            process2.onWirelessDebuggingSettingChanged(true)
+            assertEquals(NightDogRecovery.Stage.MANUALLY_STOPPED, process2.snapshot.value.stage)
+            assertFalse(persistedDesired)
+            assertEquals(null, process2.activeRecoveryJobForTest())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun reanudacionDeSuspensionYEventosConcurrentesMantienenIntentoUnico() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var nowMs = 10_000L
+            var desired = true
+            var binderAlive = false
+            val env = FakeSystemEnv(wifiConnected = true)
+            val sched = FakeSchedulerPort()
+            val discoveryCalls = AtomicInteger(0)
+            val discoveryStarted = CompletableDeferred<Unit>()
+            val releaseDiscovery = CompletableDeferred<AdbDiscoveryResult>()
+
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { nowMs },
+                delayMs = { ms -> nowMs += ms },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    if (discoveryCalls.incrementAndGet() == 1) {
+                        discoveryStarted.complete(Unit)
+                        releaseDiscovery.await()
+                    } else {
+                        AdbDiscoveryResult.Absent
+                    }
+                },
+                openSession = { endpoint ->
+                    FakeSession(endpoint, onStartServer = { binderAlive = true })
+                },
+                systemEnv = env,
+                scheduler = sched,
+                logWarning = {},
+                logDebug = {},
+                recoverySettleMs = 0L
+            )
+
+            engine.start(startPollingLoop = false)
+            discoveryStarted.await()
+
+            // Tormenta de eventos concurrentes (red, reanudación, job, binder dead, poll)
+            engine.onNetworkChanged(true, "wifi:192.168.1.88")
+            engine.onDeviceResume()
+            engine.onScheduledWakeup("red disponible")
+            engine.onBinderDead()
+            engine.pollOnce()
+
+            assertEquals("Solo debe existir un descubrimiento en vuelo", 1, discoveryCalls.get())
+
+            releaseDiscovery.complete(AdbDiscoveryResult.Found(AdbEndpoint("192.168.1.88", 46001)))
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+            assertTrue(engine.snapshot.value.binderAlive)
+        } finally {
+            scope.cancel()
+        }
     }
 }

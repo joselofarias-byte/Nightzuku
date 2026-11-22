@@ -1,7 +1,13 @@
 package moe.shizuku.manager.adb
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import java.net.NetworkInterface
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,12 +21,32 @@ import moe.shizuku.manager.ShizukuSettings
 internal object AdbEndpointPolicy {
     fun isLocal(host: String, port: Int, localHosts: Set<String>): Boolean =
         port in 1..65535 && host in localHosts
+
+    /**
+     * Selecciona el mejor host local entre los reportados por NSD (Android 14-16 puede
+     * devolver múltiples direcciones IPv4/IPv6). Prefiere IPv4 local cuando existe.
+     */
+    fun selectLocalHost(candidates: List<String>, port: Int, localHosts: Set<String>): String? {
+        if (port !in 1..65535 || localHosts.isEmpty()) return null
+        val localMatches = candidates.filter { isLocal(it, port, localHosts) }
+        if (localMatches.isEmpty()) return null
+        return localMatches.firstOrNull { !it.contains(':') } ?: localMatches.first()
+    }
 }
 
 internal sealed class AdbDiscoveryResult {
     data class Found(val endpoint: AdbEndpoint) : AdbDiscoveryResult()
     object WirelessDebuggingDisabled : AdbDiscoveryResult()
     object Absent : AdbDiscoveryResult()
+}
+
+internal sealed class WirelessDebuggingRestoreResult {
+    object AlreadyEnabled : WirelessDebuggingRestoreResult()
+    object Enabled : WirelessDebuggingRestoreResult()
+    object NotPermitted : WirelessDebuggingRestoreResult()
+    object DeveloperOptionsDisabled : WirelessDebuggingRestoreResult()
+    object WifiRequired : WirelessDebuggingRestoreResult()
+    data class SystemRejected(val reason: String) : WirelessDebuggingRestoreResult()
 }
 
 /**
@@ -31,7 +57,7 @@ internal sealed class AdbDiscoveryResult {
 internal object AdbTransportResolver {
 
     internal const val DISCOVERY_TIMEOUT_MS = 8_000L
-    private const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
+    internal const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
 
     fun currentLocalHosts(): Set<String> = runCatching {
         NetworkInterface.getNetworkInterfaces()
@@ -49,6 +75,80 @@ internal object AdbTransportResolver {
     fun wirelessDebuggingState(context: Context): Int = runCatching {
         Settings.Global.getInt(context.contentResolver, ADB_WIFI_ENABLED, -1)
     }.getOrDefault(-1)
+
+    /**
+     * Devuelve 1 si Opciones de desarrollador están activas, 0 si no, o -1 si no se pudo leer.
+     */
+    fun developerOptionsEnabled(context: Context): Int = runCatching {
+        Settings.Global.getInt(context.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, -1)
+    }.getOrDefault(-1)
+
+    fun hasWriteSecureSettingsPermission(context: Context): Boolean = runCatching {
+        context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+    }.getOrDefault(false)
+
+    fun isWifiConnected(context: Context): Boolean = runCatching {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return@runCatching false
+        val active = cm.activeNetwork ?: return@runCatching false
+        val caps = cm.getNetworkCapabilities(active) ?: return@runCatching false
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }.getOrDefault(false)
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean = runCatching {
+        val pm = context.getSystemService(PowerManager::class.java) ?: return@runCatching false
+        pm.isIgnoringBatteryOptimizations(context.packageName)
+    }.getOrDefault(false)
+
+    fun currentNetworkFingerprint(context: Context): String {
+        val wifi = isWifiConnected(context)
+        val hosts = currentLocalHosts()
+            .filterNot { it == "127.0.0.1" || it == "::1" || it.startsWith("fe80:") }
+            .sorted()
+            .joinToString(",")
+        return if (wifi) "wifi:$hosts" else "nowifi:$hosts"
+    }
+
+    /**
+     * Intenta rehabilitar únicamente `adb_wifi_enabled` aprovechando `WRITE_SECURE_SETTINGS`
+     * SOLO si ya fue concedido al paquete y las precondiciones del sistema lo permiten.
+     * Nunca modifica `adb_enabled` ni reinicia el demonio ADB global.
+     */
+    fun tryEnableWirelessDebugging(context: Context): WirelessDebuggingRestoreResult {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return WirelessDebuggingRestoreResult.NotPermitted
+        }
+        if (wirelessDebuggingState(context) == 1) {
+            return WirelessDebuggingRestoreResult.AlreadyEnabled
+        }
+        if (!hasWriteSecureSettingsPermission(context)) {
+            return WirelessDebuggingRestoreResult.NotPermitted
+        }
+        if (developerOptionsEnabled(context) == 0) {
+            return WirelessDebuggingRestoreResult.DeveloperOptionsDisabled
+        }
+        if (!isWifiConnected(context)) {
+            return WirelessDebuggingRestoreResult.WifiRequired
+        }
+        return try {
+            val wrote = Settings.Global.putInt(context.contentResolver, ADB_WIFI_ENABLED, 1)
+            val confirmed = wirelessDebuggingState(context) == 1
+            if (wrote && confirmed) {
+                WirelessDebuggingRestoreResult.Enabled
+            } else {
+                WirelessDebuggingRestoreResult.SystemRejected(
+                    "Android/MagicOS no mantuvo adb_wifi_enabled activo tras la escritura"
+                )
+            }
+        } catch (error: SecurityException) {
+            WirelessDebuggingRestoreResult.SystemRejected(
+                error.message ?: "SecurityException al escribir adb_wifi_enabled"
+            )
+        } catch (error: Throwable) {
+            WirelessDebuggingRestoreResult.SystemRejected(
+                error.message ?: error.javaClass.simpleName
+            )
+        }
+    }
 
     suspend fun discover(context: Context, timeoutMs: Long = DISCOVERY_TIMEOUT_MS): AdbEndpoint? =
         (discoverDetailed(context, timeoutMs) as? AdbDiscoveryResult.Found)?.endpoint
@@ -81,12 +181,14 @@ internal object AdbTransportResolver {
         timeoutMs: Long = DISCOVERY_TIMEOUT_MS
     ): AdbEndpoint? = withContext(Dispatchers.Main) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext null
+        val appContext = context.applicationContext
+        val multicastLock = acquireShortMulticastLock(appContext)
         var discovery: AdbMdns? = null
         try {
             withTimeoutOrNull(timeoutMs) {
                 suspendCancellableCoroutine { continuation ->
                     val resumed = AtomicBoolean(false)
-                    val session = AdbMdns(context.applicationContext, AdbMdns.TLS_CONNECT) { port ->
+                    val session = AdbMdns(appContext, AdbMdns.TLS_CONNECT) { port ->
                         val endpoint = discovery?.resolvedEndpoint
                         if (port > 0 && endpoint != null && resumed.compareAndSet(false, true) && continuation.isActive) {
                             continuation.resume(endpoint)
@@ -99,6 +201,23 @@ internal object AdbTransportResolver {
             }
         } finally {
             discovery?.stop()
+            releaseMulticastLock(multicastLock)
+        }
+    }
+
+    private fun acquireShortMulticastLock(context: Context): WifiManager.MulticastLock? = runCatching {
+        val wifiManager = context.getSystemService(WifiManager::class.java) ?: return@runCatching null
+        wifiManager.createMulticastLock("NightzukuAdbMdns").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }.getOrNull()
+
+    private fun releaseMulticastLock(lock: WifiManager.MulticastLock?) {
+        runCatching {
+            if (lock?.isHeld == true) {
+                lock.release()
+            }
         }
     }
 

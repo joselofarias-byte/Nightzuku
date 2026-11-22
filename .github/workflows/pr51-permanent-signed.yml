@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       version_code:
-        description: Version code above installed app
+        description: Version code strictly above installed app (>48)
         required: true
-        default: '48'
+        default: '49'
 permissions:
   contents: read
 jobs:
@@ -19,77 +19,134 @@ jobs:
       NIGHTZUKU_KEY_ALIAS: ${{ secrets.NIGHTZUKU_KEY_ALIAS }}
       NIGHTZUKU_KEY_PASSWORD: ${{ secrets.NIGHTZUKU_KEY_PASSWORD }}
       EXPECTED_CERT: a0aa7a8eecbc38a22f81ffe4e713914c1a810e11ab8e8f507b03b3d54df9b496
+      EXPECTED_APP_ID: com.joselofarias.nightzuku
+      EXPECTED_BASELINE_COMMIT: 92350a19f1a4b044a219fed13860df8f8d62b7fd
+      OUTPUT_APK_NAME: Nightzuku-HONOR200-ARM64-RELEASE.apk
     steps:
-      - name: Checkout PR51 signing branch
+      - name: Checkout dispatched branch
         uses: actions/checkout@v4
         with:
-          ref: build/pr51-permanent-signed
+          ref: ${{ github.sha }}
           submodules: recursive
           persist-credentials: false
           fetch-depth: 0
-      - name: Verify source
+
+      - name: Verify source ancestry and version code
         shell: bash
         run: |
           set -Eeuo pipefail
-          git merge-base --is-ancestor 2075ca2dc6f801dce86f3908a65551f21e807c7f HEAD
+          git merge-base --is-ancestor "$EXPECTED_BASELINE_COMMIT" HEAD
           [[ "${{ inputs.version_code }}" =~ ^[0-9]+$ ]]
-          test "${{ inputs.version_code }}" -gt 47
+          test "${{ inputs.version_code }}" -gt 48
+          echo "HEAD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
+
       - name: Android dependencies
         run: sdkmanager "platforms;android-36.1" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+
       - uses: gradle/actions/wrapper-validation@v4
       - uses: gradle/actions/setup-gradle@v4
+
       - name: Restore permanent keystore
         shell: bash
         run: |
           set -Eeuo pipefail
-          test -n "$NIGHTZUKU_KEYSTORE_BASE64"
-          test -n "$NIGHTZUKU_KEYSTORE_PASSWORD"
-          test -n "$NIGHTZUKU_KEY_ALIAS"
-          test -n "$NIGHTZUKU_KEY_PASSWORD"
+          test -n "$NIGHTZUKU_KEYSTORE_BASE64" || { echo "ERROR: missing secret NIGHTZUKU_KEYSTORE_BASE64"; exit 1; }
+          test -n "$NIGHTZUKU_KEYSTORE_PASSWORD" || { echo "ERROR: missing secret NIGHTZUKU_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$NIGHTZUKU_KEY_ALIAS" || { echo "ERROR: missing secret NIGHTZUKU_KEY_ALIAS"; exit 1; }
+          test -n "$NIGHTZUKU_KEY_PASSWORD" || { echo "ERROR: missing secret NIGHTZUKU_KEY_PASSWORD"; exit 1; }
           printf '%s' "$NIGHTZUKU_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/nightzuku-release.jks"
           chmod 600 "$RUNNER_TEMP/nightzuku-release.jks"
           echo "NIGHTZUKU_KEYSTORE_FILE=$RUNNER_TEMP/nightzuku-release.jks" >> "$GITHUB_ENV"
-      - name: Set version and build
+
+      - name: Run automated JVM tests before Release build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash ./gradlew --no-daemon :manager:testDebugUnitTest :shell:testDebugUnitTest
+
+      - name: Set version and build ARM64 Release APK
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
-          p=Path("build.gradle")
-          s=p.read_text()
-          old="def gitCommitCount = 47"
-          assert s.count(old)==1
-          p.write_text(s.replace(old,"def gitCommitCount = ${{ inputs.version_code }}"))
+          p = Path("build.gradle")
+          s = p.read_text()
+          updated, count = re.subn(r'def gitCommitCount = \d+', 'def gitCommitCount = ${{ inputs.version_code }}', s)
+          assert count == 1, f"Expected 1 gitCommitCount definition, got {count}"
+          p.write_text(updated)
           PY
-          bash ./gradlew --no-daemon -Pandroid.injected.build.abi=arm64-v8a :manager:testDebugUnitTest :manager:assembleRelease
-      - name: Verify package and certificate
+          bash ./gradlew --no-daemon -Pandroid.injected.build.abi=arm64-v8a :manager:assembleRelease
+
+      - name: Strictly verify Release APK, zipalign, certificate, ABI, native libs and rish dex
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p out/permanent
+          mkdir -p out/release-final
           mapfile -t APKS < <(find out/apk -maxdepth 1 -type f -name '*-release.apk')
           test "${#APKS[@]}" -eq 1
           APK="${APKS[0]}"
           TOOLS="$ANDROID_HOME/build-tools/36.0.0"
-          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" > out/permanent/certificate.txt
-          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' out/permanent/certificate.txt | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          test "$ACTUAL" = "$EXPECTED_CERT"
-          "$TOOLS/aapt" dump badging "$APK" > out/permanent/badging.txt
-          grep -F "package: name='com.joselofarias.nightzuku'" out/permanent/badging.txt
-          grep -F "versionCode='${{ inputs.version_code }}'" out/permanent/badging.txt
-          grep -Fx "native-code: 'arm64-v8a'" out/permanent/badging.txt
-          cp "$APK" out/permanent/Nightzuku-PR51-permanent-arm64.apk
-          (cd out/permanent && sha256sum Nightzuku-PR51-permanent-arm64.apk > SHA256SUMS && sha256sum -c SHA256SUMS)
+
+          # 1. Verify zipalign
+          "$TOOLS/zipalign" -c -v 4 "$APK" > out/release-final/zipalign.txt
+
+          # 2. Verify permanent signature & SHA-256 certificate digest
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" > out/release-final/certificate.txt
+          ACTUAL_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' out/release-final/certificate.txt | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+
+          # 3. Verify badging: non-debuggable, applicationId, versionCode, versionName, arm64-v8a
+          "$TOOLS/aapt" dump badging "$APK" > out/release-final/badging.txt
+          if grep -Fq "application-debuggable" out/release-final/badging.txt; then
+            echo "ERROR: APK is debuggable; rejecting build"
+            exit 1
+          fi
+          grep -F "package: name='${EXPECTED_APP_ID}'" out/release-final/badging.txt
+          grep -F "versionCode='${{ inputs.version_code }}'" out/release-final/badging.txt
+          grep -F ".r${{ inputs.version_code }}.${SHORT_SHA}'" out/release-final/badging.txt
+          grep -Fx "native-code: 'arm64-v8a'" out/release-final/badging.txt
+
+          # 4. Verify required native libraries and assets/rish_shizuku.dex
+          unzip -l "$APK" > out/release-final/apk-contents.txt
+          grep -F "lib/arm64-v8a/libadb.so" out/release-final/apk-contents.txt
+          grep -F "lib/arm64-v8a/librish.so" out/release-final/apk-contents.txt
+          grep -F "lib/arm64-v8a/libshizuku.so" out/release-final/apk-contents.txt
+          grep -F "assets/rish_shizuku.dex" out/release-final/apk-contents.txt
+
+          # 5. Copy final artifact and generate verified SHA256SUMS + metadata
+          cp "$APK" "out/release-final/${OUTPUT_APK_NAME}"
+          (cd out/release-final && sha256sum "${OUTPUT_APK_NAME}" > SHA256SUMS && sha256sum -c SHA256SUMS)
+          VERSION_NAME="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" out/release-final/badging.txt | head -1)"
+          APK_SHA256="$(awk '{print $1}' out/release-final/SHA256SUMS)"
+          cat > out/release-final/build-metadata.txt <<META
+          branch=${GITHUB_REF_NAME}
+          commit=${HEAD_SHA}
+          run_id=${GITHUB_RUN_ID}
+          application_id=${EXPECTED_APP_ID}
+          version_code=${{ inputs.version_code }}
+          version_name=${VERSION_NAME}
+          abi=arm64-v8a
+          apk_name=${OUTPUT_APK_NAME}
+          apk_sha256=${APK_SHA256}
+          cert_sha256=${ACTUAL_CERT}
+          META
+          cat out/release-final/build-metadata.txt
+
       - uses: actions/upload-artifact@v4
         with:
-          name: nightzuku-pr51-permanent-arm64
-          path: out/permanent/
+          name: Nightzuku-HONOR200-ARM64-RELEASE
+          path: out/release-final/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30

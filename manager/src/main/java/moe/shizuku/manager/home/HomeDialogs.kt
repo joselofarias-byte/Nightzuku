@@ -327,10 +327,11 @@ fun HomeAdbDiscoveryDialog(
         adbMdns.start()
 
         if (context.checkSelfPermission(WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED) {
-            val cr = context.contentResolver
-            Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
-            Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
-            Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
+            runCatching {
+                moe.shizuku.manager.adb.AdbTransportResolver.tryEnableWirelessDebugging(context)
+                val cr = context.contentResolver
+                Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
+            }
         }
 
         onDispose {

@@ -32,6 +32,8 @@ class AdbMdns(
     private var sessionGeneration = 0L
     private var activeListener: DiscoveryListener? = null
     private var serviceName: String? = null
+    private var resolveInFlight = false
+    private val pendingResolutions = ArrayDeque<NsdServiceInfo>()
     private var restartScheduled = false
     private var restartAttempts = 0
     private val handler = Handler(Looper.getMainLooper())
@@ -43,6 +45,8 @@ class AdbMdns(
         sessionGeneration++
         resolvedEndpoint = null
         serviceName = null
+        resolveInFlight = false
+        pendingResolutions.clear()
         running = true
         restartScheduled = false
         restartAttempts = 0
@@ -56,6 +60,8 @@ class AdbMdns(
         sessionGeneration++
         resolvedEndpoint = null
         serviceName = null
+        resolveInFlight = false
+        pendingResolutions.clear()
         restartScheduled = false
         restartAttempts = 0
         handler.removeCallbacksAndMessages(null)
@@ -136,8 +142,34 @@ class AdbMdns(
     @Synchronized
     private fun onServiceFound(generation: Long, info: NsdServiceInfo) {
         if (!running || generation != sessionGeneration) return
-        runCatching { nsdManager.resolveService(info, ResolveListener(this, generation)) }
-            .onFailure { Log.w(TAG, "No se pudo resolver el servicio ADB", it) }
+        if (pendingResolutions.size < MAX_PENDING_RESOLUTIONS) {
+            pendingResolutions.addLast(info)
+        }
+        drainNextResolutionLocked(generation)
+    }
+
+    @Synchronized
+    private fun drainNextResolutionLocked(generation: Long) {
+        if (!running || generation != sessionGeneration || resolveInFlight) return
+        while (pendingResolutions.isNotEmpty()) {
+            val next = pendingResolutions.removeFirst()
+            resolveInFlight = true
+            val started = runCatching {
+                @Suppress("DEPRECATION")
+                nsdManager.resolveService(next, ResolveListener(this, generation))
+            }.onFailure {
+                resolveInFlight = false
+                Log.w(TAG, "No se pudo resolver el servicio ADB", it)
+            }.isSuccess
+            if (started) return
+        }
+    }
+
+    @Synchronized
+    private fun onResolveFailed(generation: Long) {
+        if (generation != sessionGeneration) return
+        resolveInFlight = false
+        drainNextResolutionLocked(generation)
     }
 
     private fun onServiceLost(generation: Long, info: NsdServiceInfo) {
@@ -157,17 +189,39 @@ class AdbMdns(
     }
 
     private fun onServiceResolved(generation: Long, resolvedService: NsdServiceInfo) {
-        val host = resolvedService.host?.hostAddress ?: return
+        val candidates = collectCandidateHosts(resolvedService)
         val port = resolvedService.port
         val localHosts = AdbTransportResolver.currentLocalHosts()
         val resolvedPort = synchronized(this) {
+            if (generation == sessionGeneration) {
+                resolveInFlight = false
+            }
             if (!running || generation != sessionGeneration) return
-            if (!AdbEndpointPolicy.isLocal(host, port, localHosts)) return
+            val selectedHost = AdbEndpointPolicy.selectLocalHost(candidates, port, localHosts)
+            if (selectedHost == null) {
+                drainNextResolutionLocked(generation)
+                return
+            }
             serviceName = resolvedService.serviceName
-            resolvedEndpoint = AdbEndpoint(host, port, requireTls = true)
+            resolvedEndpoint = AdbEndpoint(selectedHost, port, requireTls = true)
+            drainNextResolutionLocked(generation)
             port
         }
         observer.onChanged(resolvedPort)
+    }
+
+    private fun collectCandidateHosts(resolvedService: NsdServiceInfo): List<String> {
+        val result = ArrayList<String>(4)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            resolvedService.hostAddresses.forEach { addr ->
+                addr.hostAddress?.let { result.add(it) }
+            }
+        }
+        @Suppress("DEPRECATION")
+        resolvedService.host?.hostAddress?.let { legacyHost ->
+            if (legacyHost !in result) result.add(legacyHost)
+        }
+        return result
     }
 
     internal class DiscoveryListener(
@@ -210,6 +264,7 @@ class AdbMdns(
     ) : NsdManager.ResolveListener {
         override fun onResolveFailed(nsdServiceInfo: NsdServiceInfo, errorCode: Int) {
             Log.v(TAG, "onResolveFailed: ${nsdServiceInfo.serviceName}, $errorCode")
+            adbMdns.onResolveFailed(generation)
         }
 
         override fun onServiceResolved(nsdServiceInfo: NsdServiceInfo) {
@@ -224,6 +279,7 @@ class AdbMdns(
 
         private const val MIN_RESTART_DELAY_MS = 2_000L
         private const val MAX_RESTART_DELAY_MS = 30_000L
+        private const val MAX_PENDING_RESOLUTIONS = 16
 
         internal fun restartDelayMs(attempt: Int): Long {
             val shift = attempt.coerceIn(0, 4)

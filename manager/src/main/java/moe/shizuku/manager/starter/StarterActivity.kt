@@ -242,6 +242,9 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
 
     init {
         try {
+            ShizukuSettings.setLastLaunchMode(
+                if (root) ShizukuSettings.LaunchMethod.ROOT else ShizukuSettings.LaunchMethod.ADB
+            )
             NightDogRecovery.requestManualStart(context, recoverImmediately = false)
             if (root) {
                 startRoot()

@@ -28,6 +28,7 @@ public class ShizukuSettings {
     public static final String ADB_TCP_ENABLED = "adb_tcp_enabled";
     public static final String ADB_TCP_HOST = "adb_tcp_host";
     public static final String ADB_TCP_PORT = "adb_tcp_port";
+    public static final String AUTO_RESTORE_WIRELESS_ADB = "auto_restore_wireless_adb";
 
     private static final String DEFAULT_ADB_TCP_HOST = "127.0.0.1";
     private static final int DEFAULT_ADB_TCP_PORT = 5555;
@@ -118,6 +119,14 @@ public class ShizukuSettings {
 
     public static void setAdbTcpEnabled(boolean enabled) {
         getPreferences().edit().putBoolean(ADB_TCP_ENABLED, enabled).apply();
+    }
+
+    public static boolean isAutoRestoreWirelessAdbEnabled() {
+        return getPreferences().getBoolean(AUTO_RESTORE_WIRELESS_ADB, true);
+    }
+
+    public static void setAutoRestoreWirelessAdbEnabled(boolean enabled) {
+        getPreferences().edit().putBoolean(AUTO_RESTORE_WIRELESS_ADB, enabled).apply();
     }
 
     @AppCompatDelegate.NightMode

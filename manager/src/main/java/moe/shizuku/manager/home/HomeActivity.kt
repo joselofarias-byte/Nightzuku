@@ -675,6 +675,61 @@ private fun StatusCard(
                 else -> null
             }
             button?.let { HomeButtons(listOf(it)) }
+        } else if (!running && desiredRunning) {
+            val recoveryButtons = mutableListOf<HomeButtonSpec>()
+            when (recoverySnapshot.actionHint) {
+                NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING -> {
+                    recoveryButtons += HomeButtonSpec(
+                        R.string.development_settings,
+                        R.drawable.ic_settings_outline_24dp,
+                        true,
+                        onClick = {
+                            moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.launch(
+                                context,
+                                moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.developerWirelessDebuggingIntent()
+                            )
+                        }
+                    )
+                }
+                NightDogRecovery.ActionHint.OPEN_PAIRING -> {
+                    recoveryButtons += HomeButtonSpec(
+                        R.string.adb_pairing,
+                        R.drawable.ic_numeric_1_circle_outline_24,
+                        true,
+                        onClick = {
+                            moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.launch(
+                                context,
+                                moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.pairingActivityIntent(context)
+                            )
+                        }
+                    )
+                }
+                NightDogRecovery.ActionHint.CONNECT_WIFI -> {
+                    recoveryButtons += HomeButtonSpec(
+                        R.string.settings_title,
+                        R.drawable.ic_wadb_24,
+                        true,
+                        onClick = {
+                            moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.launch(
+                                context,
+                                moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.wifiSettingsIntent()
+                            )
+                        }
+                    )
+                }
+                else -> Unit
+            }
+            if (isError || recoverySnapshot.stage == NightDogRecovery.Stage.WAITING_FOR_ADB) {
+                recoveryButtons += HomeButtonSpec(
+                    R.string.home_refresh,
+                    R.drawable.ic_server_restart,
+                    primary = recoveryButtons.isEmpty(),
+                    onClick = { NightDogRecovery.requestManualStart(context, recoverImmediately = true) }
+                )
+            }
+            if (recoveryButtons.isNotEmpty()) {
+                HomeButtons(recoveryButtons)
+            }
         }
     }
 }
@@ -924,6 +979,26 @@ private fun buildDiagnostics(
     val lastLoss = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastBinderLostElapsedRealtime)
     val lastRecovery = formatElapsedAgo(nowElapsedRealtime, recoverySnapshot.lastRecoveryElapsedRealtime)
     val pid = recoverySnapshot.serverPid?.toString() ?: "resolviendo…"
+    val wirelessStateLabel = when (moe.shizuku.manager.adb.AdbTransportResolver.wirelessDebuggingState(context)) {
+        1 -> "activa"
+        0 -> "desactivada"
+        else -> "desconocida"
+    }
+    val writeSecureLabel = if (moe.shizuku.manager.adb.AdbTransportResolver.hasWriteSecureSettingsPermission(context)) {
+        "concedido"
+    } else {
+        "no concedido"
+    }
+    val wifiStateLabel = if (moe.shizuku.manager.adb.AdbTransportResolver.isWifiConnected(context)) {
+        "conectado"
+    } else {
+        "desconectado"
+    }
+    val batteryStateLabel = if (moe.shizuku.manager.adb.AdbTransportResolver.isIgnoringBatteryOptimizations(context)) {
+        "sin restricción"
+    } else {
+        "optimizada (puede limitar segundo plano)"
+    }
     fun line(label: String, value: Any?): String = label.padEnd(22) + (value ?: "—")
 
     return buildString {
@@ -942,6 +1017,11 @@ private fun buildDiagnostics(
         appendLine("NIGHTDOG")
         appendLine(line("Deseado", desiredState))
         appendLine(line("Estado", recoveryStageLabel(recoverySnapshot.stage)))
+        appendLine(line("Categoría", recoverySnapshot.failureCategory.name))
+        appendLine(line("Depuración Wi-Fi", wirelessStateLabel))
+        appendLine(line("WRITE_SECURE_SETTINGS", writeSecureLabel))
+        appendLine(line("Wi-Fi", wifiStateLabel))
+        appendLine(line("Batería", batteryStateLabel))
         appendLine(line("Recuperaciones", recoverySnapshot.recoveryCount))
         appendLine(line("Última caída", lastLoss))
         appendLine(line("Última recuperación", lastRecovery))

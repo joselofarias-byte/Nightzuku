@@ -1,8 +1,22 @@
 package moe.shizuku.manager.shizuku
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.database.ContentObserver
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
+import android.provider.Settings
 import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -36,6 +50,7 @@ import moe.shizuku.manager.adb.AdbOfflineException
 import moe.shizuku.manager.adb.AdbShellUnavailableException
 import moe.shizuku.manager.adb.AdbTransportResolver
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
+import moe.shizuku.manager.adb.WirelessDebuggingRestoreResult
 import moe.shizuku.manager.starter.Starter
 import rikka.shizuku.Shizuku
 
@@ -88,6 +103,15 @@ internal object AdbFailureClassifier {
     }
 }
 
+private object DefaultUnitTestSystemEnvironment : NightDogSystemEnvironment {
+    override fun isWifiConnected(): Boolean = true
+    override fun hasLocalPersistentTcpEndpoint(): Boolean = false
+    override fun isAutoRestoreWirelessEnabled(): Boolean = false
+    override fun tryEnableWirelessDebugging(): WirelessDebuggingRestoreResult =
+        WirelessDebuggingRestoreResult.NotPermitted
+    override fun isIgnoringBatteryOptimizations(): Boolean? = null
+}
+
 internal class NightDogRecoveryEngine(
     private val scope: CoroutineScope,
     private val clockElapsedMs: () -> Long,
@@ -97,10 +121,14 @@ internal class NightDogRecoveryEngine(
     private val pingBinder: () -> Boolean,
     private val discoverEndpoint: suspend () -> AdbDiscoveryResult,
     private val openSession: (AdbEndpoint) -> RecoveryAdbSession,
+    private val systemEnv: NightDogSystemEnvironment = DefaultUnitTestSystemEnvironment,
+    private val scheduler: NightDogSchedulerPort = NoOpNightDogSchedulerPort,
     private val logWarning: (String) -> Unit = { Log.w(TAG, it) },
     private val logDebug: (String) -> Unit = { Log.d(TAG, it) },
     private val pollIntervalMs: Long = POLL_INTERVAL_MS,
+    private val healthyPollIntervalMs: Long = HEALTHY_POLL_INTERVAL_MS,
     private val recoverySettleMs: Long = RECOVERY_SETTLE_MS,
+    private val wirelessEnableSettleMs: Long = WIRELESS_ENABLE_SETTLE_MS,
     private val binderConfirmTimeoutMs: Long = BINDER_CONFIRM_TIMEOUT_MS,
     private val binderConfirmPollMs: Long = BINDER_CONFIRM_POLL_MS,
     private val minRetryMs: Long = MIN_RETRY_MS,
@@ -128,6 +156,15 @@ internal class NightDogRecoveryEngine(
     private var lastBinderLostAt = 0L
     private var lastRecoveryAt = 0L
 
+    private var lastWifiConnected: Boolean? = null
+    private var lastNetworkFingerprint: String? = null
+    private var lastNetworkTransitionAt = 0L
+    private var lastResumeTriggerAt = 0L
+    private var wirelessDisabledByUser = false
+    private var autoRestoreRejectedInEpoch = false
+    private var lastAutoRestoreAt = 0L
+    private var wirelessAutoRestoreAttempted = false
+
     private val _snapshot = MutableStateFlow(NightDogRecovery.Snapshot())
     val snapshot: StateFlow<NightDogRecovery.Snapshot> = _snapshot.asStateFlow()
 
@@ -137,34 +174,51 @@ internal class NightDogRecoveryEngine(
         return (minRetryMs shl shift).coerceAtMost(maxRetryMs)
     }
 
+    fun isWirelessDisabledByUserForTest(): Boolean = synchronized(lock) { wirelessDisabledByUser }
+
     fun start(startPollingLoop: Boolean = true) {
+        var shouldSchedulePeriodic = false
+        var shouldRefreshPid = false
         synchronized(lock) {
             if (started) return
             started = true
+            lastWifiConnected = systemEnv.isWifiConnected()
             if (startPollingLoop) {
                 pollingJob = scope.launch {
                     while (isActive) {
                         pollOnce()
-                        delayMs(pollIntervalMs)
+                        delayMs(nextPollIntervalMs())
                     }
                 }
             }
-            if (isDesiredRunning() && !pingBinder()) {
-                publishLocked(
-                    stage = NightDogRecovery.Stage.CHECKING_BINDER,
-                    result = "Inicio de la app: servicio deseado activo; comprobando ADB",
-                    binderAlive = false,
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
-                )
-                requestRecoveryLocked()
-            } else if (!isDesiredRunning()) {
+            if (!isDesiredRunning()) {
                 publishLocked(
                     stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
                     result = "Detenido manualmente; recuperación deshabilitada",
                     binderAlive = pingBinder(),
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
                 )
+            } else if (pingBinder()) {
+                shouldRefreshPid = markRunningLocked("Inicio de la app: Binder activo")
+                shouldSchedulePeriodic = true
+            } else {
+                shouldSchedulePeriodic = true
+                publishLocked(
+                    stage = NightDogRecovery.Stage.CHECKING_BINDER,
+                    result = "Inicio de la app: servicio deseado activo; comprobando ADB",
+                    binderAlive = false,
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
+                )
+                requestRecoveryLocked()
             }
+        }
+        if (shouldSchedulePeriodic) {
+            scheduler.schedulePeriodicHealthCheck()
+        }
+        if (shouldRefreshPid) {
+            refreshServerPid()
         }
     }
 
@@ -192,6 +246,10 @@ internal class NightDogRecoveryEngine(
             recoveryCount = 0
             lastBinderLostAt = 0L
             lastRecoveryAt = 0L
+            wirelessDisabledByUser = false
+            autoRestoreRejectedInEpoch = false
+            lastAutoRestoreAt = 0L
+            wirelessAutoRestoreAttempted = false
             _snapshot.value = NightDogRecovery.Snapshot(
                 stage = NightDogRecovery.Stage.IDLE,
                 desiredRunning = false,
@@ -205,6 +263,7 @@ internal class NightDogRecoveryEngine(
     fun onBinderReceived() {
         val recToClose: RecoveryAdbSession?
         var shouldRefreshPid = false
+        var shouldClearRecoveryState = false
         synchronized(lock) {
             if (!started) return
             if (!isDesiredRunning()) {
@@ -212,8 +271,14 @@ internal class NightDogRecoveryEngine(
                     stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
                     result = "Detenido manualmente; recuperación deshabilitada",
                     binderAlive = pingBinder(),
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
                 )
+                return
+            }
+            // No cancelar un intento de recuperación activo por un callback tardío/obsoleto
+            // si el Binder realmente no responde al ping.
+            if (!pingBinder()) {
                 return
             }
             activeAttemptId = ++attemptSequence
@@ -223,9 +288,15 @@ internal class NightDogRecoveryEngine(
             recoverySession = null
             if (markRunningLocked("Binder recibido; servicio activo")) {
                 shouldRefreshPid = true
+                shouldClearRecoveryState = true
             }
         }
         runCatching { recToClose?.close() }
+        if (shouldClearRecoveryState) {
+            scheduler.cancelRecoveryRetries()
+            scheduler.clearActionNotification()
+            scheduler.schedulePeriodicHealthCheck()
+        }
         if (shouldRefreshPid) refreshServerPid()
     }
 
@@ -246,7 +317,8 @@ internal class NightDogRecoveryEngine(
                     stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
                     result = "Detenido manualmente; recuperación deshabilitada",
                     binderAlive = false,
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
                 )
             } else {
                 if (recoveryJob?.isActive != true) {
@@ -254,7 +326,8 @@ internal class NightDogRecoveryEngine(
                         stage = NightDogRecovery.Stage.CHECKING_BINDER,
                         result = "Binder perdido; iniciando recuperación",
                         binderAlive = false,
-                        failureCategory = NightDogRecovery.FailureCategory.NONE
+                        failureCategory = NightDogRecovery.FailureCategory.NONE,
+                        actionHint = NightDogRecovery.ActionHint.NONE
                     )
                 }
                 requestRecoveryLocked()
@@ -263,11 +336,212 @@ internal class NightDogRecoveryEngine(
         runCatching { pidToClose?.close() }
     }
 
-    fun requestManualStart(recoverImmediately: Boolean = true) {
+    fun onBootUnlocked() {
+        var shouldScheduleNetwork = false
+        var shouldSchedulePeriodic = false
         synchronized(lock) {
-            setDesiredRunning(true)
+            if (!started) return
+            if (!isDesiredRunning()) {
+                publishLocked(
+                    stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
+                    result = "Detenido manualmente; recuperación deshabilitada tras reinicio",
+                    binderAlive = pingBinder(),
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
+                )
+                return
+            }
+            // Tras un reinicio del sistema, Android/MagicOS suele desactivar adb_wifi_enabled:
+            // esto no corresponde a una desactivación explícita del usuario.
+            wirelessDisabledByUser = false
+            autoRestoreRejectedInEpoch = false
+            lastNetworkTransitionAt = clockElapsedMs()
             failedAttempts = 0
             lastAttemptAt = 0L
+            shouldSchedulePeriodic = true
+            if (pingBinder()) {
+                markRunningLocked("Binder activo tras el arranque")
+            } else {
+                publishLocked(
+                    stage = NightDogRecovery.Stage.CHECKING_BINDER,
+                    result = "Arranque desbloqueado; iniciando recuperación ADB",
+                    binderAlive = false,
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
+                )
+                requestRecoveryLocked()
+                shouldScheduleNetwork = true
+            }
+        }
+        if (shouldSchedulePeriodic) scheduler.schedulePeriodicHealthCheck()
+        if (shouldScheduleNetwork) scheduler.scheduleNetworkRecovery(minRetryMs)
+    }
+
+    fun onNetworkChanged(wifiConnected: Boolean, networkFingerprint: String) {
+        var shouldScheduleNetwork = false
+        synchronized(lock) {
+            if (!started) return
+            val now = clockElapsedMs()
+            val prevWifi = lastWifiConnected
+            val prevFingerprint = lastNetworkFingerprint
+            val changed = prevWifi != wifiConnected ||
+                (prevFingerprint != null && prevFingerprint != networkFingerprint)
+            lastWifiConnected = wifiConnected
+            lastNetworkFingerprint = networkFingerprint
+
+            if (!isDesiredRunning()) {
+                return
+            }
+
+            if (changed) {
+                lastNetworkTransitionAt = now
+                autoRestoreRejectedInEpoch = false
+            }
+
+            if (pingBinder()) {
+                // Binder saludable: no perturbar ni reiniciar ADB al cambiar de red.
+                return
+            }
+
+            if (!wifiConnected && !systemEnv.hasLocalPersistentTcpEndpoint()) {
+                publishLocked(
+                    stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                    result = "Wi-Fi desconectado; se conserva la recuperación pendiente hasta reconectar",
+                    binderAlive = false,
+                    transport = "sin Wi-Fi",
+                    endpoint = null,
+                    failureCategory = NightDogRecovery.FailureCategory.WIFI_DISCONNECTED,
+                    actionHint = NightDogRecovery.ActionHint.CONNECT_WIFI
+                )
+                shouldScheduleNetwork = true
+            } else if (changed && wifiConnected) {
+                // Reconexión de Wi-Fi, cambio de AP o cambio de IP: redescubrir inmediatamente
+                // un endpoint fresco sin esperar el backoff anterior.
+                failedAttempts = 0
+                lastAttemptAt = 0L
+                if (recoveryJob?.isActive != true) {
+                    publishLocked(
+                        stage = NightDogRecovery.Stage.CHECKING_BINDER,
+                        result = "Red Wi-Fi disponible/actualizada; redescubriendo endpoint ADB",
+                        binderAlive = false,
+                        endpoint = null,
+                        failureCategory = NightDogRecovery.FailureCategory.NONE,
+                        actionHint = NightDogRecovery.ActionHint.NONE
+                    )
+                    requestRecoveryLocked()
+                }
+            }
+        }
+        if (shouldScheduleNetwork) {
+            scheduler.scheduleNetworkRecovery(minRetryMs)
+        }
+    }
+
+    fun onWirelessDebuggingSettingChanged(enabled: Boolean) {
+        var shouldArmTrigger = false
+        synchronized(lock) {
+            if (!started) return
+            if (!isDesiredRunning()) return
+
+            val now = clockElapsedMs()
+            if (enabled) {
+                wirelessDisabledByUser = false
+                autoRestoreRejectedInEpoch = false
+                if (!pingBinder()) {
+                    failedAttempts = 0
+                    lastAttemptAt = 0L
+                    publishLocked(
+                        stage = NightDogRecovery.Stage.CHECKING_BINDER,
+                        result = "Depuración inalámbrica activada; redescubriendo endpoint ADB",
+                        binderAlive = false,
+                        failureCategory = NightDogRecovery.FailureCategory.NONE,
+                        actionHint = NightDogRecovery.ActionHint.NONE
+                    )
+                    requestRecoveryLocked()
+                }
+            } else {
+                val wifiNow = systemEnv.isWifiConnected()
+                val recentNetworkChange = lastNetworkTransitionAt > 0L &&
+                    (now - lastNetworkTransitionAt) <= NETWORK_TRANSITION_GRACE_MS
+                if (wifiNow && !recentNetworkChange) {
+                    // El ajuste cambió 1 -> 0 con Wi-Fi estable: respetar decisión explícita del usuario.
+                    wirelessDisabledByUser = true
+                }
+                if (!pingBinder()) {
+                    val message = if (wirelessDisabledByUser) {
+                        "Depuración inalámbrica desactivada manualmente. Actívala en Opciones de desarrollador para reanudar"
+                    } else {
+                        "Depuración inalámbrica desactivada por Android/MagicOS tras cambio de red"
+                    }
+                    publishLocked(
+                        stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                        result = message,
+                        binderAlive = false,
+                        transport = "desactivado",
+                        endpoint = null,
+                        failureCategory = NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                        actionHint = NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING
+                    )
+                    shouldArmTrigger = true
+                }
+            }
+        }
+        if (shouldArmTrigger) {
+            scheduler.scheduleWirelessSettingTrigger()
+        }
+    }
+
+    fun onDeviceResume() {
+        synchronized(lock) {
+            if (!started || !isDesiredRunning() || pingBinder()) return
+            val now = clockElapsedMs()
+            if (lastResumeTriggerAt != 0L && now - lastResumeTriggerAt < EVENT_DEBOUNCE_MS) {
+                return
+            }
+            lastResumeTriggerAt = now
+            if (wirelessDisabledByUser ||
+                _snapshot.value.failureCategory == NightDogRecovery.FailureCategory.AUTH_FAILED
+            ) {
+                return
+            }
+            if (recoveryJob?.isActive != true) {
+                // Reevaluar tras salir de suspensión/Doze sin esperar un backoff largo antiguo.
+                lastAttemptAt = 0L
+                requestRecoveryLocked()
+            }
+        }
+    }
+
+    fun onScheduledWakeup(reason: String) {
+        synchronized(lock) {
+            if (!started || !isDesiredRunning()) return
+            if (pingBinder()) {
+                markRunningLocked("Binder verificado en comprobación programada ($reason)")
+                return
+            }
+            if (recoveryJob?.isActive == true) return
+            if (_snapshot.value.failureCategory == NightDogRecovery.FailureCategory.AUTH_FAILED ||
+                wirelessDisabledByUser
+            ) {
+                return
+            }
+            lastAttemptAt = 0L
+            requestRecoveryLocked()
+        }
+    }
+
+    fun requestManualStart(recoverImmediately: Boolean = true) {
+        var shouldClearNotification = false
+        var shouldSchedulePeriodic = false
+        synchronized(lock) {
+            setDesiredRunning(true)
+            wirelessDisabledByUser = false
+            autoRestoreRejectedInEpoch = false
+            lastAutoRestoreAt = 0L
+            failedAttempts = 0
+            lastAttemptAt = 0L
+            shouldClearNotification = true
+            shouldSchedulePeriodic = started
             if (pingBinder()) {
                 markRunningLocked("Binder ya está activo")
             } else {
@@ -275,13 +549,16 @@ internal class NightDogRecoveryEngine(
                     stage = NightDogRecovery.Stage.CHECKING_BINDER,
                     result = "Inicio solicitado; comprobando Binder y ADB",
                     binderAlive = false,
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
                 )
                 if (recoverImmediately && started) {
                     requestRecoveryLocked()
                 }
             }
         }
+        if (shouldClearNotification) scheduler.clearActionNotification()
+        if (shouldSchedulePeriodic) scheduler.schedulePeriodicHealthCheck()
     }
 
     fun prepareForManualStop() {
@@ -303,20 +580,26 @@ internal class NightDogRecoveryEngine(
             lastAttemptAt = 0L
             runningSinceAt = 0L
             currentServerPid = null
+            wirelessDisabledByUser = false
+            autoRestoreRejectedInEpoch = false
             publishLocked(
                 stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
                 result = "Detenido manualmente; recuperación deshabilitada",
                 binderAlive = pingBinder(),
                 transport = null,
                 endpoint = null,
-                failureCategory = NightDogRecovery.FailureCategory.NONE
+                failureCategory = NightDogRecovery.FailureCategory.NONE,
+                actionHint = NightDogRecovery.ActionHint.NONE
             )
         }
         runCatching { recToClose?.close() }
         runCatching { pidToClose?.close() }
+        scheduler.cancelAllJobs()
+        scheduler.clearActionNotification()
     }
 
     fun pollOnce() {
+        var clearedRetries = false
         synchronized(lock) {
             if (!started) return
             val alive = pingBinder()
@@ -327,10 +610,11 @@ internal class NightDogRecoveryEngine(
                     stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
                     result = "Servicio detenido manualmente",
                     binderAlive = alive,
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
+                    failureCategory = NightDogRecovery.FailureCategory.NONE,
+                    actionHint = NightDogRecovery.ActionHint.NONE
                 )
             } else if (alive) {
-                markRunningLocked("Binder responde correctamente")
+                clearedRetries = markRunningLocked("Binder responde correctamente")
             } else {
                 if (_snapshot.value.binderAlive) {
                     lastBinderLostAt = clockElapsedMs()
@@ -340,13 +624,18 @@ internal class NightDogRecoveryEngine(
                         stage = NightDogRecovery.Stage.CHECKING_BINDER,
                         result = "Binder no responde; buscando transporte ADB",
                         binderAlive = false,
-                        failureCategory = NightDogRecovery.FailureCategory.NONE
+                        failureCategory = NightDogRecovery.FailureCategory.NONE,
+                        actionHint = NightDogRecovery.ActionHint.NONE
                     )
                 }
                 if (recoveryJob?.isActive != true) {
                     requestRecoveryLocked()
                 }
             }
+        }
+        if (clearedRetries) {
+            scheduler.cancelRecoveryRetries()
+            scheduler.clearActionNotification()
         }
     }
 
@@ -357,6 +646,19 @@ internal class NightDogRecoveryEngine(
         withTimeoutOrNull(timeoutMs) {
             job.join()
         }
+    }
+
+    private fun nextPollIntervalMs(): Long = synchronized(lock) {
+        if (!isDesiredRunning()) return@synchronized healthyPollIntervalMs
+        if (_snapshot.value.stage == NightDogRecovery.Stage.RUNNING && _snapshot.value.binderAlive) {
+            return@synchronized healthyPollIntervalMs
+        }
+        val backoff = retryDelayMs()
+        if (backoff > pollIntervalMs && lastAttemptAt != 0L) {
+            val remaining = (lastAttemptAt + backoff - clockElapsedMs()).coerceAtLeast(pollIntervalMs)
+            return@synchronized remaining.coerceAtMost(maxRetryMs)
+        }
+        pollIntervalMs
     }
 
     private fun isCurrentAttemptLocked(attemptId: Long): Boolean =
@@ -373,13 +675,17 @@ internal class NightDogRecoveryEngine(
         }
         failedAttempts = 0
         lastAttemptAt = 0L
+        wirelessDisabledByUser = false
+        autoRestoreRejectedInEpoch = false
+        systemEnv.onServiceConfirmedRunning()
         publishLocked(
             stage = NightDogRecovery.Stage.RUNNING,
             result = result,
             binderAlive = true,
             transport = "Binder activo",
             endpoint = "no requerido",
-            failureCategory = NightDogRecovery.FailureCategory.NONE
+            failureCategory = NightDogRecovery.FailureCategory.NONE,
+            actionHint = NightDogRecovery.ActionHint.NONE
         )
         return true
     }
@@ -395,7 +701,8 @@ internal class NightDogRecoveryEngine(
                 stage = NightDogRecovery.Stage.MANUALLY_STOPPED,
                 result = "Recuperación omitida: detención manual",
                 binderAlive = false,
-                failureCategory = NightDogRecovery.FailureCategory.NONE
+                failureCategory = NightDogRecovery.FailureCategory.NONE,
+                actionHint = NightDogRecovery.ActionHint.NONE
             )
             return
         }
@@ -421,25 +728,160 @@ internal class NightDogRecoveryEngine(
             if (recoverySettleMs > 0L) {
                 delayMs(recoverySettleMs)
             }
-            synchronized(lock) {
+            val skipForNoWifi = synchronized(lock) {
                 if (!isCurrentAttemptLocked(attemptId)) return
                 if (pingBinder()) {
                     markRunningLocked("Binder ya está activo")
                     return
                 }
-                failedAttempts++
-                lastAttemptAt = clockElapsedMs()
-                publishLocked(
-                    stage = NightDogRecovery.Stage.DISCOVERING_ADB,
-                    result = "Buscando endpoint ADB local actual; aún no autenticado",
-                    binderAlive = false,
-                    transport = null,
-                    endpoint = null,
-                    failureCategory = NightDogRecovery.FailureCategory.NONE
-                )
+                val wifiNow = systemEnv.isWifiConnected()
+                lastWifiConnected = wifiNow
+                if (!wifiNow && !systemEnv.hasLocalPersistentTcpEndpoint()) {
+                    failedAttempts++
+                    lastAttemptAt = clockElapsedMs()
+                    publishLocked(
+                        stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                        result = "Wi-Fi desconectado; esperando reconexión para redescubrir ADB inalámbrico",
+                        binderAlive = false,
+                        transport = "sin Wi-Fi",
+                        endpoint = null,
+                        failureCategory = NightDogRecovery.FailureCategory.WIFI_DISCONNECTED,
+                        actionHint = NightDogRecovery.ActionHint.CONNECT_WIFI
+                    )
+                    true
+                } else {
+                    failedAttempts++
+                    lastAttemptAt = clockElapsedMs()
+                    publishLocked(
+                        stage = NightDogRecovery.Stage.DISCOVERING_ADB,
+                        result = "Buscando endpoint ADB local actual; aún no autenticado",
+                        binderAlive = false,
+                        transport = null,
+                        endpoint = null,
+                        failureCategory = NightDogRecovery.FailureCategory.NONE,
+                        actionHint = NightDogRecovery.ActionHint.NONE
+                    )
+                    false
+                }
+            }
+            if (skipForNoWifi) {
+                scheduler.scheduleNetworkRecovery(retryDelayMs())
+                return
             }
 
-            val discovery = discoverEndpoint()
+            var discovery = discoverEndpoint()
+
+            if (discovery is AdbDiscoveryResult.WirelessDebuggingDisabled) {
+                val shouldTryAutoRestore = synchronized(lock) {
+                    if (!isCurrentAttemptLocked(attemptId)) return
+                    if (pingBinder()) {
+                        markRunningLocked("Binder ya está activo")
+                        return
+                    }
+                    val now = clockElapsedMs()
+                    val cooldownElapsed = lastAutoRestoreAt == 0L ||
+                        (now - lastAutoRestoreAt) >= AUTO_ENABLE_COOLDOWN_MS
+                    val canAttempt = systemEnv.isAutoRestoreWirelessEnabled() &&
+                        !wirelessDisabledByUser &&
+                        !autoRestoreRejectedInEpoch &&
+                        systemEnv.isWifiConnected() &&
+                        cooldownElapsed
+                    if (canAttempt) {
+                        lastAutoRestoreAt = now
+                        wirelessAutoRestoreAttempted = true
+                    }
+                    canAttempt
+                }
+
+                if (shouldTryAutoRestore) {
+                    when (val restoreResult = systemEnv.tryEnableWirelessDebugging()) {
+                        is WirelessDebuggingRestoreResult.Enabled,
+                        is WirelessDebuggingRestoreResult.AlreadyEnabled -> {
+                            if (wirelessEnableSettleMs > 0L) {
+                                delayMs(wirelessEnableSettleMs)
+                            }
+                            synchronized(lock) {
+                                if (!isCurrentAttemptLocked(attemptId)) return
+                                if (pingBinder()) {
+                                    markRunningLocked("Binder ya está activo")
+                                    return
+                                }
+                            }
+                            discovery = discoverEndpoint()
+                        }
+                        is WirelessDebuggingRestoreResult.SystemRejected -> {
+                            val msg = "Android/MagicOS impidió reactivar la depuración inalámbrica (${restoreResult.reason}). Actívala en Opciones de desarrollador"
+                            synchronized(lock) {
+                                if (!isCurrentAttemptLocked(attemptId)) return
+                                autoRestoreRejectedInEpoch = true
+                                lastAttemptAt = clockElapsedMs()
+                                publishLocked(
+                                    stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                                    result = msg,
+                                    binderAlive = false,
+                                    transport = "desactivado",
+                                    endpoint = null,
+                                    failureCategory = NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                                    actionHint = NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING
+                                )
+                            }
+                            scheduler.scheduleWirelessSettingTrigger()
+                            scheduler.notifyActionRequired(
+                                NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                                NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING,
+                                msg
+                            )
+                            return
+                        }
+                        is WirelessDebuggingRestoreResult.DeveloperOptionsDisabled -> {
+                            val msg = "Opciones de desarrollador desactivadas. Actívalas junto con Depuración inalámbrica"
+                            synchronized(lock) {
+                                if (!isCurrentAttemptLocked(attemptId)) return
+                                lastAttemptAt = clockElapsedMs()
+                                publishLocked(
+                                    stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                                    result = msg,
+                                    binderAlive = false,
+                                    transport = "desactivado",
+                                    endpoint = null,
+                                    failureCategory = NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                                    actionHint = NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING
+                                )
+                            }
+                            scheduler.scheduleWirelessSettingTrigger()
+                            scheduler.notifyActionRequired(
+                                NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                                NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING,
+                                msg
+                            )
+                            return
+                        }
+                        is WirelessDebuggingRestoreResult.WifiRequired -> {
+                            val msg = "Wi-Fi desconectado; se requiere Wi-Fi para activar depuración inalámbrica"
+                            synchronized(lock) {
+                                if (!isCurrentAttemptLocked(attemptId)) return
+                                lastAttemptAt = clockElapsedMs()
+                                publishLocked(
+                                    stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                                    result = msg,
+                                    binderAlive = false,
+                                    transport = "sin Wi-Fi",
+                                    endpoint = null,
+                                    failureCategory = NightDogRecovery.FailureCategory.WIFI_DISCONNECTED,
+                                    actionHint = NightDogRecovery.ActionHint.CONNECT_WIFI
+                                )
+                            }
+                            scheduler.scheduleNetworkRecovery(retryDelayMs())
+                            return
+                        }
+                        is WirelessDebuggingRestoreResult.NotPermitted -> {
+                            // Continúa hacia el diagnóstico estándar sin afirmar capacidad de escritura protegida.
+                        }
+                    }
+                }
+            }
+
+            var postDiscoverySchedule: (() -> Unit)? = null
             synchronized(lock) {
                 if (!isCurrentAttemptLocked(attemptId)) return
                 if (pingBinder()) {
@@ -449,32 +891,57 @@ internal class NightDogRecoveryEngine(
                 when (discovery) {
                     is AdbDiscoveryResult.WirelessDebuggingDisabled -> {
                         lastAttemptAt = clockElapsedMs()
+                        val userDisabled = wirelessDisabledByUser
+                        val msg = if (userDisabled) {
+                            "Depuración inalámbrica desactivada manualmente. Actívala en Opciones de desarrollador para reanudar"
+                        } else {
+                            "Depuración inalámbrica desactivada por Android/MagicOS o sin permiso WRITE_SECURE_SETTINGS. Actívala en Opciones de desarrollador"
+                        }
                         publishLocked(
                             stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
-                            result = "Depuración inalámbrica desactivada por Android o el usuario. Actívala en Opciones de desarrollador",
+                            result = msg,
                             binderAlive = false,
                             transport = "desactivado",
                             endpoint = null,
-                            failureCategory = NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED
+                            failureCategory = NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                            actionHint = NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING
                         )
-                        return
+                        postDiscoverySchedule = {
+                            scheduler.scheduleWirelessSettingTrigger()
+                            if (!userDisabled) {
+                                scheduler.notifyActionRequired(
+                                    NightDogRecovery.FailureCategory.WIRELESS_DEBUGGING_DISABLED,
+                                    NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING,
+                                    msg
+                                )
+                            }
+                        }
                     }
                     is AdbDiscoveryResult.Absent -> {
                         lastAttemptAt = clockElapsedMs()
+                        val delayForJob = retryDelayMs()
                         publishLocked(
                             stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
                             result = "Endpoint ADB local ausente. Comprueba Wi-Fi, depuración inalámbrica y emparejamiento",
                             binderAlive = false,
                             transport = "ninguno",
                             endpoint = null,
-                            failureCategory = NightDogRecovery.FailureCategory.ENDPOINT_ABSENT
+                            failureCategory = NightDogRecovery.FailureCategory.ENDPOINT_ABSENT,
+                            actionHint = NightDogRecovery.ActionHint.OPEN_WIRELESS_DEBUGGING
                         )
-                        return
+                        postDiscoverySchedule = {
+                            scheduler.scheduleNetworkRecovery(delayForJob)
+                            scheduler.scheduleWirelessSettingTrigger()
+                        }
                     }
                     is AdbDiscoveryResult.Found -> {
                         currentEndpoint = discovery.endpoint
                     }
                 }
+            }
+            postDiscoverySchedule?.let {
+                it.invoke()
+                return
             }
 
             val endpoint = currentEndpoint ?: return
@@ -524,7 +991,8 @@ internal class NightDogRecoveryEngine(
                         binderAlive = false,
                         transport = transportLabel,
                         endpoint = "${endpoint.host}:${endpoint.port}",
-                        failureCategory = NightDogRecovery.FailureCategory.NONE
+                        failureCategory = NightDogRecovery.FailureCategory.NONE,
+                        actionHint = NightDogRecovery.ActionHint.NONE
                     )
                 }
                 session.startServer()
@@ -537,24 +1005,35 @@ internal class NightDogRecoveryEngine(
 
             val confirmed = awaitBinderConfirmation(attemptId)
             var shouldRefreshPid = false
+            var retryAfterNoBinderDelay: Long? = null
             synchronized(lock) {
                 if (!isCurrentAttemptLocked(attemptId)) return
                 if (confirmed && pingBinder()) {
                     shouldRefreshPid = markRunningLocked("Binder verificado tras la recuperación")
                 } else {
                     lastAttemptAt = clockElapsedMs()
+                    retryAfterNoBinderDelay = retryDelayMs()
                     publishLocked(
                         stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
                         result = "Inicio enviado por ADB, pero Binder aún no responde; se reintentará",
                         binderAlive = false,
-                        failureCategory = NightDogRecovery.FailureCategory.BINDER_NOT_CONFIRMED
+                        failureCategory = NightDogRecovery.FailureCategory.BINDER_NOT_CONFIRMED,
+                        actionHint = NightDogRecovery.ActionHint.NONE
                     )
                 }
             }
-            if (shouldRefreshPid) refreshServerPid()
+            if (shouldRefreshPid) {
+                scheduler.cancelRecoveryRetries()
+                scheduler.clearActionNotification()
+                scheduler.schedulePeriodicHealthCheck()
+                refreshServerPid()
+            } else if (retryAfterNoBinderDelay != null) {
+                scheduler.scheduleNetworkRecovery(retryAfterNoBinderDelay!!)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            var postErrorAction: (() -> Unit)? = null
             synchronized(lock) {
                 if (!isCurrentAttemptLocked(attemptId)) return
                 if (pingBinder()) {
@@ -564,42 +1043,67 @@ internal class NightDogRecoveryEngine(
                 lastAttemptAt = clockElapsedMs()
                 val category = AdbFailureClassifier.classify(error)
                 val endpointText = currentEndpoint?.let { "${it.host}:${it.port}" }
+                val nextDelay = retryDelayMs()
                 logWarning("Recuperación fallida ($category): ${error.javaClass.simpleName}")
                 when (category) {
-                    NightDogRecovery.FailureCategory.AUTH_FAILED -> publishLocked(
-                        stage = NightDogRecovery.Stage.ERROR,
-                        result = "Fallo de autorización o emparejamiento ADB revocado. Vuelve a emparejar desde Nightzuku",
-                        binderAlive = false,
-                        endpoint = endpointText,
-                        failureCategory = category
-                    )
-                    NightDogRecovery.FailureCategory.OFFLINE -> publishLocked(
-                        stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
-                        result = if (endpointText != null) {
-                            "Endpoint ADB offline o inaccesible ($endpointText). Se reintentará"
-                        } else {
-                            "Endpoint ADB offline o inaccesible. Se reintentará"
-                        },
-                        binderAlive = false,
-                        endpoint = endpointText,
-                        failureCategory = category
-                    )
-                    NightDogRecovery.FailureCategory.SHELL_UNAVAILABLE -> publishLocked(
-                        stage = NightDogRecovery.Stage.ERROR,
-                        result = "ADB conectado, pero el transporte no permitió ejecutar shell. Se reintentará",
-                        binderAlive = false,
-                        endpoint = endpointText,
-                        failureCategory = category
-                    )
-                    else -> publishLocked(
-                        stage = NightDogRecovery.Stage.ERROR,
-                        result = "Falló la recuperación ADB (${error.javaClass.simpleName}). Se reintentará",
-                        binderAlive = false,
-                        endpoint = endpointText,
-                        failureCategory = category
-                    )
+                    NightDogRecovery.FailureCategory.AUTH_FAILED -> {
+                        val msg = "Fallo de autorización o emparejamiento ADB revocado. Vuelve a emparejar desde Nightzuku"
+                        publishLocked(
+                            stage = NightDogRecovery.Stage.ERROR,
+                            result = msg,
+                            binderAlive = false,
+                            endpoint = endpointText,
+                            failureCategory = category,
+                            actionHint = NightDogRecovery.ActionHint.OPEN_PAIRING
+                        )
+                        postErrorAction = {
+                            scheduler.notifyActionRequired(
+                                category,
+                                NightDogRecovery.ActionHint.OPEN_PAIRING,
+                                msg
+                            )
+                        }
+                    }
+                    NightDogRecovery.FailureCategory.OFFLINE -> {
+                        publishLocked(
+                            stage = NightDogRecovery.Stage.WAITING_FOR_ADB,
+                            result = if (endpointText != null) {
+                                "Endpoint ADB offline o inaccesible ($endpointText). Se reintentará"
+                            } else {
+                                "Endpoint ADB offline o inaccesible. Se reintentará"
+                            },
+                            binderAlive = false,
+                            endpoint = endpointText,
+                            failureCategory = category,
+                            actionHint = NightDogRecovery.ActionHint.NONE
+                        )
+                        postErrorAction = { scheduler.scheduleNetworkRecovery(nextDelay) }
+                    }
+                    NightDogRecovery.FailureCategory.SHELL_UNAVAILABLE -> {
+                        publishLocked(
+                            stage = NightDogRecovery.Stage.ERROR,
+                            result = "ADB conectado, pero el transporte no permitió ejecutar shell. Se reintentará",
+                            binderAlive = false,
+                            endpoint = endpointText,
+                            failureCategory = category,
+                            actionHint = NightDogRecovery.ActionHint.NONE
+                        )
+                        postErrorAction = { scheduler.scheduleNetworkRecovery(nextDelay) }
+                    }
+                    else -> {
+                        publishLocked(
+                            stage = NightDogRecovery.Stage.ERROR,
+                            result = "Falló la recuperación ADB (${error.javaClass.simpleName}). Se reintentará",
+                            binderAlive = false,
+                            endpoint = endpointText,
+                            failureCategory = category,
+                            actionHint = NightDogRecovery.ActionHint.NONE
+                        )
+                        postErrorAction = { scheduler.scheduleNetworkRecovery(nextDelay) }
+                    }
                 }
             }
+            postErrorAction?.invoke()
         } finally {
             synchronized(lock) {
                 if (activeAttemptId == attemptId) {
@@ -628,7 +1132,7 @@ internal class NightDogRecoveryEngine(
             if (!started || !pingBinder() || !isDesiredRunning() || pidJob?.isActive == true) return
             pidId = ++pidSequence
             activePidId = pidId
-            // ponytail: PID is diagnostic only; discover once per Binder attachment, not every poll.
+            // PID es solo diagnóstico; se resuelve una vez por conexión de Binder.
             pidJob = scope.launch {
                 runPidLookup(pidId)
             }
@@ -676,7 +1180,7 @@ internal class NightDogRecoveryEngine(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            // ponytail: ADB diagnostics must not downgrade a healthy Binder.
+            // Diagnóstico ADB nunca debe degradar un Binder activo.
             logDebug("PID no disponible: ${error.javaClass.simpleName}")
         } finally {
             synchronized(lock) {
@@ -693,7 +1197,8 @@ internal class NightDogRecoveryEngine(
         binderAlive: Boolean = pingBinder(),
         transport: String? = _snapshot.value.transport,
         endpoint: String? = _snapshot.value.endpoint,
-        failureCategory: NightDogRecovery.FailureCategory = _snapshot.value.failureCategory
+        failureCategory: NightDogRecovery.FailureCategory = _snapshot.value.failureCategory,
+        actionHint: NightDogRecovery.ActionHint = _snapshot.value.actionHint
     ) {
         if (!started && stage != NightDogRecovery.Stage.MANUALLY_STOPPED) return
         val desired = isDesiredRunning()
@@ -711,24 +1216,34 @@ internal class NightDogRecoveryEngine(
             recoveryCount = recoveryCount,
             lastBinderLostElapsedRealtime = lastBinderLostAt,
             lastRecoveryElapsedRealtime = lastRecoveryAt,
-            failureCategory = if (desired) failureCategory else NightDogRecovery.FailureCategory.NONE
+            failureCategory = if (desired) failureCategory else NightDogRecovery.FailureCategory.NONE,
+            actionHint = if (desired) actionHint else NightDogRecovery.ActionHint.NONE,
+            wifiConnected = lastWifiConnected,
+            wirelessAutoRestoreAttempted = wirelessAutoRestoreAttempted,
+            batteryOptimizationIgnored = systemEnv.isIgnoringBatteryOptimizations()
         )
     }
 
     companion object {
         private const val TAG = "NightDogRecovery"
         internal const val POLL_INTERVAL_MS = 4_000L
+        internal const val HEALTHY_POLL_INTERVAL_MS = 15_000L
         internal const val RECOVERY_SETTLE_MS = 1_500L
+        internal const val WIRELESS_ENABLE_SETTLE_MS = 1_500L
         internal const val BINDER_CONFIRM_TIMEOUT_MS = 6_000L
         internal const val BINDER_CONFIRM_POLL_MS = 300L
         internal const val MIN_RETRY_MS = 8_000L
         internal const val MAX_RETRY_MS = 60_000L
+        internal const val AUTO_ENABLE_COOLDOWN_MS = 60_000L
+        internal const val NETWORK_TRANSITION_GRACE_MS = 5_000L
+        internal const val EVENT_DEBOUNCE_MS = 1_500L
     }
 }
 
 /** Process-level watchdog that keeps the service aligned with the persisted desired state. */
 object NightDogRecovery {
 
+    private const val TAG = "NightDogRecovery"
     private const val PREFS_NAME = "nightdog_recovery"
     private const val KEY_DESIRED_RUNNING = "desired_running"
 
@@ -745,6 +1260,7 @@ object NightDogRecovery {
 
     enum class FailureCategory {
         NONE,
+        WIFI_DISCONNECTED,
         WIRELESS_DEBUGGING_DISABLED,
         ENDPOINT_ABSENT,
         OFFLINE,
@@ -752,6 +1268,14 @@ object NightDogRecovery {
         SHELL_UNAVAILABLE,
         BINDER_NOT_CONFIRMED,
         UNKNOWN
+    }
+
+    enum class ActionHint {
+        NONE,
+        OPEN_WIRELESS_DEBUGGING,
+        OPEN_PAIRING,
+        CONNECT_WIFI,
+        OPEN_BATTERY_SETTINGS
     }
 
     data class Snapshot(
@@ -768,13 +1292,57 @@ object NightDogRecovery {
         val recoveryCount: Int = 0,
         val lastBinderLostElapsedRealtime: Long = 0L,
         val lastRecoveryElapsedRealtime: Long = 0L,
-        val failureCategory: FailureCategory = FailureCategory.NONE
+        val failureCategory: FailureCategory = FailureCategory.NONE,
+        val actionHint: ActionHint = ActionHint.NONE,
+        val wifiConnected: Boolean? = null,
+        val wirelessAutoRestoreAttempted: Boolean = false,
+        val batteryOptimizationIgnored: Boolean? = null
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile private var applicationContext: Context? = null
     @Volatile private var listenersRegistered = false
+    @Volatile private var systemObserversRegistered = false
+
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var adbWifiObserver: ContentObserver? = null
+    private var deviceResumeReceiver: BroadcastReceiver? = null
+
+    private val systemEnv = object : NightDogSystemEnvironment {
+        override fun isWifiConnected(): Boolean =
+            applicationContext?.let { AdbTransportResolver.isWifiConnected(it) } ?: false
+
+        override fun hasLocalPersistentTcpEndpoint(): Boolean =
+            AdbTransportResolver.localPersistentTcpEndpoint() != null
+
+        override fun isAutoRestoreWirelessEnabled(): Boolean = runCatching {
+            ShizukuSettings.getPreferences() != null && ShizukuSettings.isAutoRestoreWirelessAdbEnabled()
+        }.getOrDefault(false)
+
+        override fun tryEnableWirelessDebugging(): WirelessDebuggingRestoreResult {
+            val ctx = applicationContext ?: return WirelessDebuggingRestoreResult.NotPermitted
+            return AdbTransportResolver.tryEnableWirelessDebugging(ctx)
+        }
+
+        override fun isIgnoringBatteryOptimizations(): Boolean? =
+            applicationContext?.let { AdbTransportResolver.isIgnoringBatteryOptimizations(it) }
+
+        override fun onServiceConfirmedRunning() {
+            runCatching {
+                if (ShizukuSettings.getPreferences() != null && Shizuku.pingBinder()) {
+                    val mode = if (Shizuku.getUid() == 0) {
+                        ShizukuSettings.LaunchMethod.ROOT
+                    } else {
+                        ShizukuSettings.LaunchMethod.ADB
+                    }
+                    ShizukuSettings.setLastLaunchMode(mode)
+                }
+            }
+        }
+    }
+
+    private val schedulerPort = AndroidNightDogSchedulerPort { applicationContext }
 
     private val engine = NightDogRecoveryEngine(
         scope = scope,
@@ -793,7 +1361,9 @@ object NightDogRecovery {
             val context = applicationContext ?: return@NightDogRecoveryEngine AdbDiscoveryResult.Absent
             AdbTransportResolver.discoverDetailed(context)
         },
-        openSession = { endpoint -> RealRecoveryAdbSession(endpoint) }
+        openSession = { endpoint -> RealRecoveryAdbSession(endpoint) },
+        systemEnv = systemEnv,
+        scheduler = schedulerPort
     )
 
     val snapshot: StateFlow<Snapshot> = engine.snapshot
@@ -809,18 +1379,47 @@ object NightDogRecovery {
     @Synchronized
     fun start(context: Context) {
         if (!isUserUnlocked(context)) return
-        applicationContext = context.applicationContext
-        ensureDesiredStateInitialized(context)
+        val appCtx = context.applicationContext
+        applicationContext = appCtx
+        ensureDesiredStateInitialized(appCtx)
         engine.start()
         if (!listenersRegistered) {
             Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
             Shizuku.addBinderDeadListener(binderDeadListener)
             listenersRegistered = true
         }
+        registerSystemObserversLocked(appCtx)
     }
 
     internal suspend fun awaitActiveRecovery(timeoutMs: Long) {
         engine.awaitActiveRecovery(timeoutMs)
+    }
+
+    @Synchronized
+    fun onBootOrUpgrade(context: Context, action: String?) {
+        if (!isUserUnlocked(context)) return
+        start(context)
+        engine.onBootUnlocked()
+    }
+
+    @Synchronized
+    fun onScheduledWakeup(context: Context, jobId: Int) {
+        if (!isUserUnlocked(context)) return
+        start(context)
+        val reason = when (jobId) {
+            NightDogJobScheduler.JOB_ID_NETWORK_RECOVERY -> "red disponible"
+            NightDogJobScheduler.JOB_ID_WIRELESS_SETTING_TRIGGER -> "ajuste adb_wifi_enabled"
+            NightDogJobScheduler.JOB_ID_PERIODIC_HEALTH -> "vigilancia periódica"
+            else -> "job#$jobId"
+        }
+        engine.onScheduledWakeup(reason)
+    }
+
+    @Synchronized
+    fun onBinderRequestWhileDead(context: Context) {
+        if (!isUserUnlocked(context)) return
+        start(context)
+        engine.onScheduledWakeup("solicitud rish/binder")
     }
 
     @Synchronized
@@ -855,8 +1454,117 @@ object NightDogRecovery {
             Shizuku.removeBinderDeadListener(binderDeadListener)
             listenersRegistered = false
         }
+        unregisterSystemObserversLocked()
         engine.stop()
         applicationContext = null
+    }
+
+    private fun registerSystemObserversLocked(context: Context) {
+        if (systemObserversRegistered) return
+        systemObserversRegistered = true
+
+        // 1. Observador de conectividad Wi-Fi / cambios de AP / cambios de IP
+        runCatching {
+            val cm = context.getSystemService(ConnectivityManager::class.java)
+            if (cm != null) {
+                val callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        dispatchNetworkSnapshot(context)
+                    }
+
+                    override fun onLost(network: Network) {
+                        dispatchNetworkSnapshot(context)
+                    }
+
+                    override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                        dispatchNetworkSnapshot(context)
+                    }
+
+                    override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                        dispatchNetworkSnapshot(context)
+                    }
+                }
+                val request = NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                    .build()
+                cm.registerNetworkCallback(request, callback)
+                networkCallback = callback
+            }
+        }.onFailure { Log.w(TAG, "No se pudo registrar NetworkCallback Wi-Fi", it) }
+
+        // 2. ContentObserver de Settings.Global.adb_wifi_enabled
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                val uri = Settings.Global.getUriFor(AdbTransportResolver.ADB_WIFI_ENABLED)
+                if (uri != null) {
+                    val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                        override fun onChange(selfChange: Boolean) {
+                            val state = AdbTransportResolver.wirelessDebuggingState(context)
+                            if (state == 0 || state == 1) {
+                                engine.onWirelessDebuggingSettingChanged(enabled = state == 1)
+                            }
+                        }
+                    }
+                    context.contentResolver.registerContentObserver(uri, false, observer)
+                    adbWifiObserver = observer
+                }
+            }.onFailure { Log.w(TAG, "No se pudo registrar ContentObserver de adb_wifi_enabled", it) }
+        }
+
+        // 3. Reanudación tras suspensión / Doze / desbloqueo
+        runCatching {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context, intent: Intent) {
+                    when (intent.action) {
+                        Intent.ACTION_USER_PRESENT -> engine.onDeviceResume()
+                        PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
+                            val pm = ctx.getSystemService(PowerManager::class.java)
+                            if (pm != null && !pm.isDeviceIdleMode) {
+                                engine.onDeviceResume()
+                            }
+                        }
+                    }
+                }
+            }
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_USER_PRESENT)
+                addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(receiver, filter)
+            }
+            deviceResumeReceiver = receiver
+        }.onFailure { Log.w(TAG, "No se pudo registrar receptor de reanudación", it) }
+    }
+
+    private fun unregisterSystemObserversLocked() {
+        if (!systemObserversRegistered) return
+        systemObserversRegistered = false
+        val context = applicationContext
+        networkCallback?.let { cb ->
+            runCatching {
+                context?.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb)
+            }
+        }
+        networkCallback = null
+
+        adbWifiObserver?.let { obs ->
+            runCatching { context?.contentResolver?.unregisterContentObserver(obs) }
+        }
+        adbWifiObserver = null
+
+        deviceResumeReceiver?.let { rcv ->
+            runCatching { context?.unregisterReceiver(rcv) }
+        }
+        deviceResumeReceiver = null
+    }
+
+    private fun dispatchNetworkSnapshot(context: Context) {
+        val wifi = AdbTransportResolver.isWifiConnected(context)
+        val fp = AdbTransportResolver.currentNetworkFingerprint(context)
+        engine.onNetworkChanged(wifiConnected = wifi, networkFingerprint = fp)
     }
 
     private fun isUserUnlocked(context: Context): Boolean =

@@ -54,6 +54,13 @@ class LabFeaturesActivity : AppActivity() {
         setContent {
             val scope = rememberCoroutineScope()
             var connectorEnabled by remember { mutableStateOf(ModuleSettings.isConnectorEnabled()) }
+            var autoRestoreWireless by remember { mutableStateOf(ShizukuSettings.isAutoRestoreWirelessAdbEnabled()) }
+            val hasWriteSecureSettings = remember {
+                moe.shizuku.manager.adb.AdbTransportResolver.hasWriteSecureSettingsPermission(this@LabFeaturesActivity)
+            }
+            val ignoringBattery = remember {
+                moe.shizuku.manager.adb.AdbTransportResolver.isIgnoringBatteryOptimizations(this@LabFeaturesActivity)
+            }
             var tcpEnabled by remember { mutableStateOf(ShizukuSettings.isAdbTcpEnabled()) }
             var tcpHost by remember { mutableStateOf(ShizukuSettings.getAdbTcpHost()) }
             var tcpPort by remember { mutableStateOf(ShizukuSettings.getAdbTcpPort().toString()) }
@@ -194,6 +201,38 @@ class LabFeaturesActivity : AppActivity() {
 
                         item {
                             SettingsGroup(title = "NightDog · recuperación") {
+                                NightzukuSwitchSettingsRow(
+                                    icon = R.drawable.ic_wadb_24,
+                                    title = "Restaurar depuración inalámbrica",
+                                    summary = if (hasWriteSecureSettings) {
+                                        "WRITE_SECURE_SETTINGS concedido. Reactiva adb_wifi_enabled tras reinicios o reconexión Wi-Fi si Android/MagicOS lo permite (respeta desactivación manual)."
+                                    } else {
+                                        "Requiere permiso WRITE_SECURE_SETTINGS concedido previamente por ADB; sin él Android exige activación manual."
+                                    },
+                                    checked = autoRestoreWireless,
+                                    onCheckedChange = { enabled ->
+                                        autoRestoreWireless = enabled
+                                        ShizukuSettings.setAutoRestoreWirelessAdbEnabled(enabled)
+                                    }
+                                )
+                                GroupDivider()
+                                SettingsRow(
+                                    icon = R.drawable.ic_settings_outline_24dp,
+                                    title = "Batería y segundo plano (MagicOS / Android)",
+                                    summary = if (ignoringBattery) {
+                                        "Sin restricción de optimización de batería."
+                                    } else {
+                                        "Optimización activa: MagicOS puede detener Nightzuku en segundo plano. Toca para configurar inicio manual."
+                                    },
+                                    onClick = {
+                                        moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.launch(
+                                            this@LabFeaturesActivity,
+                                            moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.batterySettingsIntent(this@LabFeaturesActivity),
+                                            moe.shizuku.manager.shizuku.NightDogSettingsShortcuts.appDetailsIntent(this@LabFeaturesActivity)
+                                        )
+                                    }
+                                )
+                                GroupDivider()
                                 SettingsRow(
                                     icon = R.drawable.ic_warning_24,
                                     title = "Probar recuperación automática",

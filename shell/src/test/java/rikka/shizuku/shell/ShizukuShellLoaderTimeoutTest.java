@@ -104,4 +104,26 @@ public class ShizukuShellLoaderTimeoutTest {
         assertEquals(1, aborts.get());
         assertFalse(guard.markBinderReceived());
     }
+
+    @Test
+    public void sesionRishProlongadaTrasRecibirBinderNuncaDisparaAbortoPorTimeout() {
+        FakeScheduler scheduler = new FakeScheduler();
+        AtomicInteger aborts = new AtomicInteger(0);
+        ShizukuShellLoader.BinderAcquisitionGuard guard =
+                new ShizukuShellLoader.BinderAcquisitionGuard(scheduler, aborts::incrementAndGet);
+
+        guard.arm(ShizukuShellLoader.BINDER_ACQUISITION_TIMEOUT_MS);
+        Runnable scheduled = scheduler.scheduledTask;
+        assertNotNull(scheduled);
+
+        // Binder llega dentro de la ventana y luego la sesión rish corre >10s (con cancelaciones adicionales).
+        assertTrue(guard.markBinderReceived());
+        guard.cancel();
+        guard.arm(ShizukuShellLoader.BINDER_ACQUISITION_TIMEOUT_MS);
+        assertNull("Re-armar después de adquirir Binder no debe programar timeout", scheduler.scheduledTask);
+
+        // Simula ejecución tardía del callback antiguo más allá de 5s
+        scheduled.run();
+        assertEquals(0, aborts.get());
+    }
 }

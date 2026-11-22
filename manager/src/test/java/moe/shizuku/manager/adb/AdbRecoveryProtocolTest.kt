@@ -70,6 +70,40 @@ class AdbRecoveryProtocolTest {
         assertTrue(AdbEndpointPolicy.isLocal("192.168.2.30", 45678, newNetwork))
     }
 
+    @Test
+    fun seleccionaIpv4LocalEntreMultiplesCandidatosAndroid16YDescartaRemotos() {
+        val selected = AdbEndpointPolicy.selectLocalHost(
+            candidates = listOf("192.168.1.99", "fe80::20%wlan0", "192.168.1.20"),
+            port = 41234,
+            localHosts = localHosts
+        )
+        assertEquals("192.168.1.20", selected)
+
+        val ipv6Only = AdbEndpointPolicy.selectLocalHost(
+            candidates = listOf("192.168.1.99", "fe80::20%wlan0"),
+            port = 41234,
+            localHosts = localHosts
+        )
+        assertEquals("fe80::20%wlan0", ipv6Only)
+
+        assertEquals(
+            null,
+            AdbEndpointPolicy.selectLocalHost(
+                candidates = listOf("192.168.1.99", "10.0.0.5"),
+                port = 41234,
+                localHosts = localHosts
+            )
+        )
+        assertEquals(
+            null,
+            AdbEndpointPolicy.selectLocalHost(
+                candidates = listOf("192.168.1.20"),
+                port = 0,
+                localHosts = localHosts
+            )
+        )
+    }
+
     // --- AdbMdns backoff ---
 
     @Test
