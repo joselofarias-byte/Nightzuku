@@ -134,7 +134,8 @@ internal class NightDogRecoveryEngine(
     private val minRetryMs: Long = MIN_RETRY_MS,
     private val maxRetryMs: Long = MAX_RETRY_MS,
     private val discoverAlternateEndpoint: suspend (AdbEndpoint) -> AdbEndpoint? = { null },
-    private val isWirelessDebuggingDisabled: () -> Boolean = { false }
+    private val isWirelessDebuggingDisabled: () -> Boolean = { false },
+    private val trace: (String) -> Unit = {}
 ) {
 
     private val lock = Any()
@@ -720,6 +721,7 @@ internal class NightDogRecoveryEngine(
 
         val attemptId = ++attemptSequence
         activeAttemptId = attemptId
+        trace("ATTEMPT_QUEUED id=$attemptId settleMs=$recoverySettleMs")
         recordRetryEventLocked("Intento $attemptId aceptado")
 
         recoveryJob = scope.launch {
@@ -731,9 +733,12 @@ internal class NightDogRecoveryEngine(
         var currentEndpoint: AdbEndpoint? = null
         var attemptPhase = "descubrimiento ADB"
         try {
+            val settleStart = clockElapsedMs()
+            trace("ATTEMPT_ENTER id=$attemptId")
             if (recoverySettleMs > 0L) {
                 delayMs(recoverySettleMs)
             }
+            trace("ATTEMPT_RESUMED id=$attemptId delayMs=${clockElapsedMs() - settleStart}")
             val skipForNoWifi = synchronized(lock) {
                 if (!isCurrentAttemptLocked(attemptId)) return
                 if (pingBinder()) {
@@ -775,7 +780,7 @@ internal class NightDogRecoveryEngine(
                 return
             }
 
-            var discovery = discoverEndpoint()
+            var discovery = traceDiscovery(attemptId, "initial") { discoverEndpoint() }
 
             if (discovery is AdbDiscoveryResult.WirelessDebuggingDisabled) {
                 val shouldTryAutoRestore = synchronized(lock) {
@@ -813,7 +818,7 @@ internal class NightDogRecoveryEngine(
                                     return
                                 }
                             }
-                            discovery = discoverEndpoint()
+                            discovery = traceDiscovery(attemptId, "after_restore") { discoverEndpoint() }
                         }
                         is WirelessDebuggingRestoreResult.SystemRejected -> {
                             val msg = "Android/MagicOS impidió reactivar la depuración inalámbrica (${restoreResult.reason}). Actívala en Opciones de desarrollador"
@@ -974,7 +979,9 @@ internal class NightDogRecoveryEngine(
 
                     try {
                         attemptPhase = "conexión y autenticación ADB"
+                        trace("ADB_AUTH_BEGIN id=$attemptId tls=${endpoint.requireTls} port=${endpoint.port}")
                         session.connect()
+                        trace("ADB_AUTH_OK id=$attemptId")
                         synchronized(lock) {
                             if (!isCurrentAttemptLocked(attemptId)) return
                             if (pingBinder()) {
@@ -983,9 +990,11 @@ internal class NightDogRecoveryEngine(
                             }
                         }
                         attemptPhase = "verificación de shell"
+                        trace("ADB_PROBE_BEGIN id=$attemptId")
                         if (!session.verifyShell()) {
                             throw AdbShellUnavailableException("El transporte ADB no permitió ejecutar un comando shell")
                         }
+                        trace("ADB_PROBE_OK id=$attemptId")
                         synchronized(lock) {
                             if (!isCurrentAttemptLocked(attemptId)) return
                             if (pingBinder()) {
@@ -1009,7 +1018,9 @@ internal class NightDogRecoveryEngine(
                         }
                         attemptPhase = "inicio del servidor"
                         launchSubmitted = true
-                    session.startServer()
+                        trace("SERVER_START_BEGIN id=$attemptId")
+                        session.startServer()
+                        trace("SERVER_START_RETURNED id=$attemptId")
                     } finally {
                         synchronized(lock) {
                             if (recoverySession === session) recoverySession = null
@@ -1021,6 +1032,9 @@ internal class NightDogRecoveryEngine(
                     throw error
                 } catch (error: Exception) {
                     val previous = currentEndpoint ?: throw error
+                    val category = AdbFailureClassifier.classify(error)
+                    trace("ADB_STEP_FAILURE id=$attemptId phase=$attemptPhase category=$category " +
+                        "tls=${previous.requireTls} port=${previous.port} submitted=$launchSubmitted")
                     if (usedAlternate || !AdbTransportResolver.canTryAlternate(error, launchSubmitted)) {
                         throw error
                     }
@@ -1055,7 +1069,10 @@ internal class NightDogRecoveryEngine(
                         }
                         if (restored && wirelessEnableSettleMs > 0L) delayMs(wirelessEnableSettleMs)
                     }
-                    val alternate = discoverAlternateEndpoint(previous) ?: throw error
+                    trace("ADB_ALTERNATE_BEGIN id=$attemptId")
+                    val alternate = discoverAlternateEndpoint(previous)
+                    trace("ADB_ALTERNATE_END id=$attemptId found=${alternate != null}")
+                    if (alternate == null) throw error
                     synchronized(lock) {
                         if (!isCurrentAttemptLocked(attemptId)) return
                         recordRetryEventLocked(
@@ -1068,7 +1085,9 @@ internal class NightDogRecoveryEngine(
             }
 
             attemptPhase = "confirmación de Binder"
+            trace("BINDER_WAIT_BEGIN id=$attemptId timeoutMs=$binderConfirmTimeoutMs")
             val confirmed = awaitBinderConfirmation(attemptId)
+            trace("BINDER_WAIT_END id=$attemptId confirmed=$confirmed")
             var shouldRefreshPid = false
             var retryAfterNoBinderDelay: Long? = null
             synchronized(lock) {
@@ -1174,11 +1193,26 @@ internal class NightDogRecoveryEngine(
             }
             postErrorAction?.invoke()
         } finally {
+            trace("ATTEMPT_END id=$attemptId phase=$attemptPhase")
             synchronized(lock) {
                 if (activeAttemptId == attemptId) {
                     recoveryJob = null
                 }
             }
+        }
+    }
+
+    private suspend fun traceDiscovery(
+        attemptId: Long,
+        phase: String,
+        discover: suspend () -> AdbDiscoveryResult
+    ): AdbDiscoveryResult {
+        val startedAt = clockElapsedMs()
+        trace("ADB_DISCOVERY_BEGIN id=$attemptId phase=$phase")
+        return try {
+            discover()
+        } finally {
+            trace("ADB_DISCOVERY_END id=$attemptId phase=$phase durationMs=${clockElapsedMs() - startedAt}")
         }
     }
 
@@ -1243,6 +1277,7 @@ internal class NightDogRecoveryEngine(
             synchronized(lock) {
                 if (started && pidId == activePidId && pid != null && isDesiredRunning() && pingBinder()) {
                     currentServerPid = pid
+                    trace("SERVER_PID pid=$pid")
                     markRunningLocked("Binder responde correctamente")
                 }
             }
@@ -1276,6 +1311,7 @@ internal class NightDogRecoveryEngine(
 
     private fun recordRecoveryEventLocked(detail: String) {
         if (recoveryTimeline.lastOrNull()?.substringAfter(' ') == detail) return
+        trace(detail)
         val time = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT)
             .format(java.util.Date())
         if (recoveryTimeline.size >= 32) recoveryTimeline.removeFirst()
@@ -1413,6 +1449,7 @@ object NightDogRecovery {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var adbWifiObserver: ContentObserver? = null
     private var deviceResumeReceiver: BroadcastReceiver? = null
+    private var traceSampler: Job? = null
 
     private val systemEnv = object : NightDogSystemEnvironment {
         override fun isWifiConnected(): Boolean =
@@ -1475,16 +1512,19 @@ object NightDogRecovery {
             applicationContext?.let { AdbTransportResolver.wirelessDebuggingState(it) == 0 } ?: false
         },
         systemEnv = systemEnv,
-        scheduler = schedulerPort
+        scheduler = schedulerPort,
+        trace = { detail -> applicationContext?.let { NightDogTrace.record(it, detail) } }
     )
 
     val snapshot: StateFlow<Snapshot> = engine.snapshot
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        applicationContext?.let { NightDogTrace.record(it, "BINDER_MANAGER_RECEIVED") }
         engine.onBinderReceived()
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        applicationContext?.let { NightDogTrace.record(it, "BINDER_MANAGER_DEAD") }
         engine.onBinderDead()
     }
 
@@ -1501,6 +1541,37 @@ object NightDogRecovery {
             listenersRegistered = true
         }
         registerSystemObserversLocked(appCtx)
+        if (traceSampler?.isActive != true) {
+            NightDogTrace.record(appCtx, "MANAGER_TRACE_START ${NightDogTrace.state(appCtx)}")
+            traceSampler = scope.launch {
+                var expectedAt = SystemClock.elapsedRealtime()
+                var previousUptime = SystemClock.uptimeMillis()
+                var previousElapsed = expectedAt
+                while (isActive) {
+                    val now = SystemClock.elapsedRealtime()
+                    val uptime = SystemClock.uptimeMillis()
+                    val state = snapshot.value
+                    val managerBinderAlive = Shizuku.pingBinder()
+                    val healthy = managerBinderAlive && state.binderAlive && state.stage == Stage.RUNNING
+                    val stable = healthy && state.runningSinceElapsedRealtime > 0L &&
+                        now - state.runningSinceElapsedRealtime >= NightDogTrace.HEALTHY_RETENTION_MS
+                    val sleepMs = (now - previousElapsed - (uptime - previousUptime)).coerceAtLeast(0L)
+                    NightDogTrace.record(
+                        appCtx,
+                        "HEARTBEAT stage=${state.stage} desired=${state.desiredRunning} " +
+                            "binder=$managerBinderAlive snapshotBinder=${state.binderAlive} serverPid=${state.serverPid} " +
+                            "wifi=${state.wifiConnected} lagMs=${(now - expectedAt).coerceAtLeast(0L)} " +
+                            "suspendedMs=$sleepMs ${NightDogTrace.state(appCtx)}",
+                        stable = stable
+                    )
+                    previousElapsed = now
+                    previousUptime = uptime
+                    val interval = if (healthy || !state.desiredRunning) 300_000L else 60_000L
+                    expectedAt = now + interval
+                    delay(interval)
+                }
+            }
+        }
     }
 
     internal suspend fun awaitActiveRecovery(timeoutMs: Long) {
@@ -1566,6 +1637,8 @@ object NightDogRecovery {
             Shizuku.removeBinderDeadListener(binderDeadListener)
             listenersRegistered = false
         }
+        traceSampler?.cancel()
+        traceSampler = null
         unregisterSystemObserversLocked()
         engine.stop()
         applicationContext = null

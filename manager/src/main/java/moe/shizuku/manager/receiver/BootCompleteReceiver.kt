@@ -15,6 +15,7 @@ import moe.shizuku.manager.AppConstants
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.ShizukuSettings.LaunchMethod
 import moe.shizuku.manager.shizuku.NightDogRecovery
+import moe.shizuku.manager.shizuku.NightDogTrace
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
@@ -30,6 +31,8 @@ class BootCompleteReceiver : BroadcastReceiver() {
         ) {
             return
         }
+
+        NightDogTrace.boot(context, "BOOT_RECEIVER action=$action ${NightDogTrace.state(context)}")
 
         // Safe Mode deliberately suppresses third-party recovery paths. Trying to
         // recreate a privileged service there works against Android's recovery
@@ -60,7 +63,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
             rootStart()
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             NightDogRecovery.onBootOrUpgrade(context, action)
-            adbStart()
+            adbStart(context, action)
         } else {
             Log.w(AppConstants.TAG, "No support start on boot")
         }
@@ -76,7 +79,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun adbStart() {
+    private fun adbStart(context: Context, action: String?) {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -88,6 +91,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
             } catch (error: Exception) {
                 Log.w(AppConstants.TAG, "Falló la espera de recuperación ADB tras el arranque", error)
             } finally {
+                NightDogTrace.record(context, "BOOT_WAIT_FINISH action=$action")
                 pending.finish()
             }
         }

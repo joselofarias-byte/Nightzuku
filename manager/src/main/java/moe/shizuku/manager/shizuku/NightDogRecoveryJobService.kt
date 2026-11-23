@@ -2,6 +2,7 @@ package moe.shizuku.manager.shizuku
 
 import android.app.job.JobParameters
 import android.app.job.JobService
+import android.os.Build
 import android.os.UserManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,7 @@ class NightDogRecoveryJobService : JobService() {
     private var activeJob: Job? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
+        NightDogTrace.record(this, "JOB_START id=${params.jobId} ${NightDogTrace.state(this)}")
         val unlocked = runCatching {
             getSystemService(UserManager::class.java)?.isUserUnlocked ?: true
         }.getOrDefault(false)
@@ -53,6 +55,7 @@ class NightDogRecoveryJobService : JobService() {
                 Log.w(TAG, "Ejecución de NightDogRecoveryJobService interrumpida (jobId=$jobId)", error)
             } finally {
                 // La programación de reintentos y triggers la gestiona NightDogRecoveryEngine.
+                NightDogTrace.record(this@NightDogRecoveryJobService, "JOB_FINISH id=$jobId")
                 jobFinished(params, false)
             }
         }
@@ -60,6 +63,8 @@ class NightDogRecoveryJobService : JobService() {
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
+        val reason = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) params.stopReason else null
+        NightDogTrace.record(this, "JOB_STOP id=${params.jobId} reason=$reason")
         activeJob?.cancel()
         activeJob = null
         return false

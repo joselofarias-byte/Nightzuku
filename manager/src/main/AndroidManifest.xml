@@ -200,6 +200,16 @@
         </receiver>
 
         <provider
+            android:name=".shizuku.NightDogTraceProvider"
+            android:authorities="${applicationId}.nightdog.trace"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/nightdog_export_paths" />
+        </provider>
+
+        <provider
             android:name=".ShizukuManagerProvider"
             android:authorities="${applicationId}.shizuku"
             android:directBootAware="true"

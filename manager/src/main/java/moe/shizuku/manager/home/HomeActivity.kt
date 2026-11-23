@@ -81,7 +81,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.shizuku.manager.BuildConfig
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
@@ -95,6 +100,7 @@ import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.settings.SettingsActivity
 import moe.shizuku.manager.shell.ShellTutorialActivity
 import moe.shizuku.manager.shizuku.NightDogRecovery
+import moe.shizuku.manager.shizuku.NightDogTrace
 import moe.shizuku.manager.starter.Starter
 import moe.shizuku.manager.starter.StarterActivity
 import moe.shizuku.manager.ui.compose.ShizukuExpressiveTheme
@@ -133,6 +139,7 @@ abstract class HomeActivity : AppActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        NightDogTrace.record(this, "MANAGER_UI_CREATE")
         super.onCreate(savedInstanceState)
 
         setContent {
@@ -343,8 +350,27 @@ abstract class HomeActivity : AppActivity() {
     }
 
     private fun shareDiagnostics(text: String) {
-        val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
-        startActivity(Intent.createChooser(intent, getString(R.string.home_diagnostics_share)))
+        lifecycleScope.launch {
+            val trace = withContext(Dispatchers.IO) {
+                runCatching { NightDogTrace.export(applicationContext) }.getOrElse {
+                    android.util.Log.w("NightDogTrace", "Error al exportar la traza", it)
+                    null
+                }
+            }
+            val uri = trace?.let {
+                FileProvider.getUriForFile(this@HomeActivity, "$packageName.nightdog.trace", it)
+            }
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+                if (uri != null) {
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newRawUri("NightDog", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+            startActivity(Intent.createChooser(intent, getString(R.string.home_diagnostics_share)))
+        }
     }
 
     companion object {

@@ -136,7 +136,12 @@ internal object NightDogJobScheduler {
             .setOverrideDeadline(clampedDelay + 120_000L)
             .setPersisted(true)
         runCatching { scheduler.schedule(builder.build()) }
-            .onFailure { Log.w(TAG, "No se pudo programar JOB_ID_NETWORK_RECOVERY", it) }
+            .onSuccess { result ->
+                NightDogTrace.record(context, "JOB_SCHEDULE id=$JOB_ID_NETWORK_RECOVERY result=$result minMs=$clampedDelay deadlineMs=${clampedDelay + 120_000L} network=unmetered")
+            }.onFailure {
+                NightDogTrace.record(context, "JOB_SCHEDULE_ERROR id=$JOB_ID_NETWORK_RECOVERY")
+                Log.w(TAG, "No se pudo programar JOB_ID_NETWORK_RECOVERY", it)
+            }
     }
 
     fun scheduleWirelessSettingTrigger(context: Context) {
@@ -148,7 +153,12 @@ internal object NightDogJobScheduler {
             .setTriggerContentUpdateDelay(500L)
             .setTriggerContentMaxDelay(3_000L)
         runCatching { scheduler.schedule(builder.build()) }
-            .onFailure { Log.w(TAG, "No se pudo programar JOB_ID_WIRELESS_SETTING_TRIGGER", it) }
+            .onSuccess { result ->
+                NightDogTrace.record(context, "JOB_SCHEDULE id=$JOB_ID_WIRELESS_SETTING_TRIGGER result=$result trigger=adb_wifi_enabled")
+            }.onFailure {
+                NightDogTrace.record(context, "JOB_SCHEDULE_ERROR id=$JOB_ID_WIRELESS_SETTING_TRIGGER")
+                Log.w(TAG, "No se pudo programar JOB_ID_WIRELESS_SETTING_TRIGGER", it)
+            }
     }
 
     fun schedulePeriodicHealthCheck(context: Context) {
@@ -160,7 +170,12 @@ internal object NightDogJobScheduler {
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE)
             .setPersisted(true)
         runCatching { scheduler.schedule(builder.build()) }
-            .onFailure { Log.w(TAG, "No se pudo programar JOB_ID_PERIODIC_HEALTH", it) }
+            .onSuccess { result ->
+                NightDogTrace.record(context, "JOB_SCHEDULE id=$JOB_ID_PERIODIC_HEALTH result=$result intervalMs=$PERIODIC_HEALTH_INTERVAL_MS")
+            }.onFailure {
+                NightDogTrace.record(context, "JOB_SCHEDULE_ERROR id=$JOB_ID_PERIODIC_HEALTH")
+                Log.w(TAG, "No se pudo programar JOB_ID_PERIODIC_HEALTH", it)
+            }
     }
 
     fun cancelRecoveryRetries(context: Context) {
