@@ -15,9 +15,12 @@ fi
 
 read_key() {
     local type blob extra
-    read -r type blob extra < "$1"
-    [[ "$type" == ecdsa-sha2-nistp256 && "$blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]
-    ssh-keygen -lf <(printf '%s %s\n' "$type" "$blob") >/dev/null
+    if ! read -r type blob extra < "$1" ||
+        [[ "$type" != ecdsa-sha2-nistp256 || ! "$blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] ||
+        ! ssh-keygen -lf <(printf '%s %s\n' "$type" "$blob") >/dev/null; then
+        printf 'Clave pública ECDSA P-256 inválida: %s\n' "$1" >&2
+        return 2
+    fi
     printf '%s %s' "$type" "$blob"
 }
 operator_key="$(read_key "$1")"

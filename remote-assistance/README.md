@@ -4,7 +4,7 @@ Instala el mismo APK en los dos teléfonos. En **Recibir asistencia**, la person
 
 ## Configuración una sola vez con Tailscale
 
-1. Conecta los dos teléfonos y el Oracle al mismo tailnet. En la política de acceso, permite que solo esos teléfonos lleguen al puerto TCP 2222 del Oracle.
+1. Conecta los dos teléfonos y el Oracle al mismo tailnet. En la política de acceso, permite que solo esos teléfonos lleguen al puerto TCP 2222 del Oracle. El puerto 5555 del Android no se necesita en las reglas de acceso del tailnet.
 2. En cada teléfono, elige su rol y pulsa **Ver clave pública SSH**. Guarda las claves públicas en el Oracle como `operador.pub` y `asistido.pub`.
 3. En el Oracle Ubuntu con OpenSSH y Tailscale instalados, ejecuta:
 
