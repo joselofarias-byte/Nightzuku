@@ -1,6 +1,6 @@
-# JolufaSoft Remote 1.5.0
+# JolufaSoft Remote 1.6.0
 
-Instala el APK en ambos teléfonos y únelos a la misma red de Tailscale que el Oracle. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
+Instala el APK en ambos teléfonos y selecciona el mismo servidor en los dos. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 
 ## Acceso HTTPS con Caddy
 
@@ -11,11 +11,9 @@ El instalador valida Caddy y conserva los otros sitios. La API y el túnel WebSo
 HTTPS en el 443. El SSH del relay también escucha en bucle local y sus cuentas se autentican
 con la llave privada de cada instalación. Los puertos internos de ADB y del relay no se publican.
 
-Con la 1.5.0, ingresa el dominio público y registra cada teléfono una vez con su cuenta y contraseña.
-Para cambiar un equipo ya registrado con Tailscale, cierra sesión en ese modo y selecciona el
-dominio público al volver a entrar. La llave se conserva al actualizar sobre una build con la
-misma firma, y la API emite la autorización del túnel en el primer registro HTTPS.
-El dominio `.ts.net` sigue usando el transporte anterior.
+El selector muestra `remoto.jolufasoft.com` como opción principal. La etiqueta guardada `remoto` se resuelve al dominio completo. En **Menú ⋮ → Configuración de servidores** puedes añadir, editar o quitar dominios personalizados. El formulario de inicio solo permite elegir un servidor. Para cambiar de servidor con una sesión activa, la app pide confirmar el cierre y exige iniciar sesión en el nuevo destino.
+
+El respaldo **Tailscale · Oracle A1 Hop** usa la ruta privada del mismo Oracle. Un VPS independiente se añade por dominio una vez que tiene su propio relay operativo y cuentas configuradas.
 
 ## Oracle
 
@@ -35,17 +33,18 @@ Al cambiar una contraseña o desactivar una cuenta se revocan sus credenciales p
 
 En una instalación existente, actualiza `/etc/jremote-login/relay-login.py` y reinicia solo `jremote-login.service`. La API migra las dos cuentas iniciales y los equipos registrados durante el arranque.
 
-## Nombres visibles y bloqueo local
+## Nombres visibles, avatares y bloqueo local
 
 Los catálogos de cuentas y teléfonos usan un selector desplegable. El administrador puede editar el nombre visible de una cuenta o de un teléfono. Las cuentas mantienen su usuario de acceso y un nombre de teléfono elegido por el administrador se conserva al volver a registrar el mismo dispositivo con la misma cuenta.
+
+Toca el avatar junto al menú para elegir gato, robot, zorro o planeta. La selección se guarda en ese teléfono por modo de asistencia.
 
 En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configurar un PIN local, una contraseña local o el desbloqueo de Android (biometría fuerte o credencial del dispositivo, en Android 11 o posterior). Se solicita al volver con la aplicación en segundo plano y al volver a abrirla. **Bloquear ahora** permite hacerlo de inmediato. El bloqueo protege la interfaz del teléfono y la asistencia en segundo plano sigue disponible.
 
 ## Teléfonos
 
-- **Recibir asistencia** usa `remote-device-01` y su contraseña. Al iniciar sesión, ponle un nombre al teléfono y habilita la disponibilidad. Se mantiene mientras Tailscale y el ADB local autorizado de Nightzuku estén disponibles. Puedes desactivarla desde la notificación.
+- **Recibir asistencia** usa `remote-device-01` y su contraseña. Al iniciar sesión, ponle un nombre al teléfono y habilita la disponibilidad. Se mantiene mientras el servidor elegido y el ADB local autorizado estén disponibles. La puesta en marcha del ADB en el teléfono asistido sigue dependiendo de un componente externo como Nightzuku. Puedes desactivarla desde la notificación.
 - **Dar asistencia** usa `remote-operator-01` y su contraseña. Pulsa **Teléfonos** y elige el equipo. Acepta una vez en el equipo asistido la autorización ADB del cliente si Android la pide. Los teléfonos registrados aparecen en la lista aunque estén apagados o la disponibilidad esté desactivada.
-- En ambos modos se ingresa el mismo nombre `.ts.net` que imprime el instalador.
 
 ## Compilación
 
@@ -53,4 +52,4 @@ En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configura
 
 `bash build-android.sh local` compila explícitamente para pruebas y deja el resultado en `dist/local`.
 
-Para preconfigurar la pantalla de inicio, define `ORG_GRADLE_PROJECT_jremoteDefaultServer` con el nombre completo de Tailscale antes de compilar. El campo Servidor aparecerá como **remoto**.
+Para preconfigurar un dominio principal distinto antes de compilar, define `ORG_GRADLE_PROJECT_jremoteDefaultServer` con el nombre completo.

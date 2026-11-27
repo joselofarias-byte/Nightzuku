@@ -1,12 +1,12 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..c1668fa 100644
+index 6a5a392..bfd07c9 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
  fun buildConfigString(value: String): String =
      "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
  
-+val assistDefaultServer = providers.gradleProperty("jremoteDefaultServer").orElse("")
++val assistDefaultServer = providers.gradleProperty("jremoteDefaultServer").orElse("remoto.jolufasoft.com")
 +
  val abiSplitsEnabled = providers.gradleProperty("abiSplits").map {
      it.toBooleanStrictOrNull()
@@ -21,8 +21,8 @@ index 6a5a392..c1668fa 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 8
-+        versionName = "1.5.0"
++        versionCode = 9
++        versionName = "1.6.0"
 +        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
@@ -584,7 +584,7 @@ index 0000000..65dfb10
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
 new file mode 100644
-index 0000000..6e923ff
+index 0000000..04bd764
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
 @@ -0,0 +1,61 @@
@@ -600,6 +600,7 @@ index 0000000..6e923ff
 +
 +internal object RelayLogin {
 +    const val DEFAULT_ALIAS = "remoto"
++    const val TAILSCALE_SERVER = "jolufa-a1-always-free-2cpu-12gb.tailf7133f.ts.net"
 +
 +    fun resolveServer(input: String, defaultServer: String = BuildConfig.ASSIST_DEFAULT_SERVER): String {
 +        val host = input.trim().lowercase()
@@ -607,8 +608,7 @@ index 0000000..6e923ff
 +    }
 +
 +    fun displayServer(server: String): String =
-+        if (validServer(BuildConfig.ASSIST_DEFAULT_SERVER) &&
-+            (server.isEmpty() || server == BuildConfig.ASSIST_DEFAULT_SERVER)) DEFAULT_ALIAS else server
++        resolveServer(server.ifBlank { DEFAULT_ALIAS })
 +
 +    fun validServer(host: String): Boolean =
 +        host.length in 4..253 && '.' in host && host.last().isLetter() &&
@@ -1224,16 +1224,17 @@ index b07e364..88ab4b2 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..a4ea6fa
+index 0000000..c384adc
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,852 @@
+@@ -0,0 +1,1020 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
 +import android.app.AlertDialog
 +import android.content.ClipData
 +import android.content.ClipboardManager
++import android.content.SharedPreferences
 +import android.content.res.ColorStateList
 +import android.graphics.Typeface
 +import android.graphics.drawable.GradientDrawable
@@ -1251,6 +1252,7 @@ index 0000000..a4ea6fa
 +import android.widget.PopupMenu
 +import android.widget.Spinner
 +import android.widget.EditText
++import android.widget.ImageButton
 +import android.widget.LinearLayout
 +import android.widget.ProgressBar
 +import android.widget.RadioButton
@@ -1295,11 +1297,13 @@ index 0000000..a4ea6fa
 +    private lateinit var assisted: RadioButton
 +    private lateinit var action: Button
 +    private lateinit var menu: Button
++    private lateinit var avatar: ImageButton
++    private lateinit var servers: Button
 +    private lateinit var status: TextView
 +    private lateinit var feedback: TextView
 +    private lateinit var deviceNameRow: LinearLayout
 +    private lateinit var passwordReveal: Button
-+    private lateinit var serverInput: EditText
++    private var selectedServer = ""
 +    private lateinit var userInput: EditText
 +    private lateinit var passwordInput: EditText
 +    private lateinit var deviceName: EditText
@@ -1325,6 +1329,13 @@ index 0000000..a4ea6fa
 +        header.addView(label(R.string.app_name, 26f, bold = true).apply {
 +            ViewCompat.setAccessibilityHeading(this, true)
 +        }, LinearLayout.LayoutParams(0, -2, 1f))
++        avatar = ImageButton(this).apply {
++            setBackgroundResource(android.R.drawable.list_selector_background)
++            setPadding(dp(3), dp(3), dp(3), dp(3))
++            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
++            setOnClickListener { chooseAvatar() }
++        }
++        header.addView(avatar, LinearLayout.LayoutParams(dp(48), dp(48)))
 +        menu = Button(this).apply {
 +            text = "⋮"
 +            textSize = 26f
@@ -1351,7 +1362,7 @@ index 0000000..a4ea6fa
 +        val panel = layout.card()
 +        status = label(R.string.assist_login_hint, 14f, tone = R.color.assist_muted).also(panel::addView)
 +        form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }.also(panel::addView)
-+        serverInput = form.field(R.string.assist_host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
++        servers = form.button(R.string.assist_choose_server) { chooseServer(servers) }
 +        userInput = form.field(R.string.assist_ssh_user, InputType.TYPE_CLASS_TEXT)
 +        passwordInput = form.field(R.string.assist_password, PASSWORD_INPUT)
 +        passwordReveal = form.button(R.string.assist_show_password) { setPasswordVisible(!passwordVisible()) }
@@ -1363,7 +1374,7 @@ index 0000000..a4ea6fa
 +            setPadding(0, dp(10), 0, dp(4))
 +        }.also(panel::addView)
 +        action = panel.button(R.string.assist_sign_in, primary = true, callback = ::submit)
-+        listOf(serverInput, userInput, passwordInput, deviceName).forEach { field ->
++        listOf(userInput, passwordInput, deviceName).forEach { field ->
 +            field.doAfterTextChanged { field.error = null; feedback.visibility = View.GONE }
 +        }
 +        val page = ScrollView(this).apply {
@@ -1394,7 +1405,7 @@ index 0000000..a4ea6fa
 +    private fun account(role: AssistRole = this.role): String =
 +        if (role == AssistRole.DEVICE) "remote-device-01" else "remote-operator-01"
 +
-+    private fun server(): String = login.getString("server.${role.name}", "").orEmpty()
++    private fun server(): String = RelayLogin.resolveServer(login.getString("server.${role.name}", "").orEmpty())
 +    private fun token(): String = login.getString("token", "").orEmpty()
 +    private fun enrolled(): Boolean = server().isNotEmpty() &&
 +        if (role == AssistRole.DEVICE) preferences.profile(role).isValid() else token().isNotEmpty()
@@ -1407,7 +1418,8 @@ index 0000000..a4ea6fa
 +    }
 +
 +    private fun loadRole() {
-+        serverInput.setText(RelayLogin.displayServer(server().ifBlank { login.getString("lastServer", "").orEmpty() }))
++        updateSelectedServer(RelayLogin.displayServer(server().ifBlank { login.getString("lastServer", "").orEmpty() }))
++        updateAvatar()
 +        userInput.setText(account())
 +        passwordInput.setText("")
 +        setPasswordVisible(false)
@@ -1421,7 +1433,7 @@ index 0000000..a4ea6fa
 +        val registered = enrolled()
 +        updateMode(operator, !receive)
 +        updateMode(assisted, receive)
-+        listOf(serverInput, userInput, passwordInput, passwordReveal, deviceName).forEach { it.isEnabled = !busy }
++        listOf(servers, avatar, userInput, passwordInput, passwordReveal, deviceName).forEach { it.isEnabled = !busy }
 +        form.visibility = if (registered) View.GONE else View.VISIBLE
 +        status.setText(when {
 +            busy -> R.string.assist_connecting
@@ -1450,14 +1462,17 @@ index 0000000..a4ea6fa
 +            if (role == AssistRole.DEVICE) confirmAvailability() else refreshDevices()
 +            return
 +        }
-+        val host = RelayLogin.resolveServer(serverInput.text.toString())
++        val host = selectedServer
 +        val username = userInput.text.toString().trim()
 +        val password = passwordInput.text.toString()
 +        val name = deviceName.text.toString().trim()
 +        val selectedRole = role
 +        feedback.visibility = View.GONE
++        if (!RelayLogin.validServer(host)) {
++            message(R.string.assist_bad_server)
++            return
++        }
 +        val invalid = listOfNotNull(
-+            (serverInput to R.string.assist_bad_server).takeUnless { RelayLogin.validServer(host) },
 +            (userInput to R.string.assist_bad_username).takeUnless { USERNAME.matches(username) },
 +            (passwordInput to R.string.assist_bad_password).takeUnless { password.length in 1..256 },
 +            (deviceName to R.string.assist_bad_device_name).takeIf { selectedRole == AssistRole.DEVICE && name.length !in 1..60 },
@@ -1476,6 +1491,7 @@ index 0000000..a4ea6fa
 +                    .put("role", account(selectedRole)).put("websocket", RelayLogin.usesWebSocket(host)))
 +            }
 +            val edit = login.edit().putString("server.${selectedRole.name}", host).putString("lastServer", host)
++            rememberServer(edit, host)
 +            if (selectedRole == AssistRole.DEVICE) {
 +                preferences.save(selectedRole, RelayLogin.profile(response, host, account(selectedRole)))
 +                edit.putString("deviceName", name)
@@ -1495,6 +1511,154 @@ index 0000000..a4ea6fa
 +        if (role == AssistRole.OPERATOR) edit.remove("token").remove("admin")
 +        edit.apply()
 +        loadRole()
++    }
++
++    private fun customServers() = login.getStringSet("customServers", emptySet()).orEmpty()
++
++    private fun rememberServer(edit: SharedPreferences.Editor, host: String) {
++        val knownHosts = customServers()
++        if (host != RelayLogin.displayServer("") && host != RelayLogin.TAILSCALE_SERVER && host !in knownHosts) {
++            edit.putStringSet("customServers", knownHosts + host)
++        }
++    }
++
++    private fun updateSelectedServer(host: String) {
++        selectedServer = host
++        servers.text = getString(R.string.assist_server_selected, host)
++    }
++
++    private fun chooseServer(anchor: View) {
++        val principal = RelayLogin.displayServer("")
++        val known = linkedMapOf(principal to getString(R.string.assist_server_primary, principal))
++        known[RelayLogin.TAILSCALE_SERVER] = getString(R.string.assist_server_tailscale)
++        (customServers() + selectedServer).sorted().forEach { host ->
++            if (RelayLogin.validServer(host)) known.putIfAbsent(host, host)
++        }
++        val choices = known.keys.toList()
++        PopupMenu(this, anchor).apply {
++            known.values.forEachIndexed { index, title -> menu.add(0, index, index, title) }
++            setOnMenuItemClickListener { item ->
++                selectServer(choices[item.itemId])
++                true
++            }
++            show()
++        }
++    }
++
++    private fun selectServer(host: String) {
++        if (enrolled() && server() == host) return
++        val apply = {
++            login.edit().putString("lastServer", host).also { rememberServer(it, host) }.apply()
++            if (enrolled()) logOut()
++            updateSelectedServer(host)
++            passwordInput.setText("")
++        }
++        if (enrolled()) {
++            AlertDialog.Builder(this).setTitle(R.string.assist_choose_server)
++                .setMessage(getString(R.string.assist_server_sign_out, host))
++                .setPositiveButton(android.R.string.ok) { _, _ -> apply() }
++                .setNegativeButton(android.R.string.cancel, null).show()
++        } else {
++            apply()
++        }
++    }
++
++    private fun configureServers() {
++        val editable = customServers().sorted()
++        val options = editable + getString(R.string.assist_add_server)
++        AlertDialog.Builder(this).setTitle(R.string.assist_server_settings)
++            .setItems(options.toTypedArray()) { _, index -> editServer(editable.getOrNull(index)) }
++            .setNegativeButton(android.R.string.cancel, null).show()
++    }
++
++    private fun editServer(existing: String?) {
++        val fields = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(8), dp(20), dp(8))
++        }
++        val hostInput = fields.field(R.string.assist_host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI).apply {
++            setText(existing.orEmpty())
++        }
++        val dialog = AlertDialog.Builder(this)
++            .setTitle(if (existing == null) R.string.assist_add_server else R.string.assist_edit_server)
++            .setView(fields)
++            .setPositiveButton(R.string.assist_save_account, null)
++            .setNegativeButton(android.R.string.cancel, null).apply {
++                if (existing != null) setNeutralButton(R.string.assist_remove_server) { _, _ ->
++                    updateCustomServers(existing, null)
++                }
++            }.create()
++        dialog.setOnShowListener {
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
++                val host = RelayLogin.resolveServer(hostInput.text.toString())
++                if (!RelayLogin.validServer(host)) {
++                    hostInput.error = getString(R.string.assist_bad_server)
++                } else {
++                    updateCustomServers(existing, host)
++                    dialog.dismiss()
++                }
++            }
++        }
++        dialog.show()
++    }
++
++    private fun updateCustomServers(existing: String?, host: String?) {
++        val remaining = customServers() - existing.orEmpty()
++        val primary = RelayLogin.displayServer("")
++        val saved = if (host == null || host == primary || host == RelayLogin.TAILSCALE_SERVER) remaining else remaining + host
++        val edit = login.edit().putStringSet("customServers", saved)
++        if (existing != null && login.getString("lastServer", "") == existing) {
++            edit.putString("lastServer", host ?: primary)
++        }
++        edit.apply()
++        if (!enrolled() && existing != null && selectedServer == existing) {
++            updateSelectedServer(host ?: primary)
++            passwordInput.setText("")
++        }
++    }
++
++    private enum class ProfileAvatar(val image: Int, val title: Int) {
++        CAT(R.drawable.assist_avatar_cat, R.string.assist_avatar_cat),
++        ROBOT(R.drawable.assist_avatar_robot, R.string.assist_avatar_robot),
++        FOX(R.drawable.assist_avatar_fox, R.string.assist_avatar_fox),
++        PLANET(R.drawable.assist_avatar_planet, R.string.assist_avatar_planet),
++    }
++
++    private fun avatarKey() = "avatar.${role.name}"
++
++    private fun updateAvatar() {
++        val saved = login.getString(avatarKey(), "")
++        val fallback = if (role == AssistRole.OPERATOR) ProfileAvatar.ROBOT else ProfileAvatar.CAT
++        val current = ProfileAvatar.entries.firstOrNull { it.name == saved } ?: fallback
++        avatar.setImageResource(current.image)
++        avatar.contentDescription = getString(R.string.assist_current_avatar, getString(current.title))
++    }
++
++    private fun chooseAvatar() {
++        val key = avatarKey()
++        val row = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER
++            setPadding(dp(12), dp(12), dp(12), dp(12))
++        }
++        val dialog = AlertDialog.Builder(this).setTitle(R.string.assist_choose_avatar).setView(row)
++            .setNegativeButton(android.R.string.cancel, null).create()
++        ProfileAvatar.entries.forEach { option ->
++            val button = ImageButton(this).apply {
++                setBackgroundResource(android.R.drawable.list_selector_background)
++                setImageResource(option.image)
++                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
++                setPadding(dp(4), dp(4), dp(4), dp(4))
++                contentDescription = getString(option.title)
++                setOnClickListener {
++                    login.edit().putString(key, option.name).apply()
++                    updateAvatar()
++                    dialog.dismiss()
++                }
++            }
++            row.addView(button, LinearLayout.LayoutParams(0, dp(62), 1f))
++        }
++        dialog.show()
 +    }
 +
 +    private fun refreshDevices() {
@@ -1842,6 +2006,8 @@ index 0000000..a4ea6fa
 +        popup.menu.add(0, R.string.assist_local_lock, 1, R.string.assist_local_lock)
 +        if (AppLock(this).mode != AppLock.Mode.OFF) popup.menu.add(0, R.string.assist_lock_now, 2, R.string.assist_lock_now)
 +        if (enrolled()) popup.menu.add(0, R.string.assist_sign_out, 3, R.string.assist_sign_out)
++        if (enrolled()) popup.menu.add(0, R.string.assist_choose_server, 4, R.string.assist_choose_server)
++        popup.menu.add(0, R.string.assist_server_settings, 5, R.string.assist_server_settings)
 +        popup.setOnMenuItemClickListener { item ->
 +            when (item.itemId) {
 +                R.string.assist_accounts -> loadAccounts()
@@ -1853,6 +2019,8 @@ index 0000000..a4ea6fa
 +                    startActivity(android.content.Intent(this, AssistLockActivity::class.java))
 +                }
 +                R.string.assist_sign_out -> logOut()
++                R.string.assist_choose_server -> chooseServer(anchor)
++                R.string.assist_server_settings -> configureServers()
 +            }
 +            true
 +        }
@@ -2080,6 +2248,58 @@ index 0000000..a4ea6fa
 +        }
 +    }
 +}
+diff --git a/app/src/main/res/drawable/assist_avatar_cat.xml b/app/src/main/res/drawable/assist_avatar_cat.xml
+new file mode 100644
+index 0000000..c3181eb
+--- /dev/null
++++ b/app/src/main/res/drawable/assist_avatar_cat.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="52dp" android:height="52dp"
++    android:viewportWidth="52" android:viewportHeight="52">
++    <path android:fillColor="#54DBCB" android:pathData="M11,0 L41,0 Q52,0 52,11 L52,41 Q52,52 41,52 L11,52 Q0,52 0,41 L0,11 Q0,0 11,0Z" />
++    <path android:fillColor="#16333F" android:pathData="M12,18 L10,8 L21,13 Q26,11 31,13 L42,8 L40,20 Q44,26 40,35 Q36,44 26,44 Q13,44 10,34 Q8,26 12,18Z" />
++    <path android:fillColor="#F4F6EE" android:pathData="M16,26 Q19,23 22,26 Q20,30 16,26Z M30,26 Q33,23 36,26 Q34,30 30,26Z M23,33 L29,33 L26,36Z" />
++</vector>
+diff --git a/app/src/main/res/drawable/assist_avatar_fox.xml b/app/src/main/res/drawable/assist_avatar_fox.xml
+new file mode 100644
+index 0000000..092db63
+--- /dev/null
++++ b/app/src/main/res/drawable/assist_avatar_fox.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="52dp" android:height="52dp"
++    android:viewportWidth="52" android:viewportHeight="52">
++    <path android:fillColor="#E5B5FF" android:pathData="M11,0 L41,0 Q52,0 52,11 L52,41 Q52,52 41,52 L11,52 Q0,52 0,41 L0,11 Q0,0 11,0Z" />
++    <path android:fillColor="#A33E26" android:pathData="M9,8 L23,17 L29,17 L43,8 L43,29 Q40,37 26,45 Q12,37 9,29Z" />
++    <path android:fillColor="#FFF0B1" android:pathData="M12,29 Q18,26 26,35 Q34,26 40,29 Q37,37 26,43 Q15,37 12,29Z M16,19 L21,22 L16,24Z M36,19 L31,22 L36,24Z" />
++</vector>
+diff --git a/app/src/main/res/drawable/assist_avatar_planet.xml b/app/src/main/res/drawable/assist_avatar_planet.xml
+new file mode 100644
+index 0000000..95cf1d0
+--- /dev/null
++++ b/app/src/main/res/drawable/assist_avatar_planet.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="52dp" android:height="52dp"
++    android:viewportWidth="52" android:viewportHeight="52">
++    <path android:fillColor="#33345E" android:pathData="M11,0 L41,0 Q52,0 52,11 L52,41 Q52,52 41,52 L11,52 Q0,52 0,41 L0,11 Q0,0 11,0Z" />
++    <path android:fillColor="#8DE4B7" android:pathData="M26,12 C34,12 41,18 41,26 C41,34 34,40 26,40 C18,40 11,34 11,26 C11,18 18,12 26,12Z" />
++    <path android:fillColor="#FFCB74" android:pathData="M5,32 Q12,25 22,22 Q34,16 46,17 L48,21 Q43,24 39,25 L40,21 Q22,24 10,32 Q18,34 38,29 Q46,27 47,24 L49,28 Q40,37 12,38 Q5,38 5,32Z M10,9 L12,14 L17,16 L12,18 L10,23 L8,18 L3,16 L8,14Z" />
++</vector>
+diff --git a/app/src/main/res/drawable/assist_avatar_robot.xml b/app/src/main/res/drawable/assist_avatar_robot.xml
+new file mode 100644
+index 0000000..a9b9412
+--- /dev/null
++++ b/app/src/main/res/drawable/assist_avatar_robot.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="52dp" android:height="52dp"
++    android:viewportWidth="52" android:viewportHeight="52">
++    <path android:fillColor="#FFD26A" android:pathData="M11,0 L41,0 Q52,0 52,11 L52,41 Q52,52 41,52 L11,52 Q0,52 0,41 L0,11 Q0,0 11,0Z" />
++    <path android:fillColor="#332753" android:pathData="M13,16 L24,16 L24,10 Q21,5 26,5 Q31,5 28,10 L28,16 L39,16 Q43,16 43,21 L43,37 Q43,42 38,42 L14,42 Q9,42 9,37 L9,21 Q9,16 13,16Z" />
++    <path android:fillColor="#72E7D2" android:pathData="M15,22 L23,22 L23,28 L15,28Z M29,22 L37,22 L37,28 L29,28Z M19,33 L33,33 L33,37 L19,37Z" />
++</vector>
 diff --git a/app/src/main/res/values-night/assist_colors.xml b/app/src/main/res/values-night/assist_colors.xml
 new file mode 100644
 index 0000000..e77fa21
@@ -2118,10 +2338,10 @@ index 0000000..ad67158
 +</resources>
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..326e1e0
+index 0000000..952bdfc
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,101 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
@@ -2207,6 +2427,21 @@ index 0000000..326e1e0
 +    <string name="assist_local_password_rule">Usa de 8 a 256 caracteres.</string>
 +    <string name="assist_lock_saved">Bloqueo actualizado.</string>
 +    <string name="assist_pip_locked">Desactiva el bloqueo para usar la ventana flotante.</string>
++    <string name="assist_choose_server">Elegir servidor</string>
++    <string name="assist_server_selected">Servidor · %1$s ▾</string>
++    <string name="assist_server_settings">Configuración de servidores</string>
++    <string name="assist_server_primary">Principal · %1$s</string>
++    <string name="assist_server_tailscale">Tailscale · Oracle A1 Hop</string>
++    <string name="assist_add_server">Añadir otro servidor</string>
++    <string name="assist_edit_server">Editar servidor</string>
++    <string name="assist_remove_server">Quitar</string>
++    <string name="assist_server_sign_out">Se cerrará la sesión actual. Inicia sesión de nuevo en %1$s.</string>
++    <string name="assist_choose_avatar">Elegir avatar</string>
++    <string name="assist_current_avatar">Avatar de perfil: %1$s. Toca para cambiarlo.</string>
++    <string name="assist_avatar_cat">Gato</string>
++    <string name="assist_avatar_robot">Robot</string>
++    <string name="assist_avatar_fox">Zorro</string>
++    <string name="assist_avatar_planet">Planeta</string>
 +</resources>
 diff --git a/app/src/main/res/values/compact_controls_strings.xml b/app/src/main/res/values/compact_controls_strings.xml
 index 1d88699..2d77dc8 100644
@@ -2342,10 +2577,10 @@ index efd063d..363a13b 100644
  </resources>
 diff --git a/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt
 new file mode 100644
-index 0000000..d9cf26e
+index 0000000..35fea92
 --- /dev/null
 +++ b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,36 @@
 +package com.scrcpy.remote.assist
 +
 +import com.jcraft.jsch.HostKeyRepository
@@ -2368,6 +2603,9 @@ index 0000000..d9cf26e
 +        assertEquals(endpoint, RelayLogin.resolveServer(" REMOTO ", endpoint))
 +        assertEquals("otro.tail.example.ts.net", RelayLogin.resolveServer("Otro.tail.example.ts.net", endpoint))
 +        assertEquals("remoto", RelayLogin.resolveServer("remoto", ""))
++        assertEquals(RelayLogin.resolveServer("remoto"), RelayLogin.displayServer(""))
++        assertEquals(RelayLogin.resolveServer("remoto"), RelayLogin.displayServer("remoto"))
++        assertEquals(endpoint, RelayLogin.displayServer(endpoint))
 +    }
 +
 +    @Test fun acceptsMagicDnsAndTailnetIpv4() {

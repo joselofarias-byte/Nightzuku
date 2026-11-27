@@ -48,10 +48,10 @@ if [[ "$mode" == release ]]; then
 else
     "$sdk/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
 fi
-install -m 644 "$apk" "$output_dir/JolufaSoft-Remote-1.5.0-$variant.apk"
+install -m 644 "$apk" "$output_dir/JolufaSoft-Remote-1.6.0-$variant.apk"
 (
     cd "$output_dir"
-    sha256sum "JolufaSoft-Remote-1.5.0-$variant.apk" > SHA256SUMS
+    sha256sum "JolufaSoft-Remote-1.6.0-$variant.apk" > SHA256SUMS
 )
 printf '%s\n' "$upstream" > "$output_dir/upstream-commit.txt"
-printf '%s\n' "APK: $output_dir/JolufaSoft-Remote-1.5.0-$variant.apk"
+printf '%s\n' "APK: $output_dir/JolufaSoft-Remote-1.6.0-$variant.apk"
