@@ -1,0 +1,517 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 6a5a392..3834239 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -105,11 +105,11 @@ android {
+     compileSdk = 36
+ 
+     defaultConfig {
+-        applicationId = "com.scrcpy.remote"
++        applicationId = "com.jolufasoft.remote"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 86
+-        versionName = "3.5.7"
++        versionCode = 1
++        versionName = "1.0.0"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
+         buildConfigField("String", "PUBLISHER_EMAIL", buildConfigString(publisherEmail))
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 21f85d9..0527505 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -34,7 +34,7 @@
+       everywhere. The mirror screen keeps the older Back on every version: see MirrorActivity.
+     -->
+     <application
+-        android:allowBackup="true"
++        android:allowBackup="false"
+         android:dataExtractionRules="@xml/data_extraction_rules"
+         android:enableOnBackInvokedCallback="false"
+         tools:targetApi="33"
+@@ -45,33 +45,11 @@
+         android:supportsRtl="true"
+         android:theme="@style/Theme.ScrcpyRemote">
+ 
+-        <activity
+-            android:name=".ui.MainActivity"
+-            android:exported="true"
+-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density"
+-            android:enableOnBackInvokedCallback="true"
+-            android:launchMode="singleTop"
+-            android:theme="@style/Theme.ScrcpyRemote"
+-            tools:targetApi="34">
++        <activity android:name=".ui.RemoteAssistActivity" android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+-
+-            <!-- Quick-connect deep link: scrcpy://connect?host=192.168.1.20&port=5555 -->
+-            <intent-filter android:autoVerify="false">
+-                <action android:name="android.intent.action.VIEW" />
+-                <category android:name="android.intent.category.DEFAULT" />
+-                <category android:name="android.intent.category.BROWSABLE" />
+-                <data android:scheme="scrcpy" />
+-            </intent-filter>
+-
+-            <!-- Share a file straight to a device: the picked device is connected and sent it. -->
+-            <intent-filter>
+-                <action android:name="android.intent.action.SEND" />
+-                <category android:name="android.intent.category.DEFAULT" />
+-                <data android:mimeType="*/*" />
+-            </intent-filter>
+         </activity>
+ 
+         <!--
+diff --git a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt b/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
+index c9ded7d..6c9ac9f 100644
+--- a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
++++ b/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
+@@ -609,14 +609,6 @@ private fun CompactNavigationBar(
+             add(CompactNavigationAction(Icons.Default.Square, stringResource(R.string.control_recents),
+                 { onInteraction(); actions.onRecents() }, enabled = !actions.inputLocked))
+         }
+-        // Only while it is running. Stopping a recording is the one action that is urgent — it
+-        // decides where the video ends — and it otherwise sat three levels down, behind the
+-        // handle, More, and a scroll. The bar stays as short as it was the rest of the time.
+-        if (actions.recording) {
+-            add(CompactNavigationAction(Icons.Default.StopCircle,
+-                stringResource(R.string.recording_action_stop),
+-                { onInteraction(); actions.onToggleRecording() }))
+-        }
+         add(CompactNavigationAction(Icons.Default.Close, stringResource(R.string.control_exit),
+             { onInteraction(); actions.onExit() }))
+         add(CompactNavigationAction(Icons.Default.MoreHoriz, stringResource(R.string.compact_more_controls), onMore, notice))
+@@ -1123,8 +1115,6 @@ private fun DeviceControls(actions: MirrorActions, muted: Boolean, onInteraction
+             label = stringResource(R.string.release_control_more), enabled = enabled) {
+             onInteraction(); actions.onVolumeUp()
+         }
+-        AudioTile(actions, muted, onInteraction)
+-        AudioSourceTile(actions, onInteraction)
+         PanelTile(Icons.Default.Speed, stringResource(R.string.control_stats_chip),
+             label = stringResource(R.string.release_control_stats), active = actions.statsChipShown,
+             state = stringResource(if (actions.statsChipShown) R.string.toggle_state_on else R.string.toggle_state_off)) {
+@@ -1265,28 +1255,7 @@ private fun CameraControls(actions: MirrorActions, muted: Boolean, onInteraction
+ @OptIn(ExperimentalLayoutApi::class)
+ @Composable
+ private fun CaptureControls(actions: MirrorActions, onInteraction: () -> Unit) {
+-    PanelSection(stringResource(R.string.panel_section_capture)) {
+-        PanelTile(
+-            icon = Icons.Default.PhotoCamera,
+-            description = stringResource(if (actions.screenshotBusy) R.string.capture_busy else R.string.capture_screenshot),
+-            label = stringResource(R.string.release_control_screenshot),
+-            enabled = !actions.screenshotBusy,
+-        ) { onInteraction(); actions.onScreenshot() }
+-        // Beside the screenshot rather than after it: a screenshot of a remote device is usually
+-        // taken to send to somebody, and saving first means finding the file again elsewhere.
+-        PanelTile(
+-            icon = Icons.Default.Share,
+-            description = stringResource(R.string.capture_share_screenshot),
+-            label = stringResource(R.string.artefact_share),
+-            enabled = !actions.screenshotBusy,
+-        ) { onInteraction(); actions.onShareScreenshot() }
+-        PanelTile(
+-            icon = if (actions.recording) Icons.Default.StopCircle else Icons.Default.Videocam,
+-            description = stringResource(
+-                if (actions.recording) R.string.recording_action_stop else R.string.recording_action_start),
+-            label = stringResource(
+-                if (actions.recording) R.string.recording_in_progress else R.string.release_control_record),
+-        ) { onInteraction(); actions.onToggleRecording() }
++    PanelSection(stringResource(R.string.control_send_file)) {
+         PanelTile(
+             icon = Icons.Default.DriveFolderUpload,
+             description = stringResource(if (actions.sendFileBusy) R.string.send_file_busy else R.string.control_send_file),
+@@ -1387,11 +1356,6 @@ private fun SessionControls(actions: MirrorActions, onInteraction: () -> Unit) {
+             label = stringResource(R.string.release_control_displays)) {
+             onInteraction(); actions.onOpenDisplays()
+         }
+-        // Not the photo camera: Screenshot, a few tiles up, already uses that one.
+-        PanelTile(Icons.Default.Cameraswitch, stringResource(R.string.cameras_action),
+-            label = stringResource(R.string.cameras_title)) {
+-            onInteraction(); actions.onOpenCameras()
+-        }
+     }
+ }
+ 
+diff --git a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
+index b07e364..37c8a5c 100644
+--- a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
++++ b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
+@@ -109,7 +109,6 @@ import com.scrcpy.remote.session.MirrorUiState
+ import com.scrcpy.remote.session.KeyForwardingPolicy
+ import com.scrcpy.remote.session.FileTransfers
+ import com.scrcpy.remote.session.MirrorViewModel
+-import com.scrcpy.remote.session.RecordingSound
+ import com.scrcpy.remote.session.SessionOverrides
+ import com.scrcpy.remote.session.SessionDisplay
+ import com.scrcpy.remote.session.StreamChoice
+@@ -480,7 +479,7 @@ class MirrorActivity : ComponentActivity() {
+ 
+         val host = intent.getStringExtra(EXTRA_HOST).orEmpty()
+         val port = intent.getIntExtra(EXTRA_PORT, DEFAULT_PORT)
+-        if (host.isEmpty()) {
++        if (host != "127.0.0.1" || port !in 1..65535) {
+             finish()
+             return
+         }
+@@ -500,7 +499,18 @@ class MirrorActivity : ComponentActivity() {
+         // whatever this device would otherwise use, and only for this session: nothing here is
+         // written back, so the saved profile is untouched when the session ends.
+         val linkRequest = LinkRequest.from(intent)
+-        val settingsFor = { base: MirrorSettings -> linkRequest.applyTo(base) }
++        val settingsFor = { base: MirrorSettings ->
++            base.copy(
++                maxSize = 1280,
++                videoBitRateMbps = 4,
++                maxFps = 30,
++                audioEnabled = false,
++                backgroundAudio = false,
++                camera = null,
++                clipboardAutosync = false,
++                autoReconnect = false,
++            )
++        }
+         // A recreated recording offer must not revive a session the user explicitly ended.
+         if (!exitAfterRecording) {
+             viewModel.connect(host, port, settingsFor(initialSettings), allowPortDiscovery = savedDeviceId != null,
+@@ -593,12 +603,6 @@ class MirrorActivity : ComponentActivity() {
+                         onRequestCameraPip = { requestCameraPictureInPicture() },
+                         onPipStateChanged = ::reconcileCameraPip,
+                         onShareArtefact = ::launchArtefactShare,
+-                        onRequestScreenshot = {
+-                            if (canUseSessionTools()) screenshots.capture(screenshotSurface)
+-                        },
+-                        onRequestShareScreenshot = {
+-                            if (canUseSessionTools()) screenshots.shareCapture(screenshotSurface)
+-                        },
+                         onSaveRecording = { name ->
+                             if (canUseSessionTools()) {
+                                 documentPickerOpen = true
+@@ -861,8 +865,6 @@ private fun MirrorScreen(
+     onRequestCameraPip: () -> Unit,
+     onPipStateChanged: () -> Unit,
+     onShareArtefact: (Intent) -> Boolean,
+-    onRequestScreenshot: () -> Unit,
+-    onRequestShareScreenshot: () -> Unit,
+     onSaveRecording: (String) -> Unit,
+     onPickFileToSend: () -> Unit,
+     onPickAppToInstall: () -> Unit,
+@@ -903,12 +905,7 @@ private fun MirrorScreen(
+     val recordingSaveInProgress by viewModel.recordingSaveInProgress.collectAsState()
+     val desktopResizing by viewModel.desktopResizing.collectAsState()
+     val finishedRecording by viewModel.finishedRecording.collectAsState()
+-    val recordingStarted = stringResource(R.string.recording_started)
+-    val recordingWithSound = stringResource(R.string.recording_started_with_sound)
+-    val recordingSoundOff = stringResource(R.string.recording_started_sound_off)
+-    val recordingNoSound = stringResource(R.string.recording_started_no_sound)
+     // The codec of a session whose sound an MP4 cannot hold, while the user decides what to do.
+-    var soundChoice by rememberSaveable { mutableStateOf<AudioCodec?>(null) }
+     val shareUnavailable = stringResource(R.string.artefact_share_failed)
+     val capture by screenshots.state.collectAsState()
+     val defaults by repository.settings.collectAsState()
+@@ -1076,8 +1073,7 @@ private fun MirrorScreen(
+             onRetry = viewModel::reconnect,
+             onRepair = {
+                 // The pairing dialog lives on the device list.
+-                context.startActivity(Intent(context, MainActivity::class.java)
+-                    .putExtra(MainActivity.EXTRA_OPEN_PAIRING, true)
++                context.startActivity(Intent(context, RemoteAssistActivity::class.java)
+                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                 onDisconnect()
+             },
+@@ -1187,22 +1183,10 @@ private fun MirrorScreen(
+                     calibrationOverridesDefaults = calibrationOverride != null,
+                     onUseGlobalCalibration = { updateCalibration(null) },
+                     screenshotBusy = capture.busy,
+-                    onScreenshot = onRequestScreenshot,
++                    onScreenshot = {},
+                     recording = recording,
+                     onConnectionDetails = { if (canUseSessionTools()) showDetails = true },
+-                    onToggleRecording = {
+-                        if (canUseSessionTools()) {
+-                            if (viewModel.recording.value) viewModel.stopRecording()
+-                            else when (val sound = viewModel.recordingSound()) {
+-                                RecordingSound.WithSound ->
+-                                    if (viewModel.startRecording(withSound = true)) viewModel.showNotice(recordingWithSound)
+-                                is RecordingSound.NeedsAac -> soundChoice = sound.codec
+-                                is RecordingSound.PictureOnly -> if (viewModel.startRecording()) {
+-                                    viewModel.showNotice(if (sound.soundOff) recordingSoundOff else recordingNoSound)
+-                                }
+-                            }
+-                        }
+-                    },
++                    onToggleRecording = {},
+                     onDeviceSettings = if (savedDevice != null) ({
+                         if (canUseSessionTools()) showDeviceSettings = true
+                     }) else null,
+@@ -1212,7 +1196,7 @@ private fun MirrorScreen(
+                     sendFileBusy = transfer.running,
+                     onOpenEncoders = { if (canUseSessionTools()) showEncoders = true },
+                     onOpenDisplays = { if (canUseSessionTools()) showDisplays = true },
+-                    onOpenCameras = { if (canUseSessionTools()) showCameras = true },
++                    onOpenCameras = {},
+                     onStreamChoices = { if (canUseSessionTools()) showStreamChoices = true },
+                     cameraSession = activeSettings?.camera != null,
+                     cameraTorchOn = cameraTorchOn,
+@@ -1229,7 +1213,7 @@ private fun MirrorScreen(
+                         viewZoom = (viewZoom / 2f).coerceAtLeast(1f)
+                     },
+                     onViewZoomReset = { viewZoom = 1f },
+-                    onShareScreenshot = onRequestShareScreenshot,
++                    onShareScreenshot = {},
+                     onCameraPip = if (pipSupported && activeSettings?.camera != null)
+                         onRequestCameraPip else null,
+                     cameraPipBlocked = pipWorkPending || dialogOpen,
+@@ -1373,24 +1357,6 @@ private fun MirrorScreen(
+             },
+         )
+     }
+-    if (connected == null && soundChoice != null) {
+-        // The question was about this session's sound; with no session it has no answer.
+-        LaunchedEffect(Unit) { soundChoice = null }
+-    }
+-    soundChoice?.let { codec ->
+-        RecordSoundChoiceDialog(
+-            codec = codec,
+-            onReconnect = {
+-                soundChoice = null
+-                if (canUseSessionTools()) viewModel.recordWithSoundAfterReconnect()
+-            },
+-            onPictureOnly = {
+-                soundChoice = null
+-                if (canUseSessionTools() && viewModel.startRecording()) viewModel.showNotice(recordingStarted)
+-            },
+-            onCancel = { soundChoice = null },
+-        )
+-    }
+     if (confirmLeave) {
+         AlertDialog(
+             onDismissRequest = { confirmLeave = false },
+diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
+new file mode 100644
+index 0000000..bf548cc
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
+@@ -0,0 +1,73 @@
++package com.scrcpy.remote.ui
++
++import android.app.AlertDialog
++import android.os.Bundle
++import android.text.InputType
++import android.widget.Button
++import android.widget.EditText
++import android.widget.LinearLayout
++import android.widget.ScrollView
++import android.widget.TextView
++import androidx.activity.ComponentActivity
++import androidx.core.view.ViewCompat
++import androidx.core.view.WindowInsetsCompat
++import androidx.core.view.updatePadding
++import com.scrcpy.remote.R
++
++/** A session is started by the operator through a loopback SSH forward. */
++class RemoteAssistActivity : ComponentActivity() {
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        val preferences = getSharedPreferences("remote_assistance", MODE_PRIVATE)
++        val padding = (resources.displayMetrics.density * 24).toInt()
++        val layout = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(padding, padding, padding, padding)
++        }
++        layout.addView(TextView(this).apply {
++            setText(R.string.app_name)
++            textSize = 26f
++        })
++        layout.addView(TextView(this).apply {
++            setText(R.string.assist_help)
++            textSize = 16f
++            setPadding(0, padding, 0, padding)
++        })
++        val portInput = EditText(this).apply {
++            id = R.id.assist_port
++            inputType = InputType.TYPE_CLASS_NUMBER
++            setSingleLine()
++            setHint(R.string.assist_port_hint)
++            contentDescription = getString(R.string.assist_port_hint)
++            setText(preferences.getInt("port", 15556).toString())
++        }
++        layout.addView(portInput)
++        layout.addView(Button(this).apply {
++            setText(R.string.connect)
++            setOnClickListener {
++                val port = portInput.text.toString().toIntOrNull()
++                if (port == null || port !in 1..65535) {
++                    portInput.error = getString(R.string.assist_port_error)
++                    return@setOnClickListener
++                }
++                AlertDialog.Builder(this@RemoteAssistActivity)
++                    .setTitle(R.string.assist_confirm_title)
++                    .setMessage(R.string.assist_confirm_body)
++                    .setNegativeButton(android.R.string.cancel, null)
++                    .setPositiveButton(R.string.connect) { _, _ ->
++                        preferences.edit().putInt("port", port).apply()
++                        startActivity(MirrorActivity.newIntent(this@RemoteAssistActivity, "127.0.0.1", port))
++                    }.show()
++            }
++        })
++        val page = ScrollView(this).apply { addView(layout) }
++        ViewCompat.setOnApplyWindowInsetsListener(page) { view, insets ->
++            val safe = insets.getInsets(
++                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
++            )
++            view.updatePadding(left = safe.left, top = safe.top, right = safe.right, bottom = safe.bottom)
++            insets
++        }
++        setContentView(page)
++    }
++}
+diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
+new file mode 100644
+index 0000000..a7eb01f
+--- /dev/null
++++ b/app/src/main/res/values/assistance.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <item name="assist_port" type="id" />
++    <string name="assist_help">Abre el túnel SSH en este teléfono. La otra persona debe iniciar su sesión de asistencia y autorizar la clave ADB en su Android cuando se le solicite.</string>
++    <string name="assist_port_hint">Puerto local del túnel SSH</string>
++    <string name="assist_port_error">Escribe un puerto entre 1 y 65535.</string>
++    <string name="assist_confirm_title">Iniciar asistencia</string>
++    <string name="assist_confirm_body">Confirma que la otra persona autorizó esta sesión. Podrás ver su pantalla y usar los controles mientras el túnel esté abierto.</string>
++</resources>
+diff --git a/app/src/main/res/values/compact_controls_strings.xml b/app/src/main/res/values/compact_controls_strings.xml
+index 1d88699..2d77dc8 100644
+--- a/app/src/main/res/values/compact_controls_strings.xml
++++ b/app/src/main/res/values/compact_controls_strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="compact_more_controls">More controls</string>
++    <string name="compact_more_controls">Más controles</string>
+     <string name="compact_navigation_only">Compact controls</string>
+     <string name="compact_audio_notice">Audio needs attention. Open more controls.</string>
+     <string name="compact_settings_notice">Saved settings are waiting to apply. Open more controls.</string>
+diff --git a/app/src/main/res/values/release_ui_strings.xml b/app/src/main/res/values/release_ui_strings.xml
+index e1cc815..d6d553a 100644
+--- a/app/src/main/res/values/release_ui_strings.xml
++++ b/app/src/main/res/values/release_ui_strings.xml
+@@ -19,7 +19,7 @@
+     <string name="release_connection_heading">Connection recovery</string>
+     <string name="release_device_heading">Remote device</string>
+     <string name="release_input_heading">Touch and gestures</string>
+-    <string name="release_controls_device">Device</string>
++    <string name="release_controls_device">Dispositivo</string>
+     <string name="release_control_copy">Copy</string>
+     <string name="release_control_cut">Cut</string>
+     <string name="release_control_paste">Paste</string>
+diff --git a/app/src/main/res/values/session_strings.xml b/app/src/main/res/values/session_strings.xml
+index 6066a46..eb624d7 100644
+--- a/app/src/main/res/values/session_strings.xml
++++ b/app/src/main/res/values/session_strings.xml
+@@ -17,7 +17,7 @@
+     <string name="diagnostics_written">Green: written to transport (not a remote acknowledgement). Cyan: local touch.</string>
+     <string name="diagnostics_pending">Yellow: awaiting transport write. Cyan: local touch.</string>
+     <string name="diagnostics_mismatch">Decoder and capture sizes differ. This is diagnostic evidence, not an automatic calibration correction.</string>
+-    <string name="session_leave_title">Leave this session?</string>
+-    <string name="session_leave_body">Local Back closes these controls first, then offers to disconnect. The Back control sends Back to the remote device.</string>
++    <string name="session_leave_title">Finalizar sesión</string>
++    <string name="session_leave_body">Se cerrará la conexión con el dispositivo.</string>
+     <string name="session_stay">Stay</string>
+ </resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index efd063d..363a13b 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">Scrcpy Android</string>
++    <string name="app_name">JolufaSoft Remote</string>
+ 
+     <!-- Device list -->
+     <string name="settings">Settings</string>
+@@ -60,7 +60,7 @@
+     <string name="link_request_keep_active_on">the device kept active</string>
+     <string name="link_request_keep_active_off">the device not kept active</string>
+     <string name="link_confirm_warning">Only continue if you recognise this address.</string>
+-    <string name="connect">Connect</string>
++    <string name="connect">Conectar</string>
+ 
+     <!-- Settings -->
+     <string name="settings_title">Mirroring settings</string>
+@@ -110,7 +110,7 @@
+     <string name="capture_orientation_lock_90">Lock 90°</string>
+     <string name="capture_orientation_lock_180">Lock 180°</string>
+     <string name="capture_orientation_lock_270">Lock 270°</string>
+-    <string name="control_send_file">Send a file to the device</string>
++    <string name="control_send_file">Enviar archivo</string>
+     <string name="release_control_send_file">Send file</string>
+     <string name="send_file_title">Sending a file</string>
+     <string name="send_file_progress">%1$s of %2$s</string>
+@@ -155,8 +155,8 @@
+     <string name="setting_edge_gestures_help">Reserves the middle of each side edge for the remote device. Turn this off to give your own phone\'s back gesture the whole edge back.</string>
+ 
+     <!-- Mirroring -->
+-    <string name="disconnected">Disconnected</string>
+-    <string name="reconnect">Reconnect</string>
++    <string name="disconnected">Desconectado</string>
++    <string name="reconnect">Reconectar</string>
+     <string name="back_to_devices">Back to devices</string>
+     <string name="exit">Exit</string>
+     <string name="hide">Hide</string>
+@@ -168,12 +168,12 @@
+     <string name="calibration_help">Nudge the press until the remote pointer sits under your finger.</string>
+ 
+     <!-- Control descriptions -->
+-    <string name="control_back">Back</string>
+-    <string name="control_home">Home</string>
+-    <string name="control_recents">Recent apps</string>
+-    <string name="control_exit">End session</string>
+-    <string name="control_notifications">Notifications</string>
+-    <string name="control_quick_settings">Quick settings</string>
++    <string name="control_back">Atrás</string>
++    <string name="control_home">Inicio</string>
++    <string name="control_recents">Recientes</string>
++    <string name="control_exit">Finalizar sesión</string>
++    <string name="control_notifications">Notificaciones</string>
++    <string name="control_quick_settings">Ajustes rápidos</string>
+     <string name="control_collapse_panels">Close the device\'s panels</string>
+     <string name="control_apps">Apps on device</string>
+     <string name="apps_title">Apps on the device</string>
+@@ -247,19 +247,19 @@
+     <string name="control_plus_ten">%1$s plus ten</string>
+ 
+     <!-- Session status and errors -->
+-    <string name="status_connecting">Connecting to %1$s\u2026</string>
++    <string name="status_connecting">Conectando con %1$s…</string>
+     <string name="status_accept_on_device">Allow debugging on %1$s: tap Allow on that device\u2019s screen\u2026</string>
+     <string name="status_preparing_server">Preparing scrcpy server\u2026</string>
+     <string name="status_pushing_server">Pushing scrcpy server\u2026</string>
+-    <string name="status_starting_server">Starting scrcpy server\u2026</string>
++    <string name="status_starting_server">Iniciando scrcpy…</string>
+     <string name="status_waiting_sockets">Waiting for scrcpy sockets\u2026</string>
+-    <string name="status_connected">Connected to %1$s</string>
++    <string name="status_connected">Conectado a %1$s</string>
+     <string name="error_pairing_required">This device uses wireless debugging and is not paired yet. Go back and use \"Pair new device\" with the pairing port and code shown on the device.</string>
+     <string name="error_auth_failed">The device rejected this app\'s ADB key. Accept the \"Allow debugging\" prompt on the target device and try again.</string>
+     <string name="error_unreachable">Could not reach %1$s. Check that the device is awake and on this network, and that wireless debugging is still on. Its debugging port changes every time wireless debugging is turned off and on.</string>
+-    <string name="error_connection_lost">The connection to %1$s was lost. Check that the device is awake and on this network, and that wireless debugging is still on. Its debugging port changes every time wireless debugging is turned off and on.</string>
++    <string name="error_connection_lost">Se perdió la conexión con %1$s. Comprueba que ambos túneles SSH estén abiertos.</string>
+     <string name="error_protocol">The device sent data this app could not read. Close any other scrcpy session on that device and try again; a different scrcpy server version on the device causes this too.</string>
+-    <string name="error_codec">This phone could not decode the stream. Try another video codec or a lower resolution in the device\'s mirroring settings.</string>
++    <string name="error_codec">Este teléfono no pudo decodificar el vídeo.</string>
+     <string name="error_invalid_settings">The saved connection or mirroring settings are not valid. Review them and try again.</string>
+     <string name="error_invalid_session_choice">The device refused a setting chosen for this session, by the link that opened it or in its controls. Go back to your devices and connect again to use the saved settings.</string>
+     <string name="error_detail">Details: %1$s</string>
+@@ -311,6 +311,6 @@
+     <string name="transfer_notification_text">The connection stays open while a file is chosen and sent.</string>
+     <string name="background_notification_device">Connected to %1$s</string>
+     <string name="transfer_notification_device">For %1$s: the connection stays open while a file is chosen and sent.</string>
+-    <string name="background_notification_stop">Disconnect</string>
++    <string name="background_notification_stop">Desconectar</string>
+     <string name="background_session_unavailable">Android refused to keep this session in the background. It will stop when the app is hidden.</string>
+ </resources>

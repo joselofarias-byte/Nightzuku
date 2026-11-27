@@ -1,6 +1,11 @@
-name: JolufaSoft Remote Android client
+name: JolufaSoft Remote Android
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: Firmar con la clave permanente de JolufaSoft Remote
+        type: boolean
+        default: false
   push:
     branches: [feature/remote-assistance-prototype]
     paths:
@@ -11,31 +16,51 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch upstream Android client
-        run: |
-          git clone --depth 1 --branch main https://github.com/dhun2666/scrcpy-client-for-android.git client
-          git -C client rev-parse HEAD | tee upstream-commit.txt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - name: Install Android SDK 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-      - name: Build and test upstream client
-        working-directory: client
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest :libadb:testDebugUnitTest :app:assembleDebug
-      - name: Archive APK and upstream commit
-        uses: actions/upload-artifact@v4
         with:
-          name: scrcpy-android-upstream-debug
+          packages: platform-tools
+      - name: Instalar Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Validar scripts
+        run: |
+          for script in remote-assistance/*.sh; do
+            bash -n "$script"
+          done
+      - name: Compilar APK para pruebas
+        if: ${{ !inputs.release }}
+        run: bash remote-assistance/build-android.sh
+      - name: Compilar APK con firma permanente
+        if: ${{ inputs.release }}
+        env:
+          JREMOTE_KEYSTORE_BASE64: ${{ secrets.JREMOTE_KEYSTORE_BASE64 }}
+          SCRCPY_KEYSTORE_PASSWORD: ${{ secrets.JREMOTE_KEYSTORE_PASSWORD }}
+          SCRCPY_KEY_ALIAS: ${{ secrets.JREMOTE_KEY_ALIAS }}
+          SCRCPY_KEY_PASSWORD: ${{ secrets.JREMOTE_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_publisherName: JolufaSoft
+          ORG_GRADLE_PROJECT_publisherEmail: ${{ vars.JREMOTE_PUBLISHER_EMAIL }}
+          ORG_GRADLE_PROJECT_privacyPolicyUrl: ${{ vars.JREMOTE_PRIVACY_POLICY_URL }}
+        run: |
+          set -euo pipefail
+          : "${JREMOTE_KEYSTORE_BASE64:?Falta configurar la clave permanente de JolufaSoft Remote}"
+          umask 077
+          export SCRCPY_KEYSTORE="$RUNNER_TEMP/jremote-release.jks"
+          trap 'rm -f -- "$SCRCPY_KEYSTORE"' EXIT
+          printf '%s' "$JREMOTE_KEYSTORE_BASE64" | base64 --decode > "$SCRCPY_KEYSTORE"
+          unset JREMOTE_KEYSTORE_BASE64
+          bash remote-assistance/build-android.sh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jremote-${{ inputs.release && 'release' || 'local' }}
           path: |
-            client/app/build/outputs/apk/debug/*.apk
-            upstream-commit.txt
+            remote-assistance/dist/*.apk
+            remote-assistance/dist/SHA256SUMS
+            remote-assistance/dist/upstream-commit.txt
           if-no-files-found: error
           retention-days: 7

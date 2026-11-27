@@ -1,15 +1,24 @@
-# Example ONLY: place inside a carefully reviewed sshd_config Match section.
-# Requires dedicated unprivileged account and its own authorized_keys.
-# Do not paste into a shared sshd_config without checking existing Match blocks.
+# Usar cuentas separadas y una clave por teléfono u operador.
+# Validar con sshd -t antes de recargar.
 Match User remote-device-01
     AllowTcpForwarding remote
     PermitListen 127.0.0.1:15555
+    GatewayPorts no
+    MaxSessions 0
+    AllowStreamLocalForwarding no
     X11Forwarding no
     AllowAgentForwarding no
     PermitTTY no
-    PasswordAuthentication no
-    KbdInteractiveAuthentication no
+    AuthenticationMethods publickey
 
-# Controller must use a DIFFERENT account, authorized for local forwarding.
-# Its AllowTcpForwarding local must permit reaching 127.0.0.1:15555.
-# Restrict PermitOpen to 127.0.0.1:15555 when supported.
+Match User remote-operator-01
+    AllowTcpForwarding local
+    PermitOpen 127.0.0.1:15555
+    MaxSessions 0
+    AllowStreamLocalForwarding no
+    X11Forwarding no
+    AllowAgentForwarding no
+    PermitTTY no
+    AuthenticationMethods publickey
+
+Match all

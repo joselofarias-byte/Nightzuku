@@ -1,20 +1,20 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Installer for already-authorized devices; no host keys or credentials generated silently.
-set -Eeuo pipefail
+set -euo pipefail
 umask 077
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-command -v pkg >/dev/null || { echo "Termux required" >&2; exit 2; }
-pkg install -y openssh android-tools python git
-DEST="$HOME/.local/share/jolufasoft-remote"
-mkdir -p "$DEST" "$HOME/.local/bin"
-BASE="https://raw.githubusercontent.com/joselofarias-byte/Nightzuku/feature/remote-assistance-prototype/remote-assistance"
-for file in agent.sh controller.sh check.sh; do
-  curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$BASE/$file" -o "$DEST/$file"
-  bash -n "$DEST/$file"
-  chmod 700 "$DEST/$file"
+
+command -v pkg >/dev/null || { echo "Ejecuta este instalador desde Termux." >&2; exit 2; }
+pkg install -y openssh android-tools python coreutils
+
+source_dir="$(cd -- "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+destination="$HOME/.local/share/jolufasoft-remote"
+bin_dir="$HOME/.local/bin"
+files=(agent.sh controller.sh check.sh ssh-common.sh)
+for file in "${files[@]}"; do
+    bash -n "$source_dir/$file"
 done
-for file in agent controller check; do
-  ln -sfn "$DEST/$file.sh" "$HOME/.local/bin/jremote-$file"
+mkdir -p "$destination" "$bin_dir"
+install -m 700 "${files[@]/#/$source_dir/}" "$destination/"
+for name in agent controller check; do
+    ln -sfn "$destination/$name.sh" "$bin_dir/jremote-$name"
 done
-echo "Installed: $HOME/.local/bin/jremote-{agent,controller,check}"
-echo "No keys, ports, permissions or SSH accounts changed."
+printf '%s\n' "Instalados en $bin_dir: jremote-agent, jremote-controller y jremote-check."
