@@ -31,10 +31,10 @@ git -C "$workdir" apply "$source_dir/android-client.patch"
 )
 apk="$workdir/app/build/outputs/apk/$variant/app-$variant.apk"
 "$sdk/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
-install -m 644 "$apk" "$output_dir/JolufaSoft-Remote-1.1.0-$variant.apk"
+install -m 644 "$apk" "$output_dir/JolufaSoft-Remote-1.2.0-$variant.apk"
 (
     cd "$output_dir"
-    sha256sum "JolufaSoft-Remote-1.1.0-$variant.apk" > SHA256SUMS
+    sha256sum "JolufaSoft-Remote-1.2.0-$variant.apk" > SHA256SUMS
 )
 printf '%s\n' "$upstream" > "$output_dir/upstream-commit.txt"
-printf '%s\n' "APK: $output_dir/JolufaSoft-Remote-1.1.0-$variant.apk"
+printf '%s\n' "APK: $output_dir/JolufaSoft-Remote-1.2.0-$variant.apk"

@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..a936991 100644
+index 6a5a392..c86d017 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -105,11 +105,11 @@ android {
@@ -12,8 +12,8 @@ index 6a5a392..a936991 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 2
-+        versionName = "1.1.0"
++        versionCode = 3
++        versionName = "1.2.0"
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
          buildConfigField("String", "PUBLISHER_EMAIL", buildConfigString(publisherEmail))
@@ -456,6 +456,55 @@ index 0000000..65dfb10
 +        else -> R.string.assist_ssh_error
 +    }
 +}
+diff --git a/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
+new file mode 100644
+index 0000000..87a14fb
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
+@@ -0,0 +1,43 @@
++package com.scrcpy.remote.assist
++
++import org.json.JSONObject
++import java.io.IOException
++import java.net.URL
++import javax.net.ssl.HttpsURLConnection
++
++internal class LoginException(val status: Int) : IOException()
++
++internal object RelayLogin {
++    fun validServer(host: String): Boolean =
++        host.length in 7..253 && host.endsWith(".ts.net") &&
++            host.split('.').all { it.matches(Regex("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")) }
++
++    fun request(server: String, path: String, body: JSONObject, token: String = ""): JSONObject {
++        require(validServer(server))
++        val connection = URL("https://$server:8443/jremote/$path").openConnection() as HttpsURLConnection
++        return try {
++            connection.requestMethod = "POST"
++            connection.instanceFollowRedirects = false
++            connection.connectTimeout = 8_000
++            connection.readTimeout = 10_000
++            connection.doOutput = true
++            connection.setRequestProperty("Content-Type", "application/json")
++            if (token.isNotEmpty()) connection.setRequestProperty("Authorization", "Bearer $token")
++            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
++            val status = connection.responseCode
++            if (status != 200) throw LoginException(status)
++            JSONObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
++        } finally {
++            connection.disconnect()
++        }
++    }
++
++    fun profile(response: JSONObject, server: String, user: String): AssistProfile {
++        val profile = AssistProfile(
++            response.getString("host"), response.getInt("port"), user,
++            response.getString("fingerprint"), response.getInt("relayPort"), 5555,
++        )
++        check(profile.host == server && profile.isValid())
++        return profile
++    }
++}
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt b/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
 index c9ded7d..6c9ac9f 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
@@ -709,19 +758,18 @@ index b07e364..006806e 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..d7234cb
+index 0000000..5197cc1
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,323 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
 +import android.app.AlertDialog
-+import android.content.ClipData
-+import android.content.ClipboardManager
 +import android.os.Build
 +import android.os.Bundle
 +import android.text.InputType
++import android.view.View
 +import android.widget.Button
 +import android.widget.EditText
 +import android.widget.LinearLayout
@@ -744,36 +792,41 @@ index 0000000..d7234cb
 +import com.scrcpy.remote.assist.AssistSsh
 +import com.scrcpy.remote.assist.AvailabilityService
 +import com.scrcpy.remote.assist.LOOPBACK
++import com.scrcpy.remote.assist.LoginException
 +import com.scrcpy.remote.assist.OperatorTunnel
++import com.scrcpy.remote.assist.RelayLogin
 +import com.scrcpy.remote.assist.sshError
++import kotlinx.coroutines.CancellationException
 +import kotlinx.coroutines.Dispatchers
 +import kotlinx.coroutines.launch
 +import kotlinx.coroutines.withContext
++import org.json.JSONObject
 +
 +class RemoteAssistActivity : ComponentActivity() {
 +    private val preferences by lazy { AssistPreferences(this) }
++    private val login by lazy { getSharedPreferences("relay_login", MODE_PRIVATE) }
 +    private var role = AssistRole.OPERATOR
-+    private var connecting = false
-+    private lateinit var status: TextView
-+    private lateinit var primary: Button
++    private var busy = false
++    private lateinit var form: LinearLayout
 +    private lateinit var operator: Button
-+    private lateinit var device: Button
-+    private lateinit var host: EditText
-+    private lateinit var port: EditText
-+    private lateinit var user: EditText
-+    private lateinit var fingerprint: EditText
-+    private lateinit var relayPort: EditText
-+    private lateinit var adbPort: EditText
-+    private var formFields: List<EditText> = emptyList()
++    private lateinit var assisted: Button
++    private lateinit var action: Button
++    private lateinit var signOut: Button
++    private lateinit var status: TextView
++    private lateinit var serverInput: EditText
++    private lateinit var userInput: EditText
++    private lateinit var passwordInput: EditText
++    private lateinit var deviceName: EditText
 +
 +    private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
-+        if (allowed) enableAvailability() else showMessage(R.string.assist_notifications_required)
++        if (allowed) activate() else message(R.string.assist_notifications_required)
 +    }
 +
 +    override fun onCreate(savedInstanceState: Bundle?) {
 +        super.onCreate(savedInstanceState)
 +        role = savedInstanceState?.getString("role")?.let(AssistRole::valueOf)
-+            ?: if (preferences.enabled) AssistRole.DEVICE else AssistRole.OPERATOR
++            ?: if (preferences.enabled || login.getBoolean("receiveRole", false)) AssistRole.DEVICE
++            else AssistRole.OPERATOR
 +        val padding = (resources.displayMetrics.density * 24).toInt()
 +        val layout = LinearLayout(this).apply {
 +            orientation = LinearLayout.VERTICAL
@@ -781,18 +834,16 @@ index 0000000..d7234cb
 +            isFocusableInTouchMode = true
 +        }
 +        layout.addView(TextView(this).apply { setText(R.string.app_name); textSize = 26f })
-+        operator = layout.button(R.string.assist_operator) { switchRole(AssistRole.OPERATOR) }
-+        device = layout.button(R.string.assist_device) { switchRole(AssistRole.DEVICE) }
-+        status = TextView(this).also { layout.addView(it) }
-+        host = layout.input(R.string.assist_host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
-+        port = layout.input(R.string.assist_ssh_port, InputType.TYPE_CLASS_NUMBER)
-+        user = layout.input(R.string.assist_ssh_user)
-+        fingerprint = layout.input(R.string.assist_fingerprint)
-+        relayPort = layout.input(R.string.assist_relay_port, InputType.TYPE_CLASS_NUMBER)
-+        adbPort = layout.input(R.string.assist_adb_port, InputType.TYPE_CLASS_NUMBER)
-+        formFields = listOf(host, port, user, fingerprint, relayPort, adbPort)
-+        layout.button(R.string.assist_show_key, ::showPublicKey)
-+        primary = layout.button(R.string.connect, ::submit)
++        operator = layout.button(R.string.assist_operator) { chooseRole(AssistRole.OPERATOR) }
++        assisted = layout.button(R.string.assist_device) { chooseRole(AssistRole.DEVICE) }
++        status = TextView(this).also(layout::addView)
++        form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }.also(layout::addView)
++        serverInput = form.input(R.string.assist_host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
++        userInput = form.input(R.string.assist_ssh_user, InputType.TYPE_CLASS_TEXT)
++        passwordInput = form.input(R.string.assist_password, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
++        deviceName = form.input(R.string.assist_device_name, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
++        action = layout.button(R.string.assist_sign_in, ::submit)
++        signOut = layout.button(R.string.assist_sign_out, ::logOut)
 +        val page = ScrollView(this).apply { addView(layout) }
 +        ViewCompat.setOnApplyWindowInsetsListener(page) { view, insets ->
 +            val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -800,13 +851,13 @@ index 0000000..d7234cb
 +            insets
 +        }
 +        setContentView(page)
-+        loadProfile()
-+        lifecycleScope.launch { AvailabilityService.status.collect { updateControls() } }
++        loadRole()
++        lifecycleScope.launch { AvailabilityService.status.collect { render() } }
 +    }
 +
 +    override fun onResume() {
 +        super.onResume()
-+        updateControls()
++        render()
 +    }
 +
 +    override fun onSaveInstanceState(outState: Bundle) {
@@ -814,204 +865,265 @@ index 0000000..d7234cb
 +        super.onSaveInstanceState(outState)
 +    }
 +
-+    private fun switchRole(next: AssistRole) {
-+        if (role == next) return
++    private fun account(role: AssistRole = this.role): String =
++        if (role == AssistRole.DEVICE) "remote-device-01" else "remote-operator-01"
++
++    private fun server(): String = login.getString("server.${role.name}", "").orEmpty()
++    private fun token(): String = login.getString("token", "").orEmpty()
++    private fun enrolled(): Boolean = server().isNotEmpty() &&
++        if (role == AssistRole.DEVICE) preferences.profile(role).isValid() else token().isNotEmpty()
++
++    private fun chooseRole(next: AssistRole) {
 +        role = next
-+        loadProfile()
++        login.edit().putBoolean("receiveRole", role == AssistRole.DEVICE).apply()
++        loadRole()
 +    }
 +
-+    private fun loadProfile() {
-+        val profile = preferences.profile(role)
-+        host.setText(profile.host)
-+        port.setText(profile.port.toString())
-+        user.setText(profile.user)
-+        fingerprint.setText(profile.fingerprint)
-+        relayPort.setText(profile.relayPort.toString())
-+        adbPort.setText(profile.adbPort.toString())
-+        updateControls()
++    private fun loadRole() {
++        serverInput.setText(server().ifBlank { login.getString("lastServer", "").orEmpty() })
++        userInput.setText(account())
++        passwordInput.setText("")
++        deviceName.setText(login.getString("deviceName", Build.MODEL))
++        deviceName.visibility = if (role == AssistRole.DEVICE) View.VISIBLE else View.GONE
++        render()
 +    }
 +
-+    private fun updateControls() {
-+        val assisted = role == AssistRole.DEVICE
-+        val enabled = preferences.enabled
-+        operator.isEnabled = assisted && !connecting
-+        device.isEnabled = !assisted && !connecting
-+        adbPort.visibility = if (assisted) android.view.View.VISIBLE else android.view.View.GONE
-+        formFields.forEach { it.isEnabled = !connecting && !(assisted && enabled) }
++    private fun render() {
++        val receive = role == AssistRole.DEVICE
++        val registered = enrolled()
++        operator.isEnabled = !busy && receive
++        assisted.isEnabled = !busy && !receive
++        form.visibility = if (registered) View.GONE else View.VISIBLE
 +        status.setText(when {
-+            assisted && enabled && AvailabilityService.status.value == R.string.assist_disabled ->
-+                R.string.assist_ready_to_resume
-+            assisted && enabled -> AvailabilityService.status.value
-+            assisted -> R.string.assist_disabled
-+            connecting -> R.string.assist_connecting
-+            else -> R.string.assist_operator_help
++            busy -> R.string.assist_connecting
++            receive && preferences.enabled -> AvailabilityService.status.value
++            receive && registered -> R.string.assist_disabled
++            !receive && registered -> R.string.assist_operator_ready
++            else -> R.string.assist_login_hint
 +        })
-+        primary.setText(when {
-+            assisted && enabled -> R.string.assist_disable
-+            assisted -> R.string.assist_enable
-+            else -> R.string.connect
++        action.setText(when {
++            receive && preferences.enabled -> R.string.assist_disable
++            receive && registered -> R.string.assist_enable
++            registered -> R.string.assist_devices
++            else -> R.string.assist_sign_in
 +        })
-+        primary.isEnabled = !connecting
++        action.isEnabled = !busy
++        signOut.visibility = if (registered) View.VISIBLE else View.GONE
++        signOut.isEnabled = !busy
 +    }
 +
 +    private fun submit() {
-+        val selectedRole = role
-+        if (selectedRole == AssistRole.DEVICE && preferences.enabled) {
++        if (role == AssistRole.DEVICE && preferences.enabled) {
 +            AvailabilityService.stop(this)
-+            updateControls()
++            render()
 +            return
 +        }
-+        val profile = AssistProfile(
-+            host.text.toString().trim(), port.text.toString().toIntOrNull() ?: 0,
-+            user.text.toString().trim(), fingerprint.text.toString().trim(),
-+            relayPort.text.toString().toIntOrNull() ?: 0, adbPort.text.toString().toIntOrNull() ?: 0,
-+        )
-+        if (!profile.isValid()) {
-+            showMessage(R.string.assist_invalid)
++        if (enrolled()) {
++            if (role == AssistRole.DEVICE) confirmAvailability() else refreshDevices()
 +            return
 +        }
-+        preferences.save(selectedRole, profile)
-+        if (selectedRole == AssistRole.OPERATOR) {
-+            connectOperator(profile)
-+        } else {
-+            AlertDialog.Builder(this)
-+                .setTitle(R.string.assist_enable)
-+                .setMessage(R.string.assist_consent)
-+                .setNegativeButton(android.R.string.cancel, null)
-+                .setPositiveButton(R.string.assist_enable) { _, _ ->
-+                    if (Build.VERSION.SDK_INT >= 33 && !AvailabilityService.canNotify(this)) {
-+                        notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-+                    } else {
-+                        enableAvailability()
-+                    }
-+                }.show()
-+        }
-+    }
-+
-+    private fun enableAvailability() {
-+        if (!AvailabilityService.canNotify(this)) {
-+            showMessage(R.string.assist_notifications_required)
-+            return
-+        }
-+        preferences.enabled = true
-+        try {
-+            AvailabilityService.start(this)
-+        } catch (_: IllegalStateException) {
-+            preferences.enabled = false
-+            showMessage(R.string.assist_service_error)
-+        } catch (_: SecurityException) {
-+            preferences.enabled = false
-+            showMessage(R.string.assist_service_error)
-+        }
-+        updateControls()
-+    }
-+
-+    private fun showPublicKey() {
++        val host = serverInput.text.toString().trim().lowercase()
++        val username = userInput.text.toString().trim()
++        val password = passwordInput.text.toString()
++        val name = deviceName.text.toString().trim()
 +        val selectedRole = role
-+        lifecycleScope.launch {
-+            val key = withContext(Dispatchers.IO) {
-+                runCatching { AssistSsh.publicKey(applicationContext, selectedRole) }.getOrNull()
++        if (!RelayLogin.validServer(host) || username != account(selectedRole) ||
++            password.isEmpty() || password.length > 256 ||
++            (selectedRole == AssistRole.DEVICE && name.length !in 1..60)
++        ) {
++            message(R.string.assist_invalid)
++            return
++        }
++        runNetwork {
++            val response = withContext(Dispatchers.IO) {
++                val key = AssistSsh.publicKey(applicationContext, selectedRole)
++                RelayLogin.request(host, "login", JSONObject()
++                    .put("username", username).put("password", password).put("name", name).put("publicKey", key))
 +            }
-+            if (key == null) {
-+                showMessage(R.string.assist_key_error)
-+                return@launch
++            val edit = login.edit().putString("server.${selectedRole.name}", host).putString("lastServer", host)
++            if (selectedRole == AssistRole.DEVICE) {
++                preferences.save(selectedRole, RelayLogin.profile(response, host, username))
++                edit.putString("deviceName", name)
++            } else {
++                edit.putString("token", response.getString("token"))
 +            }
-+            AlertDialog.Builder(this@RemoteAssistActivity)
-+                .setTitle(R.string.assist_show_key)
-+                .setMessage(key)
-+                .setNegativeButton(android.R.string.cancel, null)
-+                .setPositiveButton(R.string.assist_copy_key) { _, _ ->
-+                    getSystemService(ClipboardManager::class.java)
-+                        .setPrimaryClip(ClipData.newPlainText(getString(R.string.assist_show_key), key))
-+                }.show()
++            edit.apply()
++            passwordInput.setText("")
++            if (selectedRole == AssistRole.DEVICE) confirmAvailability() else showDevices(response)
 +        }
 +    }
 +
-+    private fun connectOperator(profile: AssistProfile) {
-+        connecting = true
-+        updateControls()
-+        lifecycleScope.launch {
++    private fun logOut() {
++        if (role == AssistRole.DEVICE) AvailabilityService.stop(this)
++        val edit = login.edit().remove("server.${role.name}")
++        if (role == AssistRole.OPERATOR) edit.remove("token")
++        edit.apply()
++        loadRole()
++    }
++
++    private fun refreshDevices() {
++        runNetwork {
++            val host = server()
++            val auth = token()
++            val response = withContext(Dispatchers.IO) { RelayLogin.request(host, "devices", JSONObject(), auth) }
++            showDevices(response)
++        }
++    }
++
++    private fun showDevices(response: JSONObject) {
++        val devices = response.getJSONArray("devices")
++        if (devices.length() == 0) {
++            message(R.string.assist_no_devices)
++            return
++        }
++        val rows = (0 until devices.length()).map { devices.getJSONObject(it) }
++        val names = rows.map { it.getString("name") }
++        val labels = names.mapIndexed { index, name ->
++            if (names.count { it == name } == 1) name else "$name · ${rows[index].getString("id").take(5)}"
++        }
++        AlertDialog.Builder(this)
++            .setTitle(R.string.assist_devices)
++            .setItems(labels.toTypedArray()) { _, index -> connect(rows[index].getString("id")) }
++            .setNegativeButton(android.R.string.cancel, null)
++            .show()
++    }
++
++    private fun connect(id: String) {
++        val host = server()
++        val auth = token()
++        runNetwork {
 +            var pending: Session? = null
 +            try {
-+                val forward = withContext(Dispatchers.IO) {
++                val port = withContext(Dispatchers.IO) {
++                    val response = RelayLogin.request(host, "connect", JSONObject().put("id", id), auth)
++                    val profile: AssistProfile = RelayLogin.profile(response, host, account(AssistRole.OPERATOR))
 +                    val session = AssistSsh.session(applicationContext, AssistRole.OPERATOR, profile)
 +                    pending = session
 +                    session.connect(12_000)
 +                    session.setPortForwardingL(LOOPBACK, 0, LOOPBACK, profile.relayPort)
 +                }
-+                OperatorTunnel.open(forward, checkNotNull(pending))
++                OperatorTunnel.open(port, checkNotNull(pending))
 +                pending = null
-+                startActivity(MirrorActivity.newIntent(this@RemoteAssistActivity, LOOPBACK, forward))
-+            } catch (failure: JSchException) {
-+                showMessage(sshError(failure))
-+            } catch (_: java.io.IOException) {
-+                showMessage(R.string.assist_key_error)
++                startActivity(MirrorActivity.newIntent(this@RemoteAssistActivity, LOOPBACK, port))
 +            } finally {
 +                pending?.disconnect()
-+                connecting = false
-+                updateControls()
 +            }
 +        }
 +    }
 +
-+    private fun showMessage(@StringRes text: Int) {
-+        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
++    private fun confirmAvailability() {
++        AlertDialog.Builder(this)
++            .setTitle(R.string.assist_enable)
++            .setMessage(R.string.assist_consent)
++            .setNegativeButton(android.R.string.cancel, null)
++            .setPositiveButton(R.string.assist_enable) { _, _ ->
++                if (Build.VERSION.SDK_INT >= 33 && !AvailabilityService.canNotify(this)) {
++                    notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
++                } else activate()
++            }.show()
 +    }
 +
-+    private fun LinearLayout.button(@StringRes label: Int, action: () -> Unit): Button =
++    private fun activate() {
++        if (role != AssistRole.DEVICE || !enrolled() || !AvailabilityService.canNotify(this)) {
++            message(R.string.assist_notifications_required)
++            return
++        }
++        preferences.enabled = true
++        try {
++            AvailabilityService.start(this)
++        } catch (_: RuntimeException) {
++            preferences.enabled = false
++            message(R.string.assist_service_error)
++        }
++        render()
++    }
++
++    private fun runNetwork(block: suspend () -> Unit) {
++        if (busy) return
++        busy = true
++        render()
++        lifecycleScope.launch {
++            try {
++                block()
++            } catch (error: CancellationException) {
++                throw error
++            } catch (error: LoginException) {
++                if (error.status == 401 && role == AssistRole.OPERATOR && enrolled()) logOut()
++                message(when (error.status) {
++                    401 -> R.string.assist_password_error
++                    429 -> R.string.assist_login_retry
++                    404 -> R.string.assist_no_devices
++                    else -> R.string.assist_ssh_error
++                })
++            } catch (error: JSchException) {
++                message(sshError(error))
++            } catch (_: Exception) {
++                message(R.string.assist_ssh_error)
++            } finally {
++                busy = false
++                render()
++            }
++        }
++    }
++
++    private fun message(@StringRes text: Int) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
++
++    private fun LinearLayout.button(@StringRes label: Int, callback: () -> Unit): Button =
 +        Button(context).apply {
 +            setText(label)
-+            setOnClickListener { action() }
++            setOnClickListener { callback() }
 +            this@button.addView(this)
 +        }
 +
-+    private fun LinearLayout.input(@StringRes label: Int, type: Int = InputType.TYPE_CLASS_TEXT): EditText {
-+        addView(TextView(context).apply { setText(label) })
-+        return EditText(context).apply {
-+            inputType = type or if (type == InputType.TYPE_CLASS_TEXT) InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS else 0
-+            setSingleLine()
++    private fun LinearLayout.input(@StringRes label: Int, type: Int): EditText =
++        EditText(context).apply {
++            setHint(label)
 +            contentDescription = getString(label)
++            inputType = type
++            setSingleLine()
++            isSaveEnabled = false
 +            this@input.addView(this)
 +        }
-+    }
 +}
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..c085675
+index 0000000..dd92eff
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,34 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
 +    <string name="assist_device">Recibir asistencia</string>
-+    <string name="assist_operator_help">Usa la cuenta SSH asignada al operador. El teléfono asistido debe tener la disponibilidad activada.</string>
-+    <string name="assist_host">Servidor SSH (IP de Tailscale o MagicDNS)</string>
-+    <string name="assist_ssh_port">Puerto SSH</string>
-+    <string name="assist_ssh_user">Usuario SSH</string>
-+    <string name="assist_fingerprint">Huella SHA256 de la clave ECDSA del servidor</string>
-+    <string name="assist_relay_port">Puerto asignado al teléfono en el servidor</string>
-+    <string name="assist_adb_port">Puerto ADB local de Nightzuku</string>
-+    <string name="assist_show_key">Ver clave pública SSH</string>
-+    <string name="assist_copy_key">Copiar clave pública</string>
++    <string name="assist_host">Nombre completo de Tailscale (.ts.net)</string>
++    <string name="assist_ssh_user">Usuario</string>
 +    <string name="assist_notification_title">JolufaSoft Remote · Asistencia</string>
 +    <string name="assist_enable">Activar asistencia permanente</string>
 +    <string name="assist_disable">Desactivar asistencia</string>
 +    <string name="assist_consent">El operador autorizado podrá ver y controlar este teléfono mientras esté disponible. La disponibilidad se restaura después del reinicio y puedes desactivarla en cualquier momento desde la notificación.</string>
 +    <string name="assist_disabled">Asistencia desactivada.</string>
-+    <string name="assist_ready_to_resume">Disponibilidad activada en la configuración. Si el servicio se detuvo, desactívalo y vuelve a activarlo.</string>
 +    <string name="assist_connecting">Abriendo la conexión SSH…</string>
 +    <string name="assist_wait_adb">Esperando el puerto ADB local de Nightzuku.</string>
 +    <string name="assist_available">Disponible para el operador autorizado.</string>
-+    <string name="assist_invalid">Revisa el servidor, el usuario, la huella SHA256 y los puertos.</string>
++    <string name="assist_invalid">Revisa el servidor, el usuario, la contraseña y el nombre del teléfono.</string>
 +    <string name="assist_key_error">No se pudo abrir o generar la clave SSH de este teléfono.</string>
 +    <string name="assist_host_key_error">La clave ECDSA del servidor no coincide con la huella configurada.</string>
-+    <string name="assist_auth_error">El servidor rechazó la clave pública SSH de este teléfono.</string>
++    <string name="assist_auth_error">El servidor rechazó la conexión. Vuelve a iniciar sesión.</string>
 +    <string name="assist_forward_error">El servidor rechazó el puerto asignado al teléfono.</string>
 +    <string name="assist_ssh_error">No se pudo establecer la conexión SSH. Comprueba el servidor y la red.</string>
 +    <string name="assist_notifications_required">Habilita las notificaciones de asistencia en Ajustes de Android para activar este modo.</string>
 +    <string name="assist_service_error">Android no pudo iniciar el servicio de asistencia.</string>
 +    <string name="assist_tunnel_closed">La conexión SSH se cerró. Vuelve a Dar asistencia para conectar de nuevo.</string>
++    <string name="assist_sign_in">Iniciar sesión</string>
++    <string name="assist_sign_out">Cerrar sesión</string>
++    <string name="assist_password">Contraseña</string>
++    <string name="assist_device_name">Nombre del teléfono</string>
++    <string name="assist_login_hint">Ingresa tu usuario y contraseña. La conexión queda guardada en este teléfono.</string>
++    <string name="assist_operator_ready">Sesión iniciada. Elige un teléfono para dar asistencia.</string>
++    <string name="assist_devices">Teléfonos</string>
++    <string name="assist_no_devices">Todavía no hay teléfonos registrados.</string>
++    <string name="assist_password_error">Usuario o contraseña incorrectos, o sesión vencida.</string>
++    <string name="assist_login_retry">Espera unos segundos y vuelve a intentar.</string>
 +</resources>
 diff --git a/app/src/main/res/values/compact_controls_strings.xml b/app/src/main/res/values/compact_controls_strings.xml
 index 1d88699..2d77dc8 100644
