@@ -113,7 +113,14 @@ if ! grep -qE '^ListenAddress[[:space:]]+127\.0\.0\.1:2223([[:space:]]|$)' "$sta
     sed -i '1iListenAddress 127.0.0.1:2223' "$stage/sshd_config"
 fi
 /usr/sbin/sshd -t -f "$stage/sshd_config"
-/usr/bin/python3 -m py_compile "$source_dir/relay-login.py" "$source_dir/relay-wss.py"
+/usr/bin/python3 - "$source_dir/relay-login.py" "$source_dir/relay-wss.py" <<'PY_CHECK'
+import sys
+from pathlib import Path
+
+for name in sys.argv[1:]:
+    path = Path(name)
+    compile(path.read_bytes(), str(path), "exec")
+PY_CHECK
 user="$(systemctl show -p User --value jremote-login.service)"
 [[ -n "$user" ]]
 install -m 0644 "$source_dir/relay-login.py" "$relay_dir/relay-login.py"
