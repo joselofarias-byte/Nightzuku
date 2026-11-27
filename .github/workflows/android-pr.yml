@@ -99,7 +99,7 @@ jobs:
           echo "NIGHTZUKU_KEYSTORE_FILE=$RUNNER_TEMP/nightzuku-release.jks" >> "$GITHUB_ENV"
 
       - name: Build manager debug APK
-        run: ./gradlew --no-daemon --stacktrace :manager:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace :manager:testDebugUnitTest --tests '*NightDogRecoveryEngineTest' --tests '*AdbRecoveryProtocolTest' :manager:assembleDebug
 
       - name: Build permanently signed release APK
         if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
@@ -117,13 +117,28 @@ jobs:
           test -x "$AAPT"
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           printf '%s\n' "$BADGING"
+          EXPECTED_VERSION_CODE="$(sed -nE 's/^def gitCommitCount = ([0-9]+)$/\1/p' build.gradle)"
+          [[ "$EXPECTED_VERSION_CODE" =~ ^[0-9]+$ ]] && (( EXPECTED_VERSION_CODE >= 55 )) || {
+            echo "ERROR: el código de publicación debe ser 55 o mayor"
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -F "package: name='com.joselofarias.nightzuku' versionCode='$EXPECTED_VERSION_CODE'" >/dev/null || {
+            echo "ERROR: paquete o versionCode incorrecto en el APK Release"
+            exit 1
+          }
           printf '%s\n' "$BADGING" | grep -F ".$BUILD_SHORT_SHA'" >/dev/null || {
             echo "ERROR: APK versionName does not contain checked-out SHA $BUILD_SHORT_SHA"
             exit 1
           }
 
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee release-certificate.txt
+          "$APKSIGNER" verify --print-certs "$APK" | tee release-certificate.txt
+          ACTUAL_CERT="$(sed -nE 's/^(Signer #[0-9]+ |V[0-9]+ Signer: )certificate SHA-256 digest: ([0-9a-f]{64})$/\2/p' release-certificate.txt | sort -u)"
+          EXPECTED_CERT=a0aa7a8eecbc38a22f81ffe4e713914c1a810e11ab8e8f507b03b3d54df9b496
+          [[ "$ACTUAL_CERT" == "$EXPECTED_CERT" ]] || {
+            echo "ERROR: el certificado Release no coincide con la firma permanente de Nightzuku"
+            exit 1
+          }
           printf '%s\n' "$BUILD_HEAD_SHA" > build-head-sha.txt
           printf '%s\n' "$BADGING" > release-badging.txt
 
