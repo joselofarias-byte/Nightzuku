@@ -284,7 +284,7 @@ index 0000000..46e94de
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
 new file mode 100644
-index 0000000..699e2d2
+index 0000000..65dfb10
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
 @@ -0,0 +1,168 @@
@@ -418,9 +418,9 @@ index 0000000..699e2d2
 +            val manager = context.getSystemService(NotificationManager::class.java)
 +            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID,
 +                context.getString(R.string.assist_notification_title), NotificationManager.IMPORTANCE_LOW))
++            val importance = manager.getNotificationChannel(CHANNEL_ID)?.importance ?: NotificationManager.IMPORTANCE_NONE
 +            return NotificationManagerCompat.from(context).areNotificationsEnabled() &&
-+                (manager.getNotificationChannel(CHANNEL_ID)?.importance ?: NotificationManager.IMPORTANCE_NONE)
-+                    != NotificationManager.IMPORTANCE_NONE
++                importance != NotificationManager.IMPORTANCE_NONE
 +        }
 +
 +        internal fun start(context: Context) {
