@@ -9,6 +9,7 @@ fi
 domain="${1:-remoto.jolufasoft.com}"
 bind_ip="${2:-10.0.0.85}"
 caddyfile="${3:-/etc/caddy/Caddyfile}"
+expected_public_ip="${4:-}"
 source_dir="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 relay_dir=/etc/jremote-login
 ssh_config="$relay_dir/sshd_config"
@@ -19,8 +20,37 @@ unit=/etc/systemd/system/jremote-wss.service
 [[ "$domain" =~ ^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$ ]]
 [[ "$bind_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
 [[ -f "$caddyfile" && -f "$ssh_config" && -f "$relay_dir/config.json" ]]
-if ! getent ahostsv4 "$domain" >/dev/null; then
-    printf 'Agrega primero el registro A de %s hacia la IPv4 pública del Oracle.\n' "$domain" >&2
+# Check public DNS independently of the Oracle's system resolver.
+public_dns() {
+    curl -fsS --connect-timeout 4 --max-time 8 \
+        --get \
+        --data-urlencode "name=$domain" --data-urlencode 'type=A' \
+        'https://dns.google/resolve' ||
+    curl -fsS --connect-timeout 4 --max-time 8 \
+        --get \
+        -H 'accept: application/dns-json' \
+        --data-urlencode "name=$domain" --data-urlencode 'type=A' \
+        'https://cloudflare-dns.com/dns-query'
+}
+
+if ! dns_answer="$(public_dns)"; then
+    printf 'No pude consultar el DNS público de %s.\n' "$domain" >&2
+    exit 2
+fi
+if ! printf '%s' "$dns_answer" | /usr/bin/python3 -c '
+import ipaddress, json, sys
+expected = sys.argv[1]
+reply = json.load(sys.stdin)
+addresses = {
+    ipaddress.IPv4Address(item["data"]) for item in reply.get("Answer", [])
+    if item.get("type") == 1
+}
+if reply.get("Status") != 0 or not addresses or (expected and addresses != {ipaddress.IPv4Address(expected)}):
+    print("DNS público incompatible. Direcciones encontradas:", ", ".join(map(str, sorted(addresses))) or "ninguna",
+          "· IPv4 esperada:", expected or "cualquiera válida", file=sys.stderr)
+    sys.exit(2)
+print("DNS público verificado:", ", ".join(map(str, sorted(addresses))))
+' "$expected_public_ip"; then
     exit 2
 fi
 if ! ip -o -4 address show | awk -v ip="$bind_ip/" '$4 ~ ("^" ip) {found=1} END {exit !found}'; then
