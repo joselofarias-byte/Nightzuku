@@ -1,4 +1,4 @@
-# JolufaSoft Remote 1.2.1
+# JolufaSoft Remote 1.2.2
 
 Instala el APK en ambos teléfonos y únelos a la misma red de Tailscale que el Oracle. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 

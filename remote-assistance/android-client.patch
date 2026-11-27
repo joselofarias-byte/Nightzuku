@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..7d732cc 100644
+index 6a5a392..d1021f4 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
@@ -21,8 +21,8 @@ index 6a5a392..7d732cc 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 4
-+        versionName = "1.2.1"
++        versionCode = 5
++        versionName = "1.2.2"
 +        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
@@ -780,10 +780,10 @@ index b07e364..006806e 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..70aa8c5
+index 0000000..095415c
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,327 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
@@ -791,6 +791,7 @@ index 0000000..70aa8c5
 +import android.os.Build
 +import android.os.Bundle
 +import android.text.InputType
++import android.text.method.PasswordTransformationMethod
 +import android.view.View
 +import android.widget.Button
 +import android.widget.EditText
@@ -1101,8 +1102,11 @@ index 0000000..70aa8c5
 +        EditText(context).apply {
 +            setHint(label)
 +            contentDescription = getString(label)
-+            inputType = type
 +            setSingleLine()
++            inputType = type
++            if (type == (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)) {
++                transformationMethod = PasswordTransformationMethod.getInstance()
++            }
 +            isSaveEnabled = false
 +            this@input.addView(this)
 +        }
