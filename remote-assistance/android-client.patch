@@ -1,8 +1,17 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..c86d017 100644
+index 6a5a392..7d732cc 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
-@@ -105,11 +105,11 @@ android {
+@@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
+ fun buildConfigString(value: String): String =
+     "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+ 
++val assistDefaultServer = providers.gradleProperty("jremoteDefaultServer").orElse("")
++
+ val abiSplitsEnabled = providers.gradleProperty("abiSplits").map {
+     it.toBooleanStrictOrNull()
+         ?: throw GradleException("abiSplits must be explicitly true or false, e.g. -PabiSplits=true.")
+@@ -105,11 +107,12 @@ android {
      compileSdk = 36
  
      defaultConfig {
@@ -12,12 +21,13 @@ index 6a5a392..c86d017 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 3
-+        versionName = "1.2.0"
++        versionCode = 4
++        versionName = "1.2.1"
++        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
          buildConfigField("String", "PUBLISHER_EMAIL", buildConfigString(publisherEmail))
-@@ -253,6 +253,7 @@ dependencies {
+@@ -253,6 +256,7 @@ dependencies {
      implementation(project(":libadb"))
      implementation(libs.conscrypt.android)
      implementation(libs.bouncycastle.pkix)
@@ -458,12 +468,13 @@ index 0000000..65dfb10
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
 new file mode 100644
-index 0000000..87a14fb
+index 0000000..7c796ec
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,55 @@
 +package com.scrcpy.remote.assist
 +
++import com.scrcpy.remote.BuildConfig
 +import org.json.JSONObject
 +import java.io.IOException
 +import java.net.URL
@@ -472,6 +483,17 @@ index 0000000..87a14fb
 +internal class LoginException(val status: Int) : IOException()
 +
 +internal object RelayLogin {
++    const val DEFAULT_ALIAS = "remoto"
++
++    fun resolveServer(input: String, defaultServer: String = BuildConfig.ASSIST_DEFAULT_SERVER): String {
++        val host = input.trim().lowercase()
++        return if (host == DEFAULT_ALIAS && validServer(defaultServer)) defaultServer else host
++    }
++
++    fun displayServer(server: String): String =
++        if (validServer(BuildConfig.ASSIST_DEFAULT_SERVER) &&
++            (server.isEmpty() || server == BuildConfig.ASSIST_DEFAULT_SERVER)) DEFAULT_ALIAS else server
++
 +    fun validServer(host: String): Boolean =
 +        host.length in 7..253 && host.endsWith(".ts.net") &&
 +            host.split('.').all { it.matches(Regex("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")) }
@@ -758,7 +780,7 @@ index b07e364..006806e 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..5197cc1
+index 0000000..70aa8c5
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 @@ -0,0 +1,323 @@
@@ -880,7 +902,7 @@ index 0000000..5197cc1
 +    }
 +
 +    private fun loadRole() {
-+        serverInput.setText(server().ifBlank { login.getString("lastServer", "").orEmpty() })
++        serverInput.setText(RelayLogin.displayServer(server().ifBlank { login.getString("lastServer", "").orEmpty() }))
 +        userInput.setText(account())
 +        passwordInput.setText("")
 +        deviceName.setText(login.getString("deviceName", Build.MODEL))
@@ -922,7 +944,7 @@ index 0000000..5197cc1
 +            if (role == AssistRole.DEVICE) confirmAvailability() else refreshDevices()
 +            return
 +        }
-+        val host = serverInput.text.toString().trim().lowercase()
++        val host = RelayLogin.resolveServer(serverInput.text.toString())
 +        val username = userInput.text.toString().trim()
 +        val password = passwordInput.text.toString()
 +        val name = deviceName.text.toString().trim()
@@ -1087,7 +1109,7 @@ index 0000000..5197cc1
 +}
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..dd92eff
+index 0000000..6eb449f
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
 @@ -0,0 +1,34 @@
@@ -1095,7 +1117,7 @@ index 0000000..dd92eff
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
 +    <string name="assist_device">Recibir asistencia</string>
-+    <string name="assist_host">Nombre completo de Tailscale (.ts.net)</string>
++    <string name="assist_host">Servidor de asistencia</string>
 +    <string name="assist_ssh_user">Usuario</string>
 +    <string name="assist_notification_title">JolufaSoft Remote · Asistencia</string>
 +    <string name="assist_enable">Activar asistencia permanente</string>
@@ -1259,10 +1281,10 @@ index efd063d..363a13b 100644
  </resources>
 diff --git a/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt
 new file mode 100644
-index 0000000..ab16db2
+index 0000000..d9cf26e
 --- /dev/null
 +++ b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,33 @@
 +package com.scrcpy.remote.assist
 +
 +import com.jcraft.jsch.HostKeyRepository
@@ -1278,6 +1300,13 @@ index 0000000..ab16db2
 +        val pinned = PinnedHostKey(fingerprint)
 +        assertEquals(HostKeyRepository.OK, pinned.check("relay", "abc".toByteArray()))
 +        assertEquals(HostKeyRepository.CHANGED, pinned.check("relay", "wrong".toByteArray()))
++    }
++
++    @Test fun resolvesOnlyTheConfiguredAlias() {
++        val endpoint = "relay.tail.example.ts.net"
++        assertEquals(endpoint, RelayLogin.resolveServer(" REMOTO ", endpoint))
++        assertEquals("otro.tail.example.ts.net", RelayLogin.resolveServer("Otro.tail.example.ts.net", endpoint))
++        assertEquals("remoto", RelayLogin.resolveServer("remoto", ""))
 +    }
 +
 +    @Test fun acceptsMagicDnsAndTailnetIpv4() {

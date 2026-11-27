@@ -1,4 +1,4 @@
-# JolufaSoft Remote 1.2
+# JolufaSoft Remote 1.2.1
 
 Instala el APK en ambos teléfonos y únelos a la misma red de Tailscale que el Oracle. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 
@@ -21,3 +21,5 @@ El Oracle necesita OpenSSH, Python 3 y Tailscale con HTTPS habilitado. Limita TC
 ## Compilación
 
 `bash build-android.sh` aplica el parche a la revisión fijada, ejecuta las pruebas y verifica el APK. Usa JDK 17, Android SDK 36 y Build Tools 36.0.0. La variante distribuida por CI usa firma de prueba.
+
+Para preconfigurar la pantalla de inicio, define `ORG_GRADLE_PROJECT_jremoteDefaultServer` con el nombre completo de Tailscale antes de compilar. El campo Servidor aparecerá como **remoto**.
