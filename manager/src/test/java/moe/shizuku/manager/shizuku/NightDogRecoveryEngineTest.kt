@@ -1025,4 +1025,49 @@ class NightDogRecoveryEngineTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun puertoTlsObsoletoSeRecuperaEnElMismoIntentoConOtroPuertoTls() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var binderAlive = false
+            val previous = AdbEndpoint("192.168.1.88", 36001)
+            val fresh = AdbEndpoint("192.168.2.88", 46002)
+            val staleSession = FakeSession(previous, onConnect = { throw ConnectException("puerto anterior") })
+            val freshSession = FakeSession(fresh, onStartServer = { binderAlive = true })
+            val alternateCalls = AtomicInteger(0)
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { 1_000L },
+                delayMs = {},
+                isDesiredRunning = { true },
+                setDesiredRunning = {},
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    if (binderAlive) AdbDiscoveryResult.Absent else AdbDiscoveryResult.Found(previous)
+                },
+                openSession = { if (it == previous) staleSession else freshSession },
+                discoverAlternateEndpoint = {
+                    assertEquals(previous, it)
+                    alternateCalls.incrementAndGet()
+                    fresh
+                },
+                systemEnv = FakeSystemEnv(wifiConnected = true, localPersistentTcp = false),
+                recoverySettleMs = 0L,
+                logWarning = {},
+                logDebug = {}
+            )
+
+            engine.start(startPollingLoop = false)
+            engine.activeRecoveryJobForTest()?.join()
+
+            assertEquals(1, alternateCalls.get())
+            assertEquals(1, staleSession.closeCalls)
+            assertEquals(0, staleSession.startServerCalls)
+            assertEquals(listOf("connect", "verifyShell", "startServer", "close"), freshSession.events)
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+        } finally {
+            scope.cancel()
+        }
+    }
 }

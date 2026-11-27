@@ -43,6 +43,16 @@ class AdbRecoveryProtocolTest {
     // --- AdbEndpointPolicy ---
 
     @Test
+    fun anuncioViejoNoOcultaUnPuertoNuevoTrasPerderAdb() {
+        val stale = AdbEndpoint("192.168.1.20", 37123)
+        val fresh = AdbEndpoint("192.168.1.20", 45678)
+        assertTrue(AdbEndpointPolicy.acceptsAnnouncement(stale.port, stale, null))
+        assertFalse(AdbEndpointPolicy.acceptsAnnouncement(stale.port, stale, stale))
+        assertFalse(AdbEndpointPolicy.acceptsAnnouncement(stale.port, fresh, stale))
+        assertTrue(AdbEndpointPolicy.acceptsAnnouncement(fresh.port, fresh, stale))
+    }
+
+    @Test
     fun tlsDependeDelTransporteNoDeLaVersionAndroid() {
         assertTrue(AdbEndpoint("192.168.1.20", 37123).requireTls)
         assertFalse(AdbEndpoint("127.0.0.1", 5555, requireTls = false).requireTls)

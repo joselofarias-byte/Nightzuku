@@ -19,6 +19,9 @@ import kotlin.coroutines.resume
 import moe.shizuku.manager.ShizukuSettings
 
 internal object AdbEndpointPolicy {
+    fun acceptsAnnouncement(port: Int, endpoint: AdbEndpoint, excluded: AdbEndpoint?): Boolean =
+        port in 1..65535 && endpoint.port == port && endpoint != excluded
+
     fun isLocal(host: String, port: Int, localHosts: Set<String>): Boolean =
         port in 1..65535 && host in localHosts
 
@@ -178,7 +181,8 @@ internal object AdbTransportResolver {
 
     suspend fun discoverWireless(
         context: Context,
-        timeoutMs: Long = DISCOVERY_TIMEOUT_MS
+        timeoutMs: Long = DISCOVERY_TIMEOUT_MS,
+        excludedEndpoint: AdbEndpoint? = null
     ): AdbEndpoint? = withContext(Dispatchers.Main) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext null
         val appContext = context.applicationContext
@@ -190,7 +194,9 @@ internal object AdbTransportResolver {
                     val resumed = AtomicBoolean(false)
                     val session = AdbMdns(appContext, AdbMdns.TLS_CONNECT) { port ->
                         val endpoint = discovery?.resolvedEndpoint
-                        if (port > 0 && endpoint != null && resumed.compareAndSet(false, true) && continuation.isActive) {
+                        if (endpoint != null && AdbEndpointPolicy.acceptsAnnouncement(port, endpoint, excludedEndpoint) &&
+                            continuation.isActive && resumed.compareAndSet(false, true)
+                        ) {
                             continuation.resume(endpoint)
                         }
                     }
@@ -222,14 +228,13 @@ internal object AdbTransportResolver {
     }
 
     suspend fun alternateLocalEndpoint(context: Context, previous: AdbEndpoint): AdbEndpoint? {
-        val alternate = if (previous.requireTls) {
-            localPersistentTcpEndpoint()
-        } else if (wirelessDebuggingState(context) != 0) {
-            discoverWireless(context)
-        } else {
-            null
+        if (previous.requireTls) {
+            localPersistentTcpEndpoint()?.let { return it }
         }
-        return alternate?.takeIf { it != previous }
+        if (wirelessDebuggingState(context) == 0) return null
+
+        // El anuncio anterior puede llegar primero tras cambiar de red; seguir escuchando.
+        return discoverWireless(context, excludedEndpoint = previous)
     }
 
     fun canTryAlternate(error: Exception, launchSubmitted: Boolean): Boolean =

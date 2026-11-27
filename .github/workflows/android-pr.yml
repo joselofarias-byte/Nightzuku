@@ -99,7 +99,7 @@ jobs:
           echo "NIGHTZUKU_KEYSTORE_FILE=$RUNNER_TEMP/nightzuku-release.jks" >> "$GITHUB_ENV"
 
       - name: Build manager debug APK
-        run: ./gradlew --no-daemon --stacktrace :manager:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace :manager:testDebugUnitTest --tests '*NightDogRecoveryEngineTest' --tests '*AdbRecoveryProtocolTest' :manager:assembleDebug
 
       - name: Build permanently signed release APK
         if: env.NIGHTZUKU_KEYSTORE_BASE64 != ''
