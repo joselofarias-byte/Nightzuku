@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import struct
 import time
@@ -13,6 +14,8 @@ from pathlib import Path
 
 OPERATOR = "remote-operator-01"
 DEVICE = "remote-device-01"
+USER_NAME = re.compile(r"[a-z][a-z0-9_.-]{2,31}")
+PASSWORD_ROUNDS = 600_000
 CURVE = b"ecdsa-sha2-nistp256"
 
 
@@ -40,6 +43,12 @@ class Relay:
         self.directory = directory
         self.path = directory / "state.json"
         self.state = json.loads(self.path.read_text()) if self.path.exists() else {"devices": {}, "operators": {}}
+        self.accounts = self.state.setdefault("accounts", {})
+        for username, entry in config["users"].items():
+            self.accounts.setdefault(username, {**entry, "role": username, "enabled": True})
+        for role, collection in ((DEVICE, "devices"), (OPERATOR, "operators")):
+            for record in self.state[collection].values():
+                record.setdefault("account", role)
         self.failures = {}
         self.commit()
 
@@ -52,27 +61,40 @@ class Relay:
         ):
             atomic(self.directory / role, "".join(
                 f'restrict,port-forwarding,{rule}="127.0.0.1:{rec["port"]}" {rec["key"]}\n'
-                for rec in records
+                for rec in records if rec.get("authorized", True)
+                and self.accounts.get(rec["account"], {}).get("enabled")
             ))
 
     def settings(self, port):
         return {**self.config["ssh"], "relayPort": port}
 
     def list_devices(self):
-        return [{"id": key, "name": rec["name"]} for key, rec in self.state["devices"].items()]
+        return [
+            {"id": key, "name": rec["name"]}
+            for key, rec in self.state["devices"].items()
+            if rec.get("authorized", True) and self.accounts.get(rec["account"], {}).get("enabled")
+        ]
 
     def login(self, data):
-        role = data.get("username")
+        username = data.get("username")
         password = data.get("password")
-        if role not in (OPERATOR, DEVICE) or not isinstance(password, str) or len(password) > 256:
+        if not isinstance(username, str) or not USER_NAME.fullmatch(username):
             return 401, {}
-        until = self.failures.get(role, 0)
-        if time.monotonic() < until:
+        if not isinstance(password, str) or not 1 <= len(password) <= 256:
+            return 401, {}
+        entry = self.accounts.get(username)
+        if entry is None or not entry["enabled"]:
+            return 401, {}
+        if time.monotonic() < self.failures.get(username, 0):
             return 429, {}
-        entry = self.config["users"][role]
-        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(entry["salt"]), 600_000)
+        digest = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), bytes.fromhex(entry["salt"]), PASSWORD_ROUNDS
+        )
         if not hmac.compare_digest(digest, bytes.fromhex(entry["digest"])):
-            self.failures[role] = time.monotonic() + 1
+            self.failures[username] = time.monotonic() + 1
+            return 401, {}
+        role = entry["role"]
+        if data.get("role", role) != role:
             return 401, {}
         key, identity = public_key(data["publicKey"])
         if role == DEVICE:
@@ -86,16 +108,18 @@ class Relay:
                 if port is None:
                     return 409, {}
                 devices[identity] = {"key": key, "port": port}
-            devices[identity]["name"] = name
+            devices[identity].update(name=name, account=username, authorized=True)
             self.commit()
             return 200, self.settings(devices[identity]["port"])
         operators = self.state["operators"]
         if identity not in operators and len(operators) >= 50:
             return 409, {}
         token = secrets.token_urlsafe(32)
-        operators[identity] = {"key": key, "token": hashlib.sha256(token.encode()).hexdigest()}
+        operators[identity] = {
+            "key": key, "account": username, "token": hashlib.sha256(token.encode()).hexdigest()
+        }
         self.commit()
-        return 200, {"token": token, "devices": self.list_devices()}
+        return 200, {"token": token, "admin": username == OPERATOR, "devices": self.list_devices()}
 
     def authenticated(self, path, token, data):
         if not token.startswith("Bearer "):
@@ -105,14 +129,75 @@ class Relay:
                          if hmac.compare_digest(digest, rec["token"])), None)
         if operator is None:
             return 401, {}
+        if path.startswith("/accounts"):
+            return self.manage_accounts(path, operator["account"], data)
         if path == "/devices":
             return 200, {"devices": self.list_devices()}
         device = self.state["devices"].get(data.get("id"))
-        if device is None:
+        if (device is None or not device.get("authorized", True)
+                or not self.accounts.get(device["account"], {}).get("enabled")):
             return 404, {}
         operator["port"] = device["port"]
         self.commit()
         return 200, self.settings(device["port"])
+
+
+    def manage_accounts(self, path, principal, data):
+        if principal != OPERATOR:
+            return 403, {}
+        if path == "/accounts":
+            return 200, {"accounts": [
+                {"username": name, "role": record["role"], "enabled": record["enabled"], "admin": name == OPERATOR}
+                for name, record in sorted(self.accounts.items())
+            ]}
+        username = data.get("username")
+        if not isinstance(username, str) or not USER_NAME.fullmatch(username):
+            return 400, {}
+        record = self.accounts.get(username)
+        if path == "/accounts/status":
+            enabled = data.get("enabled")
+            if record is None or type(enabled) is not bool or username == OPERATOR:
+                return 400, {}
+            record["enabled"] = enabled
+            if not enabled:
+                self.revoke(username)
+        else:
+            password = data.get("password")
+            if not isinstance(password, str) or not 12 <= len(password) <= 256:
+                return 400, {}
+            if path == "/accounts/create":
+                role = data.get("role")
+                if role not in (OPERATOR, DEVICE):
+                    return 400, {}
+                if record is not None or len(self.accounts) >= 1000:
+                    return 409, {}
+                record = {"role": role, "enabled": True}
+                self.accounts[username] = record
+            elif path == "/accounts/password":
+                if record is None:
+                    return 404, {}
+                self.revoke(username)
+            else:
+                return 404, {}
+            salt = secrets.token_bytes(16)
+            record["salt"] = salt.hex()
+            record["digest"] = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PASSWORD_ROUNDS).hex()
+            self.failures.pop(username, None)
+        self.commit()
+        return 200, {}
+
+    def revoke(self, username):
+        operators = self.state["operators"]
+        for key in [key for key, rec in operators.items() if rec["account"] == username]:
+            del operators[key]
+        ports = set()
+        for record in self.state["devices"].values():
+            if record["account"] == username:
+                record["authorized"] = False
+                ports.add(record["port"])
+        for operator in operators.values():
+            if operator.get("port") in ports:
+                operator.pop("port")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -129,7 +214,9 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(data, dict):
                     if path == "/login":
                         status, payload = self.server.relay.login(data)
-                    elif path in ("/devices", "/connect"):
+                    elif path in (
+                        "/devices", "/connect", "/accounts", "/accounts/create", "/accounts/password", "/accounts/status"
+                    ):
                         status, payload = self.server.relay.authenticated(
                             path, self.headers.get("Authorization", ""), data
                         )

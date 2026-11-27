@@ -1,4 +1,4 @@
-# JolufaSoft Remote 1.2.2
+# JolufaSoft Remote 1.3.0
 
 Instala el APK en ambos teléfonos y únelos a la misma red de Tailscale que el Oracle. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 
@@ -11,6 +11,14 @@ sudo bash setup-tailnet-login.sh
 ```
 
 El Oracle necesita OpenSSH, Python 3 y Tailscale con HTTPS habilitado. Limita TCP 8443 y 2223 en la política del tailnet a los teléfonos que usan la app. El instalador muestra las dos contraseñas generadas y el nombre del servidor. El servicio HTTPS de Tailscale Serve queda en 8443 y el SSH dedicado, en 2223. La API asigna un puerto de reenvío a cada teléfono y lo mantiene en bucle local. El instalador deja el SSH administrativo del Oracle y el servicio de la versión 1.1 en sus puertos anteriores.
+
+## Cuentas y roles
+
+La cuenta inicial `remote-operator-01` administra las cuentas desde **Dar asistencia → Administrar cuentas**. Puede crear operadores y cuentas para equipos asistidos, cambiar o generar sus contraseñas y desactivar o reactivar cuentas. Los operadores creados pueden dar asistencia. Los equipos asistidos se registran con su cuenta y un nombre.
+
+Al cambiar una contraseña o desactivar una cuenta se revocan sus credenciales para conexiones nuevas. Un túnel SSH ya establecido puede seguir abierto hasta que termine su conexión. Los teléfonos afectados deben volver a iniciar sesión para registrar su llave.
+
+En una instalación existente, actualiza `/etc/jremote-login/relay-login.py` y reinicia solo `jremote-login.service`. La API migra las dos cuentas iniciales y los equipos registrados durante el arranque.
 
 ## Teléfonos
 
