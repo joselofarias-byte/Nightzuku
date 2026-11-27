@@ -1,0 +1,41 @@
+name: JolufaSoft Remote Android client
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/remote-assistance-prototype]
+    paths:
+      - '.github/workflows/remote-client.yml'
+      - 'remote-assistance/**'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch upstream Android client
+        run: |
+          git clone --depth 1 --branch main https://github.com/dhun2666/scrcpy-client-for-android.git client
+          git -C client rev-parse HEAD | tee upstream-commit.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Build and test upstream client
+        working-directory: client
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :libadb:testDebugUnitTest :app:assembleDebug
+      - name: Archive APK and upstream commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-android-upstream-debug
+          path: |
+            client/app/build/outputs/apk/debug/*.apk
+            upstream-commit.txt
+          if-no-files-found: error
+          retention-days: 7
