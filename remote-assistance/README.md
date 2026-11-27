@@ -49,6 +49,8 @@ En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configura
 
 ## Compilación
 
-`bash build-android.sh` aplica el parche a la revisión fijada, ejecuta las pruebas y verifica el APK. Usa JDK 17, Android SDK 36 y Build Tools 36.0.0. La variante distribuida por CI usa firma de prueba.
+`bash build-android.sh` compila la variante de publicación y exige las variables `SCRCPY_KEYSTORE`, `SCRCPY_KEYSTORE_PASSWORD`, `SCRCPY_KEY_ALIAS` y `SCRCPY_KEY_PASSWORD`. Usa JDK 17, Android SDK 36 y Build Tools 36.0.0. El APK de entrega debe superar `verify-release-signature.sh` con el certificado de la versión 1.5.0. El workflow publica el artefacto `jremote-release` solo con ese control.
+
+`bash build-android.sh local` compila explícitamente para pruebas y deja el resultado en `dist/local`.
 
 Para preconfigurar la pantalla de inicio, define `ORG_GRADLE_PROJECT_jremoteDefaultServer` con el nombre completo de Tailscale antes de compilar. El campo Servidor aparecerá como **remoto**.
