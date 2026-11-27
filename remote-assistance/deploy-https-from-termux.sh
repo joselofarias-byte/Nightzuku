@@ -18,7 +18,7 @@ expected=$5
 domain=$6
 token_file="${7:-}"
 ssh_options=(-o ConnectTimeout=12 -o "HostName=$tailnet_ip" -l "$user")
-relay_version=78f6d1661640799d57596dc58c5004b45dbe2ae7
+relay_version=4bc861bb3a6f4937dc6c710a0a337f5a000dffc1
 stage="inicio"
 trap 'status=$?; printf "Error en %s, línea %s (código %s).\n" "$stage" "$LINENO" "$status" >&2; exit "$status"' ERR
 
