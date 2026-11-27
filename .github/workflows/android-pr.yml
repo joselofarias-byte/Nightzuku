@@ -133,7 +133,7 @@ jobs:
 
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner"
           "$APKSIGNER" verify --print-certs "$APK" | tee release-certificate.txt
-          ACTUAL_CERT="$(sed -nE 's/^Signer #[0-9]+ certificate SHA-256 digest: //p' release-certificate.txt)"
+          ACTUAL_CERT="$(sed -nE 's/^(Signer #[0-9]+ |V[0-9]+ Signer: )certificate SHA-256 digest: ([0-9a-f]{64})$/\2/p' release-certificate.txt | sort -u)"
           EXPECTED_CERT=a0aa7a8eecbc38a22f81ffe4e713914c1a810e11ab8e8f507b03b3d54df9b496
           [[ "$ACTUAL_CERT" == "$EXPECTED_CERT" ]] || {
             echo "ERROR: el certificado Release no coincide con la firma permanente de Nightzuku"
