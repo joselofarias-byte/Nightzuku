@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..6955b54 100644
+index 6a5a392..c1668fa 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
@@ -21,17 +21,18 @@ index 6a5a392..6955b54 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 7
-+        versionName = "1.4.0"
++        versionCode = 8
++        versionName = "1.5.0"
 +        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
          buildConfigField("String", "PUBLISHER_EMAIL", buildConfigString(publisherEmail))
-@@ -253,6 +256,7 @@ dependencies {
+@@ -253,6 +256,8 @@ dependencies {
      implementation(project(":libadb"))
      implementation(libs.conscrypt.android)
      implementation(libs.bouncycastle.pkix)
 +    implementation("com.github.mwiede:jsch:2.28.4")
++    implementation("com.squareup.okhttp3:okhttp:4.12.0")
  
      testImplementation(libs.junit)
      androidTestImplementation(libs.androidx.test.runner)
@@ -228,10 +229,10 @@ index 0000000..fe75d1a
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
 new file mode 100644
-index 0000000..46e94de
+index 0000000..eb23673
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,175 @@
 +package com.scrcpy.remote.assist
 +
 +import android.content.Context
@@ -259,12 +260,15 @@ index 0000000..46e94de
 +    val fingerprint: String,
 +    val relayPort: Int,
 +    val adbPort: Int,
++    val tunnelServer: String = "",
++    val tunnelToken: String = "",
 +) {
 +    fun isValid(): Boolean =
 +        host.length in 1..253 && host.matches(Regex("[A-Za-z0-9][A-Za-z0-9.-]*")) &&
 +            user.matches(Regex("[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}")) &&
 +            fingerprint.matches(Regex("SHA256:[A-Za-z0-9+/]{43}")) &&
-+            port in 1..65535 && relayPort in 1024..65535 && adbPort in 1..65535
++            port in 1..65535 && relayPort in 1024..65535 && adbPort in 1..65535 &&
++            (tunnelServer.isEmpty() || RelayLogin.validServer(tunnelServer) && tunnelToken.matches(Regex("[A-Za-z0-9_-]{43}")))
 +}
 +
 +internal class AssistPreferences(context: Context) {
@@ -283,6 +287,8 @@ index 0000000..46e94de
 +            prefs.getString("$key.fingerprint", "").orEmpty(),
 +            prefs.getInt("$key.relayPort", 15555),
 +            prefs.getInt("$key.adbPort", 5555),
++            prefs.getString("$key.tunnelServer", "").orEmpty(),
++            prefs.getString("$key.tunnelToken", "").orEmpty(),
 +        )
 +    }
 +
@@ -295,6 +301,8 @@ index 0000000..46e94de
 +            .putString("$key.fingerprint", profile.fingerprint)
 +            .putInt("$key.relayPort", profile.relayPort)
 +            .putInt("$key.adbPort", profile.adbPort)
++            .putString("$key.tunnelServer", profile.tunnelServer)
++            .putString("$key.tunnelToken", profile.tunnelToken)
 +            .apply()
 +    }
 +}
@@ -344,6 +352,9 @@ index 0000000..46e94de
 +            addIdentity(identity(context, role).path)
 +        }
 +        return ssh.getSession(profile.user, profile.host, profile.port).apply {
++            if (profile.tunnelServer.isNotEmpty()) {
++                setSocketFactory(RelayWebSocket(profile.tunnelServer, role, profile.tunnelToken))
++            }
 +            setConfig("StrictHostKeyChecking", "yes")
 +            setConfig("PreferredAuthentications", "publickey")
 +            setConfig("server_host_key", "ecdsa-sha2-nistp256")
@@ -573,10 +584,10 @@ index 0000000..65dfb10
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
 new file mode 100644
-index 0000000..7c796ec
+index 0000000..6e923ff
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/RelayLogin.kt
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,61 @@
 +package com.scrcpy.remote.assist
 +
 +import com.scrcpy.remote.BuildConfig
@@ -600,12 +611,15 @@ index 0000000..7c796ec
 +            (server.isEmpty() || server == BuildConfig.ASSIST_DEFAULT_SERVER)) DEFAULT_ALIAS else server
 +
 +    fun validServer(host: String): Boolean =
-+        host.length in 7..253 && host.endsWith(".ts.net") &&
++        host.length in 4..253 && '.' in host && host.last().isLetter() &&
 +            host.split('.').all { it.matches(Regex("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")) }
++
++    fun usesWebSocket(server: String): Boolean = !server.endsWith(".ts.net")
 +
 +    fun request(server: String, path: String, body: JSONObject, token: String = ""): JSONObject {
 +        require(validServer(server))
-+        val connection = URL("https://$server:8443/jremote/$path").openConnection() as HttpsURLConnection
++        val port = if (usesWebSocket(server)) 443 else 8443
++        val connection = URL("https://$server:$port/jremote/$path").openConnection() as HttpsURLConnection
 +        return try {
 +            connection.requestMethod = "POST"
 +            connection.instanceFollowRedirects = false
@@ -623,13 +637,138 @@ index 0000000..7c796ec
 +        }
 +    }
 +
-+    fun profile(response: JSONObject, server: String, user: String): AssistProfile {
++    fun profile(response: JSONObject, server: String, user: String, token: String = ""): AssistProfile {
++        val webSocket = usesWebSocket(server)
 +        val profile = AssistProfile(
 +            response.getString("host"), response.getInt("port"), user,
 +            response.getString("fingerprint"), response.getInt("relayPort"), 5555,
++            if (webSocket) server else "",
++            if (webSocket) response.optString("tunnelToken", token) else "",
 +        )
-+        check(profile.host == server && profile.isValid())
++        check((webSocket || profile.host == server) && profile.isValid())
 +        return profile
++    }
++}
+diff --git a/app/src/main/java/com/scrcpy/remote/assist/RelayWebSocket.kt b/app/src/main/java/com/scrcpy/remote/assist/RelayWebSocket.kt
+new file mode 100644
+index 0000000..ecf001d
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/assist/RelayWebSocket.kt
+@@ -0,0 +1,116 @@
++package com.scrcpy.remote.assist
++
++import com.jcraft.jsch.SocketFactory
++import okhttp3.OkHttpClient
++import okhttp3.Request
++import okhttp3.Response
++import okhttp3.WebSocket
++import okhttp3.WebSocketListener
++import okio.ByteString
++import okio.ByteString.Companion.toByteString
++import java.io.IOException
++import java.net.InetAddress
++import java.net.InetSocketAddress
++import java.net.ServerSocket
++import java.net.Socket
++import java.util.concurrent.CountDownLatch
++import java.util.concurrent.TimeUnit
++import java.util.concurrent.atomic.AtomicBoolean
++import java.util.concurrent.atomic.AtomicReference
++
++/** Adapts an authenticated WSS byte stream to the Socket used by the existing SSH client. */
++internal class RelayWebSocket(host: String, role: AssistRole, token: String) : SocketFactory {
++    private val request = Request.Builder()
++        .url("wss://$host/jremote/tunnel")
++        .header("Authorization", "Bearer $token")
++        .header("X-Jremote-Role", role.name.lowercase())
++        .build()
++
++    override fun createSocket(host: String, port: Int): Socket {
++        val peer = AtomicReference<Socket>()
++        val active = AtomicReference<WebSocket>()
++        val closed = AtomicBoolean()
++        val socket = object : Socket() {
++            override fun close() {
++                if (!closed.compareAndSet(false, true)) return
++                active.get()?.cancel()
++                runCatching { peer.get()?.close() }
++                super.close()
++            }
++        }
++        try {
++            val relay = ServerSocket(0, 1, InetAddress.getByName(LOOPBACK)).use { listener ->
++                listener.soTimeout = 1_000
++                socket.connect(InetSocketAddress(LOOPBACK, listener.localPort), 1_000)
++                listener.accept().also {
++                    if (it.port != socket.localPort) {
++                        it.close()
++                        throw IOException("Incorrect loopback peer")
++                    }
++                }
++            }
++            peer.set(relay)
++            relay.tcpNoDelay = true
++            val ready = CountDownLatch(1)
++            val opened = AtomicBoolean()
++            val webSocket = HTTP.newWebSocket(request, object : WebSocketListener() {
++                override fun onOpen(webSocket: WebSocket, response: Response) {
++                    opened.set(true)
++                    ready.countDown()
++                }
++
++                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
++                    try {
++                        relay.getOutputStream().write(bytes.toByteArray())
++                    } catch (_: IOException) {
++                        socket.close()
++                    }
++                }
++
++                override fun onMessage(webSocket: WebSocket, text: String) = socket.close()
++                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) = socket.close()
++                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
++                    ready.countDown()
++                    socket.close()
++                }
++            })
++            active.set(webSocket)
++            if (!ready.await(10, TimeUnit.SECONDS) || !opened.get() || socket.isClosed) {
++                webSocket.cancel()
++                throw IOException("WebSocket relay unavailable")
++            }
++            Thread({
++                try {
++                    val input = relay.getInputStream()
++                    val buffer = ByteArray(32_768)
++                    while (!socket.isClosed) {
++                        val n = input.read(buffer)
++                        if (n < 0) break
++                        while (!socket.isClosed && webSocket.queueSize() > 1_048_576) Thread.sleep(10)
++                        if (!webSocket.send(buffer.toByteString(0, n))) break
++                    }
++                } catch (_: IOException) {
++                    // Closing either side also interrupts the local socket read.
++                } finally {
++                    socket.close()
++                }
++            }, "assist-wss").apply { isDaemon = true }.start()
++            return socket
++        } catch (error: Exception) {
++            socket.close()
++            throw error
++        }
++    }
++
++    override fun getInputStream(socket: Socket) = socket.getInputStream()
++    override fun getOutputStream(socket: Socket) = socket.getOutputStream()
++
++    companion object {
++        private val HTTP = OkHttpClient.Builder()
++            .connectTimeout(8, TimeUnit.SECONDS)
++            .followRedirects(false)
++            .followSslRedirects(false)
++            .pingInterval(20, TimeUnit.SECONDS)
++            .build()
 +    }
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt
@@ -1085,7 +1224,7 @@ index b07e364..88ab4b2 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..2230a7e
+index 0000000..a4ea6fa
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 @@ -0,0 +1,852 @@
@@ -1334,7 +1473,7 @@ index 0000000..2230a7e
 +                val key = AssistSsh.publicKey(applicationContext, selectedRole)
 +                RelayLogin.request(host, "login", JSONObject()
 +                    .put("username", username).put("password", password).put("name", name).put("publicKey", key)
-+                    .put("role", account(selectedRole)))
++                    .put("role", account(selectedRole)).put("websocket", RelayLogin.usesWebSocket(host)))
 +            }
 +            val edit = login.edit().putString("server.${selectedRole.name}", host).putString("lastServer", host)
 +            if (selectedRole == AssistRole.DEVICE) {
@@ -1456,7 +1595,7 @@ index 0000000..2230a7e
 +            try {
 +                val port = withContext(Dispatchers.IO) {
 +                    val response = RelayLogin.request(host, "connect", JSONObject().put("id", id), auth)
-+                    val profile: AssistProfile = RelayLogin.profile(response, host, account(AssistRole.OPERATOR))
++                    val profile: AssistProfile = RelayLogin.profile(response, host, account(AssistRole.OPERATOR), auth)
 +                    val session = AssistSsh.session(applicationContext, AssistRole.OPERATOR, profile)
 +                    pending = session
 +                    session.connect(12_000)

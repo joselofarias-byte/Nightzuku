@@ -1,6 +1,21 @@
-# JolufaSoft Remote 1.4.0
+# JolufaSoft Remote 1.5.0
 
 Instala el APK en ambos teléfonos y únelos a la misma red de Tailscale que el Oracle. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
+
+## Acceso HTTPS con Caddy
+
+En una instalación existente, crea el registro DNS del dominio público y descarga juntos
+`setup-https-relay.sh`, `relay-login.py` y `relay-wss.py`. Ejecuta
+`sudo bash setup-https-relay.sh dominio IP-local /etc/caddy/Caddyfile` en el Oracle.
+El instalador valida Caddy y conserva los otros sitios. La API y el túnel WebSocket comparten
+HTTPS en el 443. El SSH del relay también escucha en bucle local y sus cuentas se autentican
+con la llave privada de cada instalación. Los puertos internos de ADB y del relay no se publican.
+
+Con la 1.5.0, ingresa el dominio público y registra cada teléfono una vez con su cuenta y contraseña.
+Para cambiar un equipo ya registrado con Tailscale, cierra sesión en ese modo y selecciona el
+dominio público al volver a entrar. La llave se conserva al actualizar sobre una build con la
+misma firma, y la API emite la autorización del túnel en el primer registro HTTPS.
+El dominio `.ts.net` sigue usando el transporte anterior.
 
 ## Oracle
 

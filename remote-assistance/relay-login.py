@@ -9,7 +9,8 @@ import re
 import secrets
 import struct
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 OPERATOR = "remote-operator-01"
@@ -120,8 +121,15 @@ class Relay:
             if device.get("account") != username:
                 device.pop("displayName", None)
             device.update(name=name, account=username, authorized=True)
+            response = self.settings(device["port"])
+            if data.get("websocket") is True:
+                token = secrets.token_urlsafe(32)
+                device["token"] = hashlib.sha256(token.encode()).hexdigest()
+                response["tunnelToken"] = token
+            else:
+                device.pop("token", None)
             self.commit()
-            return 200, self.settings(devices[identity]["port"])
+            return 200, response
         operators = self.state["operators"]
         if identity not in operators and len(operators) >= 50:
             return 409, {}
@@ -237,17 +245,18 @@ class Handler(BaseHTTPRequestHandler):
             if 0 < size <= 4096:
                 data = json.loads(self.rfile.read(size))
                 if isinstance(data, dict):
-                    if path == "/login":
-                        status, payload = self.server.relay.login(data)
-                    elif path in (
-                        "/devices", "/devices/name", "/connect", "/accounts", "/accounts/create",
-                        "/accounts/password", "/accounts/status", "/accounts/name"
-                    ):
-                        status, payload = self.server.relay.authenticated(
-                            path, self.headers.get("Authorization", ""), data
-                        )
-                    else:
-                        status = 404
+                    with self.server.state_lock:
+                        if path == "/login":
+                            status, payload = self.server.relay.login(data)
+                        elif path in (
+                            "/devices", "/devices/name", "/connect", "/accounts", "/accounts/create",
+                            "/accounts/password", "/accounts/status", "/accounts/name"
+                        ):
+                            status, payload = self.server.relay.authenticated(
+                                path, self.headers.get("Authorization", ""), data
+                            )
+                        else:
+                            status = 404
         except (ValueError, KeyError, TypeError, AttributeError):
             pass
         body = json.dumps(payload).encode()
@@ -262,10 +271,31 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class LoginServer(ThreadingHTTPServer):
+    state_lock = threading.Lock()
+    slots = threading.BoundedSemaphore(32)
+
+    def process_request(self, request, client_address):
+        if self.slots.acquire(blocking=False):
+            try:
+                super().process_request(request, client_address)
+            except BaseException:
+                self.slots.release()
+                raise
+        else:
+            self.shutdown_request(request)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
 if __name__ == "__main__":
     import sys
     os.umask(0o077)
     config = json.loads(Path(sys.argv[1]).read_text())
-    server = HTTPServer(("127.0.0.1", 17666), Handler)
+    server = LoginServer(("127.0.0.1", 17666), Handler)
     server.relay = Relay(config, Path(sys.argv[2]))
     server.serve_forever()
