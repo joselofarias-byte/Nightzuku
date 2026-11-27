@@ -16,6 +16,16 @@ OPERATOR = "remote-operator-01"
 DEVICE = "remote-device-01"
 USER_NAME = re.compile(r"[a-z][a-z0-9_.-]{2,31}")
 PASSWORD_ROUNDS = 600_000
+
+
+def display_name(value):
+    if not isinstance(value, str):
+        raise ValueError("missing name")
+    text = value.strip()
+    if not 1 <= len(text) <= 60 or any(ord(char) < 32 for char in text):
+        raise ValueError("invalid name")
+    return text
+
 CURVE = b"ecdsa-sha2-nistp256"
 
 
@@ -70,7 +80,7 @@ class Relay:
 
     def list_devices(self):
         return [
-            {"id": key, "name": rec["name"]}
+            {"id": key, "name": rec.get("displayName", rec["name"])}
             for key, rec in self.state["devices"].items()
             if rec.get("authorized", True) and self.accounts.get(rec["account"], {}).get("enabled")
         ]
@@ -98,9 +108,7 @@ class Relay:
             return 401, {}
         key, identity = public_key(data["publicKey"])
         if role == DEVICE:
-            name = data["name"].strip()
-            if not 1 <= len(name) <= 60 or any(ord(char) < 32 for char in name):
-                return 400, {}
+            name = display_name(data["name"])
             devices = self.state["devices"]
             if identity not in devices:
                 occupied = {r["port"] for r in devices.values()}
@@ -108,7 +116,10 @@ class Relay:
                 if port is None:
                     return 409, {}
                 devices[identity] = {"key": key, "port": port}
-            devices[identity].update(name=name, account=username, authorized=True)
+            device = devices[identity]
+            if device.get("account") != username:
+                device.pop("displayName", None)
+            device.update(name=name, account=username, authorized=True)
             self.commit()
             return 200, self.settings(devices[identity]["port"])
         operators = self.state["operators"]
@@ -131,6 +142,15 @@ class Relay:
             return 401, {}
         if path.startswith("/accounts"):
             return self.manage_accounts(path, operator["account"], data)
+        if path == "/devices/name":
+            if operator["account"] != OPERATOR:
+                return 403, {}
+            device = self.state["devices"].get(data.get("id"))
+            if device is None:
+                return 404, {}
+            device["displayName"] = display_name(data.get("name"))
+            self.commit()
+            return 200, {}
         if path == "/devices":
             return 200, {"devices": self.list_devices()}
         device = self.state["devices"].get(data.get("id"))
@@ -147,14 +167,19 @@ class Relay:
             return 403, {}
         if path == "/accounts":
             return 200, {"accounts": [
-                {"username": name, "role": record["role"], "enabled": record["enabled"], "admin": name == OPERATOR}
+                {"username": name, "name": record.get("name", name), "role": record["role"],
+                 "enabled": record["enabled"], "admin": name == OPERATOR}
                 for name, record in sorted(self.accounts.items())
             ]}
         username = data.get("username")
         if not isinstance(username, str) or not USER_NAME.fullmatch(username):
             return 400, {}
         record = self.accounts.get(username)
-        if path == "/accounts/status":
+        if path == "/accounts/name":
+            if record is None:
+                return 404, {}
+            record["name"] = display_name(data.get("name"))
+        elif path == "/accounts/status":
             enabled = data.get("enabled")
             if record is None or type(enabled) is not bool or username == OPERATOR:
                 return 400, {}
@@ -171,7 +196,7 @@ class Relay:
                     return 400, {}
                 if record is not None or len(self.accounts) >= 1000:
                     return 409, {}
-                record = {"role": role, "enabled": True}
+                record = {"role": role, "enabled": True, "name": display_name(data.get("name", username))}
                 self.accounts[username] = record
             elif path == "/accounts/password":
                 if record is None:
@@ -215,7 +240,8 @@ class Handler(BaseHTTPRequestHandler):
                     if path == "/login":
                         status, payload = self.server.relay.login(data)
                     elif path in (
-                        "/devices", "/connect", "/accounts", "/accounts/create", "/accounts/password", "/accounts/status"
+                        "/devices", "/devices/name", "/connect", "/accounts", "/accounts/create",
+                        "/accounts/password", "/accounts/status", "/accounts/name"
                     ):
                         status, payload = self.server.relay.authenticated(
                             path, self.headers.get("Authorization", ""), data

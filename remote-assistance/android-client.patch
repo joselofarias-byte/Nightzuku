@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..448f3e4 100644
+index 6a5a392..6955b54 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
@@ -21,8 +21,8 @@ index 6a5a392..448f3e4 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 6
-+        versionName = "1.3.0"
++        versionCode = 7
++        versionName = "1.4.0"
 +        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
@@ -48,27 +48,29 @@ index 2418380..e50c997 100644
 +-keep class com.jcraft.jsch.** { *; }
 +-dontwarn com.jcraft.jsch.**
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
-index 21f85d9..5830079 100644
+index 21f85d9..8436edd 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
-@@ -3,6 +3,7 @@
+@@ -3,6 +3,8 @@
      xmlns:tools="http://schemas.android.com/tools">
  
      <uses-permission android:name="android.permission.INTERNET" />
++    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 +    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
      <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
      <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" android:maxSdkVersion="33" />
      <!-- Keeps a mirroring session and its remote audio alive while the app is not on screen. -->
-@@ -34,7 +35,7 @@
+@@ -34,7 +36,8 @@
        everywhere. The mirror screen keeps the older Back on every version: see MirrorActivity.
      -->
      <application
 -        android:allowBackup="true"
++        android:name=".assist.AssistApplication"
 +        android:allowBackup="false"
          android:dataExtractionRules="@xml/data_extraction_rules"
          android:enableOnBackInvokedCallback="false"
          tools:targetApi="33"
-@@ -45,33 +46,11 @@
+@@ -45,35 +48,15 @@
          android:supportsRtl="true"
          android:theme="@style/Theme.ScrcpyRemote">
  
@@ -102,8 +104,12 @@ index 21f85d9..5830079 100644
 -            </intent-filter>
          </activity>
  
++        <activity android:name=".ui.AssistLockActivity" android:exported="false" />
++
          <!--
-@@ -92,6 +71,17 @@
+           The older Back, on purpose: a mouse's Back button also arrives as a Back key, which the
+           screen drops because the button press already went to the device. Predictive back hands
+@@ -92,6 +75,17 @@
              android:windowSoftInputMode="adjustResize"
              tools:targetApi="34" />
  
@@ -121,6 +127,105 @@ index 21f85d9..5830079 100644
          <service
              android:name=".session.MirrorSessionService"
              android:exported="false"
+diff --git a/app/src/main/java/com/scrcpy/remote/assist/AppLock.kt b/app/src/main/java/com/scrcpy/remote/assist/AppLock.kt
+new file mode 100644
+index 0000000..fe75d1a
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/assist/AppLock.kt
+@@ -0,0 +1,93 @@
++package com.scrcpy.remote.assist
++
++import android.app.Activity
++import android.app.Application
++import android.content.Context
++import android.os.Bundle
++import java.security.MessageDigest
++import java.security.SecureRandom
++import java.util.Base64
++import javax.crypto.SecretKeyFactory
++import javax.crypto.spec.PBEKeySpec
++
++internal class AppLock(context: Context) {
++    enum class Mode { OFF, PIN, PASSWORD, ANDROID }
++
++    private val prefs = context.getSharedPreferences("assist_app_lock", Context.MODE_PRIVATE)
++
++    val mode: Mode
++        get() = Mode.entries.firstOrNull { it.name == prefs.getString("mode", null) } ?: Mode.OFF
++
++    fun configure(mode: Mode, secret: String? = null) {
++        val edit = prefs.edit().clear().putString("mode", mode.name)
++        if (mode == Mode.PIN || mode == Mode.PASSWORD) {
++            require(secret != null && valid(mode, secret))
++            val salt = ByteArray(16).also(SecureRandom()::nextBytes)
++            edit.putString("salt", Base64.getEncoder().encodeToString(salt))
++                .putString("digest", Base64.getEncoder().encodeToString(derive(secret, salt)))
++        }
++        check(edit.commit())
++    }
++
++    fun retrySeconds(): Int = ((prefs.getLong("retryAt", 0) - System.currentTimeMillis())
++        .coerceIn(0, 30_000) + 999).toInt() / 1000
++
++    @Synchronized
++    fun verify(secret: String): Boolean {
++        if (mode !in setOf(Mode.PIN, Mode.PASSWORD) || retrySeconds() > 0 || secret.length > 256) return false
++        val decoder = Base64.getDecoder()
++        val salt = decoder.decode(prefs.getString("salt", "").orEmpty())
++        val expected = decoder.decode(prefs.getString("digest", "").orEmpty())
++        if (salt.size != 16 || expected.size != 32) return false
++        if (MessageDigest.isEqual(expected, derive(secret, salt))) {
++            prefs.edit().remove("failures").remove("retryAt").commit()
++            return true
++        }
++        val failures = prefs.getInt("failures", 0) + 1
++        val edit = prefs.edit().putInt("failures", failures % 5)
++        if (failures % 5 == 0) edit.putLong("retryAt", System.currentTimeMillis() + 30_000)
++        edit.commit()
++        return false
++    }
++
++    companion object {
++        var unlocked = false
++        var opening = false
++
++        fun valid(mode: Mode, value: String): Boolean = when (mode) {
++            Mode.PIN -> value.length in 6..12 && value.all { it in '0'..'9' }
++            Mode.PASSWORD -> value.length in 8..256 && value.isNotBlank()
++            else -> false
++        }
++
++        private fun derive(secret: String, salt: ByteArray): ByteArray {
++            val spec = PBEKeySpec(secret.toCharArray(), salt, 600_000, 256)
++            return try {
++                SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
++            } finally {
++                spec.clearPassword()
++            }
++        }
++    }
++}
++
++class AssistApplication : Application() {
++    override fun onCreate() {
++        super.onCreate()
++        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
++            private var started = 0
++
++            override fun onActivityStarted(activity: Activity) { started++ }
++            override fun onActivityStopped(activity: Activity) {
++                started = (started - 1).coerceAtLeast(0)
++                if (started == 0 && !activity.isChangingConfigurations) AppLock.unlocked = false
++            }
++
++            override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
++            override fun onActivityResumed(activity: Activity) = Unit
++            override fun onActivityPaused(activity: Activity) = Unit
++            override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) = Unit
++            override fun onActivityDestroyed(activity: Activity) = Unit
++        })
++    }
++}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
 new file mode 100644
 index 0000000..46e94de
@@ -527,6 +632,187 @@ index 0000000..7c796ec
 +        return profile
 +    }
 +}
+diff --git a/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt
+new file mode 100644
+index 0000000..e22dd50
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt
+@@ -0,0 +1,175 @@
++package com.scrcpy.remote.ui
++
++import android.app.KeyguardManager
++import android.content.Intent
++import android.hardware.biometrics.BiometricManager
++import android.hardware.biometrics.BiometricPrompt
++import android.os.Build
++import android.os.Bundle
++import android.os.CancellationSignal
++import android.text.InputType
++import android.text.method.PasswordTransformationMethod
++import android.view.View
++import android.view.WindowManager
++import android.widget.Button
++import android.widget.EditText
++import android.widget.LinearLayout
++import android.widget.TextView
++import androidx.activity.ComponentActivity
++import androidx.activity.OnBackPressedCallback
++import androidx.lifecycle.Lifecycle
++import androidx.lifecycle.lifecycleScope
++import com.scrcpy.remote.R
++import com.scrcpy.remote.assist.AppLock
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++
++abstract class LockProtectedActivity : ComponentActivity() {
++    private val appLock by lazy { AppLock(this) }
++
++    override fun onStart() {
++        super.onStart()
++        val protected = appLock.mode != AppLock.Mode.OFF
++        if (protected) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
++        findViewById<View>(android.R.id.content).visibility =
++            if (protected && !AppLock.unlocked) View.INVISIBLE else View.VISIBLE
++    }
++
++    override fun onResume() {
++        super.onResume()
++        val locked = appLock.mode != AppLock.Mode.OFF && !AppLock.unlocked
++        findViewById<View>(android.R.id.content).visibility = if (locked) View.INVISIBLE else View.VISIBLE
++        if (locked && !AppLock.opening && !isFinishing) {
++            AppLock.opening = true
++            startActivity(Intent(this, AssistLockActivity::class.java))
++        }
++    }
++
++    override fun onStop() {
++        if (appLock.mode != AppLock.Mode.OFF) findViewById<View>(android.R.id.content).visibility = View.INVISIBLE
++        super.onStop()
++    }
++}
++
++class AssistLockActivity : ComponentActivity() {
++    private val appLock by lazy { AppLock(this) }
++    private var cancellation: CancellationSignal? = null
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        AppLock.opening = true
++        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
++        val pad = (resources.displayMetrics.density * 24).toInt()
++        val layout = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(pad, pad * 3, pad, pad)
++            setBackgroundColor(getColor(R.color.assist_background))
++        }
++        layout.addView(TextView(this).apply {
++            setText(R.string.assist_locked)
++            textSize = 26f
++            setTextColor(getColor(R.color.assist_text))
++            setPadding(0, 0, 0, pad)
++        })
++        setContentView(layout)
++        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
++            override fun handleOnBackPressed() {
++                moveTaskToBack(true)
++                finish()
++            }
++        })
++        when (appLock.mode) {
++            AppLock.Mode.OFF -> unlock()
++            AppLock.Mode.ANDROID -> {
++                val message = TextView(this).apply { setTextColor(getColor(R.color.assist_text)) }
++                layout.addView(Button(this).apply {
++                    setText(R.string.assist_unlock_android)
++                    setOnClickListener {
++                        cancellation?.cancel()
++                        cancellation = authenticateAndroid(onUnlocked = ::unlock) {
++                            message.setText(R.string.assist_auth_unavailable)
++                        }
++                    }
++                })
++                layout.addView(message)
++            }
++            else -> {
++                val field = lockSecretField(this, appLock.mode, R.string.assist_unlock_secret)
++                layout.addView(field)
++                layout.addView(Button(this).apply {
++                    setText(R.string.assist_unlock)
++                    setOnClickListener {
++                        val value = field.text.toString()
++                        isEnabled = false
++                        lifecycleScope.launch {
++                            val success = withContext(Dispatchers.Default) { appLock.verify(value) }
++                            if (success) unlock() else {
++                                field.setText("")
++                                field.error = lockError(appLock)
++                                isEnabled = true
++                            }
++                        }
++                    }
++                })
++            }
++        }
++    }
++
++    private fun unlock() {
++        if (appLock.mode != AppLock.Mode.OFF && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
++        AppLock.unlocked = true
++        finish()
++    }
++
++    override fun onDestroy() {
++        cancellation?.cancel()
++        AppLock.opening = false
++        super.onDestroy()
++    }
++}
++
++internal fun ComponentActivity.canUseAndroidLock(): Boolean =
++    Build.VERSION.SDK_INT >= 30 && getSystemService(KeyguardManager::class.java).isDeviceSecure &&
++        getSystemService(BiometricManager::class.java).canAuthenticate(androidAuthenticators()) ==
++        BiometricManager.BIOMETRIC_SUCCESS
++
++@androidx.annotation.RequiresApi(30)
++private fun androidAuthenticators(): Int =
++    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
++
++internal fun ComponentActivity.authenticateAndroid(
++    onUnlocked: () -> Unit,
++    onFailed: () -> Unit,
++): CancellationSignal? {
++    if (Build.VERSION.SDK_INT < 30 || !canUseAndroidLock()) {
++        onFailed()
++        return null
++    }
++    val cancellation = CancellationSignal()
++    BiometricPrompt.Builder(this).setTitle(getString(R.string.assist_unlock_android))
++        .setAllowedAuthenticators(androidAuthenticators())
++        .build()
++        .authenticate(cancellation, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
++            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onUnlocked()
++            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onFailed()
++        })
++    return cancellation
++}
++
++internal fun lockSecretField(activity: ComponentActivity, mode: AppLock.Mode, label: Int): EditText =
++    EditText(activity).apply {
++        setHint(label)
++        setSingleLine()
++        inputType = if (mode == AppLock.Mode.PIN) {
++            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
++        } else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
++        transformationMethod = PasswordTransformationMethod.getInstance()
++        isSaveEnabled = false
++    }
++
++internal fun ComponentActivity.lockError(lock: AppLock): String =
++    lock.retrySeconds().let { seconds ->
++        if (seconds > 0) getString(R.string.assist_lock_retry, seconds)
++        else getString(R.string.assist_wrong_local_secret)
++    }
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt b/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
 index c9ded7d..6c9ac9f 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
@@ -598,7 +884,7 @@ index c9ded7d..6c9ac9f 100644
  }
  
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
-index b07e364..006806e 100644
+index b07e364..88ab4b2 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 +++ b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 @@ -1,6 +1,8 @@
@@ -610,7 +896,7 @@ index b07e364..006806e 100644
  
  import android.Manifest
  import android.app.KeyguardManager
-@@ -109,7 +111,6 @@ import com.scrcpy.remote.session.MirrorUiState
+@@ -109,14 +111,13 @@ import com.scrcpy.remote.session.MirrorUiState
  import com.scrcpy.remote.session.KeyForwardingPolicy
  import com.scrcpy.remote.session.FileTransfers
  import com.scrcpy.remote.session.MirrorViewModel
@@ -618,7 +904,26 @@ index b07e364..006806e 100644
  import com.scrcpy.remote.session.SessionOverrides
  import com.scrcpy.remote.session.SessionDisplay
  import com.scrcpy.remote.session.StreamChoice
-@@ -480,7 +481,8 @@ class MirrorActivity : ComponentActivity() {
+ import com.scrcpy.remote.session.SessionHold
+ import com.scrcpy.remote.session.requiresReconnectFrom
+ 
+-class MirrorActivity : ComponentActivity() {
++class MirrorActivity : LockProtectedActivity() {
+ 
+     private val viewModel: MirrorViewModel by viewModels()
+     private val screenshots: ScreenshotViewModel by viewModels()
+@@ -256,6 +257,10 @@ class MirrorActivity : ComponentActivity() {
+     internal fun requestCameraPictureInPicture(
+         enterMode: (PictureInPictureParams) -> Boolean = { enterPictureInPictureMode(it) },
+     ): Boolean {
++        if (com.scrcpy.remote.assist.AppLock(this).mode != com.scrcpy.remote.assist.AppLock.Mode.OFF) {
++            viewModel.showNotice(getString(R.string.assist_pip_locked))
++            return false
++        }
+         pipBlocked()?.let {
+             reportPipBlocked(it)
+             return false
+@@ -480,7 +485,8 @@ class MirrorActivity : ComponentActivity() {
  
          val host = intent.getStringExtra(EXTRA_HOST).orEmpty()
          val port = intent.getIntExtra(EXTRA_PORT, DEFAULT_PORT)
@@ -628,7 +933,7 @@ index b07e364..006806e 100644
              finish()
              return
          }
-@@ -500,7 +502,18 @@ class MirrorActivity : ComponentActivity() {
+@@ -500,7 +506,18 @@ class MirrorActivity : ComponentActivity() {
          // whatever this device would otherwise use, and only for this session: nothing here is
          // written back, so the saved profile is untouched when the session ends.
          val linkRequest = LinkRequest.from(intent)
@@ -648,7 +953,7 @@ index b07e364..006806e 100644
          // A recreated recording offer must not revive a session the user explicitly ended.
          if (!exitAfterRecording) {
              viewModel.connect(host, port, settingsFor(initialSettings), allowPortDiscovery = savedDeviceId != null,
-@@ -593,12 +606,6 @@ class MirrorActivity : ComponentActivity() {
+@@ -593,12 +610,6 @@ class MirrorActivity : ComponentActivity() {
                          onRequestCameraPip = { requestCameraPictureInPicture() },
                          onPipStateChanged = ::reconcileCameraPip,
                          onShareArtefact = ::launchArtefactShare,
@@ -661,7 +966,7 @@ index b07e364..006806e 100644
                          onSaveRecording = { name ->
                              if (canUseSessionTools()) {
                                  documentPickerOpen = true
-@@ -772,6 +779,7 @@ class MirrorActivity : ComponentActivity() {
+@@ -772,6 +783,7 @@ class MirrorActivity : ComponentActivity() {
          super.onDestroy()
          if (isFinishing) {
              viewModel.disconnect()
@@ -669,7 +974,7 @@ index b07e364..006806e 100644
              MirrorSessionService.stop(this)
          }
      }
-@@ -861,8 +869,6 @@ private fun MirrorScreen(
+@@ -861,8 +873,6 @@ private fun MirrorScreen(
      onRequestCameraPip: () -> Unit,
      onPipStateChanged: () -> Unit,
      onShareArtefact: (Intent) -> Boolean,
@@ -678,7 +983,7 @@ index b07e364..006806e 100644
      onSaveRecording: (String) -> Unit,
      onPickFileToSend: () -> Unit,
      onPickAppToInstall: () -> Unit,
-@@ -903,12 +909,7 @@ private fun MirrorScreen(
+@@ -903,12 +913,7 @@ private fun MirrorScreen(
      val recordingSaveInProgress by viewModel.recordingSaveInProgress.collectAsState()
      val desktopResizing by viewModel.desktopResizing.collectAsState()
      val finishedRecording by viewModel.finishedRecording.collectAsState()
@@ -691,7 +996,7 @@ index b07e364..006806e 100644
      val shareUnavailable = stringResource(R.string.artefact_share_failed)
      val capture by screenshots.state.collectAsState()
      val defaults by repository.settings.collectAsState()
-@@ -975,7 +976,7 @@ private fun MirrorScreen(
+@@ -975,7 +980,7 @@ private fun MirrorScreen(
      var confirmApplySettings by rememberSaveable { mutableStateOf(false) }
      val dialogOpen = showApps || showEncoders || showAudioEncoders || showDisplays ||
          showCameras || showDetails || confirmLeave || showDeviceSettings ||
@@ -700,7 +1005,7 @@ index b07e364..006806e 100644
          appOffer != null || installOutcome != null
      val pipWorkPending = recording || finishedRecording != null || recordingSaveInProgress ||
          transfer.running || transferHold || capture.busy || capture.pendingToken != null ||
-@@ -1076,8 +1077,7 @@ private fun MirrorScreen(
+@@ -1076,8 +1081,7 @@ private fun MirrorScreen(
              onRetry = viewModel::reconnect,
              onRepair = {
                  // The pairing dialog lives on the device list.
@@ -710,7 +1015,7 @@ index b07e364..006806e 100644
                      .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                  onDisconnect()
              },
-@@ -1187,22 +1187,10 @@ private fun MirrorScreen(
+@@ -1187,22 +1191,10 @@ private fun MirrorScreen(
                      calibrationOverridesDefaults = calibrationOverride != null,
                      onUseGlobalCalibration = { updateCalibration(null) },
                      screenshotBusy = capture.busy,
@@ -735,7 +1040,7 @@ index b07e364..006806e 100644
                      onDeviceSettings = if (savedDevice != null) ({
                          if (canUseSessionTools()) showDeviceSettings = true
                      }) else null,
-@@ -1212,7 +1200,7 @@ private fun MirrorScreen(
+@@ -1212,7 +1204,7 @@ private fun MirrorScreen(
                      sendFileBusy = transfer.running,
                      onOpenEncoders = { if (canUseSessionTools()) showEncoders = true },
                      onOpenDisplays = { if (canUseSessionTools()) showDisplays = true },
@@ -744,7 +1049,7 @@ index b07e364..006806e 100644
                      onStreamChoices = { if (canUseSessionTools()) showStreamChoices = true },
                      cameraSession = activeSettings?.camera != null,
                      cameraTorchOn = cameraTorchOn,
-@@ -1229,7 +1217,7 @@ private fun MirrorScreen(
+@@ -1229,7 +1221,7 @@ private fun MirrorScreen(
                          viewZoom = (viewZoom / 2f).coerceAtLeast(1f)
                      },
                      onViewZoomReset = { viewZoom = 1f },
@@ -753,7 +1058,7 @@ index b07e364..006806e 100644
                      onCameraPip = if (pipSupported && activeSettings?.camera != null)
                          onRequestCameraPip else null,
                      cameraPipBlocked = pipWorkPending || dialogOpen,
-@@ -1373,24 +1361,6 @@ private fun MirrorScreen(
+@@ -1373,24 +1365,6 @@ private fun MirrorScreen(
              },
          )
      }
@@ -780,10 +1085,10 @@ index b07e364..006806e 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..9abbbbf
+index 0000000..2230a7e
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,631 @@
+@@ -0,0 +1,852 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
@@ -801,24 +1106,29 @@ index 0000000..9abbbbf
 +import android.text.method.PasswordTransformationMethod
 +import android.view.Gravity
 +import android.view.View
++import android.view.WindowManager
++import android.widget.ArrayAdapter
 +import android.widget.Button
++import android.widget.PopupMenu
++import android.widget.Spinner
 +import android.widget.EditText
 +import android.widget.LinearLayout
 +import android.widget.ProgressBar
 +import android.widget.RadioButton
 +import android.widget.ScrollView
 +import android.widget.TextView
-+import androidx.activity.ComponentActivity
 +import androidx.activity.result.contract.ActivityResultContracts
 +import androidx.annotation.StringRes
 +import androidx.core.view.ViewCompat
 +import androidx.core.view.WindowInsetsCompat
 +import androidx.core.view.updatePadding
 +import androidx.core.widget.doAfterTextChanged
++import androidx.lifecycle.Lifecycle
 +import androidx.lifecycle.lifecycleScope
 +import com.jcraft.jsch.JSchException
 +import com.jcraft.jsch.Session
 +import com.scrcpy.remote.R
++import com.scrcpy.remote.assist.AppLock
 +import com.scrcpy.remote.assist.AssistPreferences
 +import com.scrcpy.remote.assist.AssistProfile
 +import com.scrcpy.remote.assist.AssistRole
@@ -836,7 +1146,7 @@ index 0000000..9abbbbf
 +import org.json.JSONObject
 +import java.security.SecureRandom
 +
-+class RemoteAssistActivity : ComponentActivity() {
++class RemoteAssistActivity : LockProtectedActivity() {
 +    private val preferences by lazy { AssistPreferences(this) }
 +    private val login by lazy { getSharedPreferences("relay_login", MODE_PRIVATE) }
 +    private var role = AssistRole.OPERATOR
@@ -845,10 +1155,9 @@ index 0000000..9abbbbf
 +    private lateinit var operator: RadioButton
 +    private lateinit var assisted: RadioButton
 +    private lateinit var action: Button
-+    private lateinit var signOut: Button
++    private lateinit var menu: Button
 +    private lateinit var status: TextView
 +    private lateinit var feedback: TextView
-+    private lateinit var accounts: Button
 +    private lateinit var deviceNameRow: LinearLayout
 +    private lateinit var passwordReveal: Button
 +    private lateinit var serverInput: EditText
@@ -870,10 +1179,28 @@ index 0000000..9abbbbf
 +            setPadding(dp(20), dp(24), dp(20), dp(24))
 +            isFocusableInTouchMode = true
 +        }
-+        layout.addView(label(R.string.app_name, 28f, bold = true).apply {
++        val header = LinearLayout(this).apply {
++            gravity = Gravity.CENTER_VERTICAL
++            orientation = LinearLayout.HORIZONTAL
++        }
++        header.addView(label(R.string.app_name, 26f, bold = true).apply {
 +            ViewCompat.setAccessibilityHeading(this, true)
-+            setPadding(0, 0, 0, dp(20))
-+        })
++        }, LinearLayout.LayoutParams(0, -2, 1f))
++        menu = Button(this).apply {
++            text = "⋮"
++            textSize = 26f
++            contentDescription = getString(R.string.assist_menu)
++            setPadding(0, 0, 0, 0)
++            minWidth = dp(48)
++            minHeight = dp(48)
++            setTextColor(getColor(R.color.assist_accent))
++            background = RippleDrawable(
++                ColorStateList.valueOf(getColor(R.color.assist_border)), shape(R.color.assist_surface), null,
++            )
++            setOnClickListener { openMenu(this) }
++        }
++        header.addView(menu, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(8) })
++        layout.addView(header, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
 +        val modes = layout.card()
 +        modes.addView(label(R.string.assist_mode, 14f, bold = true).apply {
 +            ViewCompat.setAccessibilityHeading(this, true)
@@ -897,8 +1224,6 @@ index 0000000..9abbbbf
 +            setPadding(0, dp(10), 0, dp(4))
 +        }.also(panel::addView)
 +        action = panel.button(R.string.assist_sign_in, primary = true, callback = ::submit)
-+        accounts = panel.button(R.string.assist_accounts, callback = ::loadAccounts)
-+        signOut = panel.button(R.string.assist_sign_out, callback = ::logOut)
 +        listOf(serverInput, userInput, passwordInput, deviceName).forEach { field ->
 +            field.doAfterTextChanged { field.error = null; feedback.visibility = View.GONE }
 +        }
@@ -973,10 +1298,7 @@ index 0000000..9abbbbf
 +            else -> R.string.assist_sign_in
 +        })
 +        action.isEnabled = !busy
-+        signOut.visibility = if (registered) View.VISIBLE else View.GONE
-+        signOut.isEnabled = !busy
-+        accounts.visibility = if (!receive && registered && login.getBoolean("admin", true)) View.VISIBLE else View.GONE
-+        accounts.isEnabled = !busy
++        menu.isEnabled = !busy
 +    }
 +
 +    private fun submit() {
@@ -1056,11 +1378,74 @@ index 0000000..9abbbbf
 +        val labels = names.mapIndexed { index, name ->
 +            if (names.count { it == name } == 1) name else "$name · ${rows[index].getString("id").take(5)}"
 +        }
-+        AlertDialog.Builder(this)
-+            .setTitle(R.string.assist_devices)
-+            .setItems(labels.toTypedArray()) { _, index -> connect(rows[index].getString("id")) }
-+            .setNegativeButton(android.R.string.cancel, null)
-+            .show()
++        chooseFrom(R.string.assist_devices, labels, R.string.assist_connect_device,
++            if (canAdminister()) R.string.assist_rename else null,
++            onSelect = { connect(rows[it].getString("id")) },
++            onAlternate = { index ->
++                val row = rows[index]
++                editName(row.getString("name")) { name ->
++                    accountRequest("devices/name", JSONObject().put("id", row.getString("id")).put("name", name))
++                    showDevices(accountRequest("devices", JSONObject()))
++                }
++            },
++        )
++    }
++
++    private fun chooseFrom(
++        @StringRes title: Int,
++        labels: List<String>,
++        @StringRes primary: Int,
++        @StringRes alternate: Int?,
++        onSelect: (Int) -> Unit,
++        onAlternate: (Int) -> Unit,
++    ) {
++        val options = Spinner(this, Spinner.MODE_DROPDOWN).apply {
++            adapter = ArrayAdapter(this@RemoteAssistActivity, android.R.layout.simple_spinner_item, labels).apply {
++                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
++            }
++            contentDescription = getString(title)
++            minimumHeight = dp(48)
++        }
++        val holder = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(8), dp(20), dp(8))
++            addView(options, LinearLayout.LayoutParams(-1, -2))
++        }
++        AlertDialog.Builder(this).setTitle(title).setView(holder)
++            .setPositiveButton(primary) { _, _ ->
++                options.selectedItemPosition.takeIf { it in labels.indices }?.let(onSelect)
++            }
++            .setNegativeButton(android.R.string.cancel, null).apply {
++                if (alternate != null) setNeutralButton(alternate) { _, _ ->
++                    options.selectedItemPosition.takeIf { it in labels.indices }?.let(onAlternate)
++                }
++            }.show()
++    }
++
++    private fun editName(current: String, onSave: suspend (String) -> Unit) {
++        val fields = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(8), dp(20), dp(8))
++        }
++        val name = fields.field(R.string.assist_display_name, InputType.TYPE_CLASS_TEXT).apply {
++            setText(current)
++            setSelection(text.length)
++        }
++        val dialog = AlertDialog.Builder(this).setTitle(R.string.assist_rename).setView(fields)
++            .setPositiveButton(R.string.assist_save_account, null)
++            .setNegativeButton(android.R.string.cancel, null).create()
++        dialog.setOnShowListener {
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
++                val value = name.text.toString().trim()
++                if (value.codePointCount(0, value.length) !in 1..60 || value.any { it.code < 32 }) {
++                    name.error = getString(R.string.assist_bad_device_name)
++                    return@setOnClickListener
++                }
++                dialog.dismiss()
++                runNetwork { onSave(value) }
++            }
++        }
++        dialog.show()
 +    }
 +
 +    private fun connect(id: String) {
@@ -1162,24 +1547,35 @@ index 0000000..9abbbbf
 +                else -> R.string.assist_device
 +            }
 +            val state = if (row.getBoolean("enabled")) R.string.assist_account_active else R.string.assist_account_inactive
-+            "${row.getString("username")} · ${getString(roleLabel)} · ${getString(state)}"
++            val username = row.getString("username")
++            val display = row.optString("name", username)
++            val identity = if (display == username) username else "$display ($username)"
++            "$identity · ${getString(roleLabel)} · ${getString(state)}"
 +        }
-+        AlertDialog.Builder(this).setTitle(R.string.assist_accounts)
-+            .setItems(labels.toTypedArray()) { _, index -> showAccountActions(rows[index]) }
-+            .setPositiveButton(R.string.assist_create_account) { _, _ -> editAccount(null) }
-+            .setNegativeButton(android.R.string.cancel, null).show()
++        chooseFrom(R.string.assist_accounts, labels, R.string.assist_account_actions, R.string.assist_create_account,
++            onSelect = { showAccountActions(rows[it]) },
++            onAlternate = { editAccount(null) },
++        )
 +    }
 +
 +    private fun showAccountActions(row: JSONObject) {
 +        val username = row.getString("username")
++        val displayName = row.optString("name", username)
 +        val enabled = row.getBoolean("enabled")
-+        val actions = mutableListOf(getString(R.string.assist_change_password))
++        val actions = mutableListOf(getString(R.string.assist_rename), getString(R.string.assist_change_password))
 +        if (!row.getBoolean("admin")) actions.add(getString(
 +            if (enabled) R.string.assist_disable_account else R.string.assist_enable_account,
 +        ))
-+        AlertDialog.Builder(this).setTitle(username)
++        AlertDialog.Builder(this).setTitle(displayName)
 +            .setItems(actions.toTypedArray()) { _, index ->
-+                if (index == 0) editAccount(username) else confirmAccountStatus(username, !enabled)
++                when (index) {
++                    0 -> editName(displayName) { name ->
++                        accountRequest("accounts/name", JSONObject().put("username", username).put("name", name))
++                        showAccounts(accountRequest("accounts", JSONObject()))
++                    }
++                    1 -> editAccount(username)
++                    else -> confirmAccountStatus(username, !enabled)
++                }
 +            }
 +            .setNegativeButton(android.R.string.cancel, null).show()
 +    }
@@ -1202,6 +1598,7 @@ index 0000000..9abbbbf
 +            setPadding(dp(20), dp(4), dp(20), dp(12))
 +        }
 +        val username = if (existing == null) content.field(R.string.assist_ssh_user, InputType.TYPE_CLASS_TEXT) else null
++        val visibleName = if (existing == null) content.field(R.string.assist_display_name, InputType.TYPE_CLASS_TEXT) else null
 +        var newRole = account(AssistRole.DEVICE)
 +        if (existing == null) {
 +            content.addView(label(R.string.assist_mode, 14f, bold = true).apply { setPadding(0, dp(12), 0, 0) })
@@ -1272,7 +1669,10 @@ index 0000000..9abbbbf
 +            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
 +                val name = existing ?: username!!.text.toString().trim()
 +                val secret = password.text.toString()
++                val displayName = visibleName?.text?.toString()?.trim().orEmpty().ifBlank { name }
 +                when {
++                    displayName.codePointCount(0, displayName.length) > 60 || displayName.any { it.code < 32 } ->
++                        visibleName?.error = getString(R.string.assist_bad_device_name)
 +                    !USERNAME.matches(name) -> username?.error = getString(R.string.assist_bad_username)
 +                    secret.codePointCount(0, secret.length) !in 12..256 ->
 +                        password.error = getString(R.string.assist_new_password_length)
@@ -1280,7 +1680,7 @@ index 0000000..9abbbbf
 +                    else -> {
 +                        dialog.dismiss()
 +                        val data = JSONObject().put("username", name).put("password", secret)
-+                        if (existing == null) data.put("role", newRole)
++                        if (existing == null) data.put("role", newRole).put("name", displayName)
 +                        runNetwork {
 +                            accountRequest(if (existing == null) "accounts/create" else "accounts/password", data)
 +                            if (name == account(AssistRole.OPERATOR)) logOut()
@@ -1291,6 +1691,132 @@ index 0000000..9abbbbf
 +            }
 +        }
 +        dialog.show()
++    }
++
++    private fun canAdminister(): Boolean =
++        role == AssistRole.OPERATOR && enrolled() && login.getBoolean("admin", true)
++
++    private fun openMenu(anchor: View) {
++        if (busy) return
++        val popup = PopupMenu(this, anchor)
++        if (canAdminister()) popup.menu.add(0, R.string.assist_accounts, 0, R.string.assist_accounts)
++        popup.menu.add(0, R.string.assist_local_lock, 1, R.string.assist_local_lock)
++        if (AppLock(this).mode != AppLock.Mode.OFF) popup.menu.add(0, R.string.assist_lock_now, 2, R.string.assist_lock_now)
++        if (enrolled()) popup.menu.add(0, R.string.assist_sign_out, 3, R.string.assist_sign_out)
++        popup.setOnMenuItemClickListener { item ->
++            when (item.itemId) {
++                R.string.assist_accounts -> loadAccounts()
++                R.string.assist_local_lock -> verifyLockSettings()
++                R.string.assist_lock_now -> {
++                    AppLock.unlocked = false
++                    AppLock.opening = true
++                    findViewById<View>(android.R.id.content).visibility = View.INVISIBLE
++                    startActivity(android.content.Intent(this, AssistLockActivity::class.java))
++                }
++                R.string.assist_sign_out -> logOut()
++            }
++            true
++        }
++        popup.show()
++    }
++
++    private fun verifyLockSettings() {
++        val lock = AppLock(this)
++        when (lock.mode) {
++            AppLock.Mode.OFF -> showLockSettings(lock)
++            AppLock.Mode.ANDROID -> authenticateAndroid({ showLockSettings(lock) }) {
++                message(R.string.assist_auth_unavailable)
++            }
++            else -> {
++                val input = lockSecretField(this, lock.mode, R.string.assist_unlock_secret)
++                val dialog = AlertDialog.Builder(this)
++                    .setTitle(R.string.assist_confirm_lock).setView(input)
++                    .setPositiveButton(android.R.string.ok, null)
++                    .setNegativeButton(android.R.string.cancel, null).create()
++                dialog.setOnShowListener {
++                    val confirm = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
++                    confirm.setOnClickListener {
++                        confirm.isEnabled = false
++                        val secret = input.text.toString()
++                        lifecycleScope.launch {
++                            if (withContext(Dispatchers.Default) { lock.verify(secret) }) {
++                                dialog.dismiss()
++                                showLockSettings(lock)
++                            } else {
++                                input.error = lockError(lock)
++                                confirm.isEnabled = true
++                            }
++                        }
++                    }
++                }
++                dialog.show()
++            }
++        }
++    }
++
++    private fun showLockSettings(lock: AppLock) {
++        val choices = AppLock.Mode.entries.filter { it != AppLock.Mode.ANDROID || canUseAndroidLock() }
++        val texts = choices.map {
++            getString(when (it) {
++                AppLock.Mode.OFF -> R.string.assist_lock_off
++                AppLock.Mode.PIN -> R.string.assist_lock_pin
++                AppLock.Mode.PASSWORD -> R.string.assist_lock_password
++                AppLock.Mode.ANDROID -> R.string.assist_unlock_android
++            })
++        }
++        AlertDialog.Builder(this).setTitle(R.string.assist_local_lock)
++            .setSingleChoiceItems(texts.toTypedArray(), choices.indexOf(lock.mode)) { dialog, which ->
++                dialog.dismiss()
++                when (val selection = choices[which]) {
++                    AppLock.Mode.PIN, AppLock.Mode.PASSWORD -> showSetLockSecret(lock, selection)
++                    AppLock.Mode.ANDROID -> authenticateAndroid({ applyLock(lock, selection) }) {
++                        message(R.string.assist_auth_unavailable)
++                    }
++                    AppLock.Mode.OFF -> applyLock(lock, selection)
++                }
++            }
++            .setNegativeButton(android.R.string.cancel, null).show()
++    }
++
++    private fun showSetLockSecret(lock: AppLock, mode: AppLock.Mode) {
++        val fields = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(8), dp(20), dp(8))
++        }
++        val input = lockSecretField(this, mode, R.string.assist_unlock_secret)
++        val confirmation = lockSecretField(this, mode, R.string.assist_confirm_local_secret)
++        fields.addView(input)
++        fields.addView(confirmation)
++        val dialog = AlertDialog.Builder(this)
++            .setTitle(if (mode == AppLock.Mode.PIN) R.string.assist_lock_pin else R.string.assist_lock_password)
++            .setView(fields).setPositiveButton(R.string.assist_save_account, null)
++            .setNegativeButton(android.R.string.cancel, null).create()
++        dialog.setOnShowListener {
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
++                val value = input.text.toString()
++                when {
++                    !AppLock.valid(mode, value) -> input.error = getString(
++                        if (mode == AppLock.Mode.PIN) R.string.assist_pin_rule else R.string.assist_local_password_rule,
++                    )
++                    value != confirmation.text.toString() -> confirmation.error = getString(R.string.assist_password_mismatch)
++                    else -> {
++                        dialog.dismiss()
++                        applyLock(lock, mode, value)
++                    }
++                }
++            }
++        }
++        dialog.show()
++    }
++
++    private fun applyLock(lock: AppLock, mode: AppLock.Mode, value: String? = null) {
++        runNetwork {
++            withContext(Dispatchers.Default) { lock.configure(mode, value) }
++            AppLock.unlocked = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
++            if (mode == AppLock.Mode.OFF) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
++            else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
++            message(R.string.assist_lock_saved)
++        }
 +    }
 +
 +    private fun message(@StringRes text: Int) {
@@ -1453,10 +1979,10 @@ index 0000000..ad67158
 +</resources>
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..aee5cb7
+index 0000000..326e1e0
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,86 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
@@ -1519,6 +2045,29 @@ index 0000000..aee5cb7
 +    <string name="assist_strength_weak">Seguridad estimada · Baja</string>
 +    <string name="assist_strength_medium">Seguridad estimada · Media</string>
 +    <string name="assist_strength_strong">Seguridad estimada · Alta</string>
++    <string name="assist_menu">Menú</string>
++    <string name="assist_display_name">Nombre visible</string>
++    <string name="assist_rename">Editar nombre</string>
++    <string name="assist_account_actions">Opciones de la cuenta</string>
++    <string name="assist_connect_device">Conectar</string>
++    <string name="assist_local_lock">Bloqueo de la aplicación</string>
++    <string name="assist_lock_now">Bloquear ahora</string>
++    <string name="assist_locked">Aplicación bloqueada</string>
++    <string name="assist_unlock_android">Huella o bloqueo del teléfono</string>
++    <string name="assist_auth_unavailable">El desbloqueo de Android no se completó.</string>
++    <string name="assist_unlock">Desbloquear</string>
++    <string name="assist_unlock_secret">PIN o contraseña de la aplicación</string>
++    <string name="assist_confirm_local_secret">Repite el PIN o la contraseña</string>
++    <string name="assist_lock_retry">Espera %1$d segundos antes de volver a intentar.</string>
++    <string name="assist_wrong_local_secret">El PIN o la contraseña son incorrectos.</string>
++    <string name="assist_confirm_lock">Confirma el desbloqueo actual</string>
++    <string name="assist_lock_off">Desactivado</string>
++    <string name="assist_lock_pin">PIN de la aplicación</string>
++    <string name="assist_lock_password">Contraseña de la aplicación</string>
++    <string name="assist_pin_rule">Usa un PIN de 6 a 12 dígitos.</string>
++    <string name="assist_local_password_rule">Usa de 8 a 256 caracteres.</string>
++    <string name="assist_lock_saved">Bloqueo actualizado.</string>
++    <string name="assist_pip_locked">Desactiva el bloqueo para usar la ventana flotante.</string>
 +</resources>
 diff --git a/app/src/main/res/values/compact_controls_strings.xml b/app/src/main/res/values/compact_controls_strings.xml
 index 1d88699..2d77dc8 100644

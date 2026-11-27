@@ -1,4 +1,4 @@
-# JolufaSoft Remote 1.3.0
+# JolufaSoft Remote 1.4.0
 
 Instala el APK en ambos teléfonos y únelos a la misma red de Tailscale que el Oracle. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 
@@ -14,11 +14,17 @@ El Oracle necesita OpenSSH, Python 3 y Tailscale con HTTPS habilitado. Limita TC
 
 ## Cuentas y roles
 
-La cuenta inicial `remote-operator-01` administra las cuentas desde **Dar asistencia → Administrar cuentas**. Puede crear operadores y cuentas para equipos asistidos, cambiar o generar sus contraseñas y desactivar o reactivar cuentas. Los operadores creados pueden dar asistencia. Los equipos asistidos se registran con su cuenta y un nombre.
+La cuenta inicial `remote-operator-01` administra las cuentas desde **Dar asistencia → Menú ⋮ → Administrar cuentas**. Puede crear operadores y cuentas para equipos asistidos, cambiar o generar sus contraseñas y desactivar o reactivar cuentas. Los operadores creados pueden dar asistencia. Los equipos asistidos se registran con su cuenta y un nombre.
 
 Al cambiar una contraseña o desactivar una cuenta se revocan sus credenciales para conexiones nuevas. Un túnel SSH ya establecido puede seguir abierto hasta que termine su conexión. Los teléfonos afectados deben volver a iniciar sesión para registrar su llave.
 
 En una instalación existente, actualiza `/etc/jremote-login/relay-login.py` y reinicia solo `jremote-login.service`. La API migra las dos cuentas iniciales y los equipos registrados durante el arranque.
+
+## Nombres visibles y bloqueo local
+
+Los catálogos de cuentas y teléfonos usan un selector desplegable. El administrador puede editar el nombre visible de una cuenta o de un teléfono. Las cuentas mantienen su usuario de acceso y un nombre de teléfono elegido por el administrador se conserva al volver a registrar el mismo dispositivo con la misma cuenta.
+
+En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configurar un PIN local, una contraseña local o el desbloqueo de Android (biometría fuerte o credencial del dispositivo, en Android 11 o posterior). Se solicita al volver con la aplicación en segundo plano y al volver a abrirla. **Bloquear ahora** permite hacerlo de inmediato. El bloqueo protege la interfaz del teléfono y la asistencia en segundo plano sigue disponible.
 
 ## Teléfonos
 
