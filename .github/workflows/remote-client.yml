@@ -33,9 +33,16 @@ jobs:
           for script in remote-assistance/*.sh; do
             bash -n "$script"
           done
-      - name: Compilar APK para pruebas
+      - name: Probar y preparar paquete sin firma
         if: ${{ !inputs.release }}
-        run: bash remote-assistance/build-android.sh local
+        run: bash remote-assistance/build-android.sh unsigned
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.release }}
+        with:
+          name: jremote-unsigned
+          path: remote-assistance/dist/unsigned/
+          if-no-files-found: error
+          retention-days: 7
       - name: Compilar APK con firma permanente
         if: ${{ inputs.release }}
         env:

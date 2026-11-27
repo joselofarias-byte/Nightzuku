@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..bfd07c9 100644
+index 6a5a392..0290d12 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
@@ -21,13 +21,23 @@ index 6a5a392..bfd07c9 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 9
-+        versionName = "1.6.0"
++        versionCode = 10
++        versionName = "1.6.1"
 +        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
          buildConfigField("String", "PUBLISHER_EMAIL", buildConfigString(publisherEmail))
-@@ -253,6 +256,8 @@ dependencies {
+@@ -134,7 +137,8 @@ android {
+         }
+         create("localRelease") {
+             initWith(getByName("release"))
+-            signingConfig = signingConfigs.getByName("debug")
++            signingConfig = if (providers.gradleProperty("jremoteUnsigned").orNull == "true") null
++                else signingConfigs.getByName("debug")
+             matchingFallbacks += "release"
+         }
+     }
+@@ -253,6 +257,8 @@ dependencies {
      implementation(project(":libadb"))
      implementation(libs.conscrypt.android)
      implementation(libs.bouncycastle.pkix)
@@ -1224,10 +1234,10 @@ index b07e364..88ab4b2 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..c384adc
+index 0000000..f2633fd
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,1020 @@
+@@ -0,0 +1,1057 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
@@ -1246,6 +1256,7 @@ index 0000000..c384adc
 +import android.text.method.PasswordTransformationMethod
 +import android.view.Gravity
 +import android.view.View
++import android.view.ViewGroup
 +import android.view.WindowManager
 +import android.widget.ArrayAdapter
 +import android.widget.Button
@@ -1268,6 +1279,7 @@ index 0000000..c384adc
 +import androidx.lifecycle.lifecycleScope
 +import com.jcraft.jsch.JSchException
 +import com.jcraft.jsch.Session
++import com.scrcpy.remote.BuildConfig
 +import com.scrcpy.remote.R
 +import com.scrcpy.remote.assist.AppLock
 +import com.scrcpy.remote.assist.AssistPreferences
@@ -1327,6 +1339,7 @@ index 0000000..c384adc
 +            orientation = LinearLayout.HORIZONTAL
 +        }
 +        header.addView(label(R.string.app_name, 26f, bold = true).apply {
++            text = getString(R.string.assist_title, getString(R.string.app_name), BuildConfig.VERSION_NAME)
 +            ViewCompat.setAccessibilityHeading(this, true)
 +        }, LinearLayout.LayoutParams(0, -2, 1f))
 +        avatar = ImageButton(this).apply {
@@ -1361,8 +1374,8 @@ index 0000000..c384adc
 +
 +        val panel = layout.card()
 +        status = label(R.string.assist_login_hint, 14f, tone = R.color.assist_muted).also(panel::addView)
++        servers = panel.button(R.string.assist_choose_server) { chooseServer(servers) }
 +        form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }.also(panel::addView)
-+        servers = form.button(R.string.assist_choose_server) { chooseServer(servers) }
 +        userInput = form.field(R.string.assist_ssh_user, InputType.TYPE_CLASS_TEXT)
 +        passwordInput = form.field(R.string.assist_password, PASSWORD_INPUT)
 +        passwordReveal = form.button(R.string.assist_show_password) { setPasswordVisible(!passwordVisible()) }
@@ -1419,8 +1432,7 @@ index 0000000..c384adc
 +
 +    private fun loadRole() {
 +        updateSelectedServer(RelayLogin.displayServer(server().ifBlank { login.getString("lastServer", "").orEmpty() }))
-+        updateAvatar()
-+        userInput.setText(account())
++        userInput.setText(login.getString("username.${role.name}", account()))
 +        passwordInput.setText("")
 +        setPasswordVisible(false)
 +        deviceName.setText(login.getString("deviceName", Build.MODEL))
@@ -1431,6 +1443,7 @@ index 0000000..c384adc
 +    private fun render() {
 +        val receive = role == AssistRole.DEVICE
 +        val registered = enrolled()
++        updateAvatar()
 +        updateMode(operator, !receive)
 +        updateMode(assisted, receive)
 +        listOf(servers, avatar, userInput, passwordInput, passwordReveal, deviceName).forEach { it.isEnabled = !busy }
@@ -1490,7 +1503,8 @@ index 0000000..c384adc
 +                    .put("username", username).put("password", password).put("name", name).put("publicKey", key)
 +                    .put("role", account(selectedRole)).put("websocket", RelayLogin.usesWebSocket(host)))
 +            }
-+            val edit = login.edit().putString("server.${selectedRole.name}", host).putString("lastServer", host)
++            val edit = login.edit().putString("server.${selectedRole.name}", host)
++                .putString("username.${selectedRole.name}", username).putString("lastServer", host)
 +            rememberServer(edit, host)
 +            if (selectedRole == AssistRole.DEVICE) {
 +                preferences.save(selectedRole, RelayLogin.profile(response, host, account(selectedRole)))
@@ -1624,18 +1638,27 @@ index 0000000..c384adc
 +        PLANET(R.drawable.assist_avatar_planet, R.string.assist_avatar_planet),
 +    }
 +
-+    private fun avatarKey() = "avatar.${role.name}"
++    private fun accountAvatarKey(host: String, username: String) = "avatar.account.$host/$username"
++
++    private fun avatarKey(): String = if (enrolled()) {
++        accountAvatarKey(server(), login.getString("username.${role.name}", account()).orEmpty())
++    } else {
++        "avatar.${role.name}"
++    }
++
++    private fun savedAvatar(key: String, fallback: ProfileAvatar): ProfileAvatar {
++        val saved = login.getString(key, "")
++        return ProfileAvatar.entries.firstOrNull { it.name == saved } ?: fallback
++    }
 +
 +    private fun updateAvatar() {
-+        val saved = login.getString(avatarKey(), "")
 +        val fallback = if (role == AssistRole.OPERATOR) ProfileAvatar.ROBOT else ProfileAvatar.CAT
-+        val current = ProfileAvatar.entries.firstOrNull { it.name == saved } ?: fallback
++        val current = savedAvatar(avatarKey(), savedAvatar("avatar.${role.name}", fallback))
 +        avatar.setImageResource(current.image)
 +        avatar.contentDescription = getString(R.string.assist_current_avatar, getString(current.title))
 +    }
 +
-+    private fun chooseAvatar() {
-+        val key = avatarKey()
++    private fun chooseAvatar(key: String = avatarKey(), onSaved: () -> Unit = ::updateAvatar) {
 +        val row = LinearLayout(this).apply {
 +            orientation = LinearLayout.HORIZONTAL
 +            gravity = Gravity.CENTER
@@ -1652,8 +1675,8 @@ index 0000000..c384adc
 +                contentDescription = getString(option.title)
 +                setOnClickListener {
 +                    login.edit().putString(key, option.name).apply()
-+                    updateAvatar()
 +                    dialog.dismiss()
++                    onSaved()
 +                }
 +            }
 +            row.addView(button, LinearLayout.LayoutParams(0, dp(62), 1f))
@@ -1701,9 +1724,25 @@ index 0000000..c384adc
 +        @StringRes alternate: Int?,
 +        onSelect: (Int) -> Unit,
 +        onAlternate: (Int) -> Unit,
++        avatars: List<ProfileAvatar> = emptyList(),
 +    ) {
 +        val options = Spinner(this, Spinner.MODE_DROPDOWN).apply {
-+            adapter = ArrayAdapter(this@RemoteAssistActivity, android.R.layout.simple_spinner_item, labels).apply {
++            adapter = object : ArrayAdapter<String>(this@RemoteAssistActivity, android.R.layout.simple_spinner_item, labels) {
++                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
++                    decorate(super.getView(position, convertView, parent), position)
++
++                override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View =
++                    decorate(super.getDropDownView(position, convertView, parent), position)
++
++                private fun decorate(view: View, position: Int): View {
++                    val image = avatars.getOrNull(position) ?: return view
++                    val text = view as? TextView ?: return view
++                    val icon = getDrawable(image.image)?.apply { setBounds(0, 0, dp(28), dp(28)) }
++                    text.setCompoundDrawablesRelative(icon, null, null, null)
++                    text.compoundDrawablePadding = dp(8)
++                    return text
++                }
++            }.apply {
 +                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 +            }
 +            contentDescription = getString(title)
@@ -1843,6 +1882,10 @@ index 0000000..c384adc
 +    private fun showAccounts(response: JSONObject) {
 +        val entries = response.getJSONArray("accounts")
 +        val rows = (0 until entries.length()).map { entries.getJSONObject(it) }
++        val avatars = rows.map { row ->
++            val fallback = if (row.getString("role") == account(AssistRole.DEVICE)) ProfileAvatar.CAT else ProfileAvatar.ROBOT
++            savedAvatar(accountAvatarKey(server(), row.getString("username")), fallback)
++        }
 +        val labels = rows.map { row ->
 +            val roleLabel = when {
 +                row.getBoolean("admin") -> R.string.assist_admin
@@ -1857,7 +1900,7 @@ index 0000000..c384adc
 +        }
 +        chooseFrom(R.string.assist_accounts, labels, R.string.assist_account_actions, R.string.assist_create_account,
 +            onSelect = { showAccountActions(rows[it]) },
-+            onAlternate = { editAccount(null) },
++            onAlternate = { editAccount(null) }, avatars = avatars,
 +        )
 +    }
 +
@@ -1865,7 +1908,9 @@ index 0000000..c384adc
 +        val username = row.getString("username")
 +        val displayName = row.optString("name", username)
 +        val enabled = row.getBoolean("enabled")
-+        val actions = mutableListOf(getString(R.string.assist_rename), getString(R.string.assist_change_password))
++        val actions = mutableListOf(
++            getString(R.string.assist_rename), getString(R.string.assist_change_password), getString(R.string.assist_choose_avatar),
++        )
 +        if (!row.getBoolean("admin")) actions.add(getString(
 +            if (enabled) R.string.assist_disable_account else R.string.assist_enable_account,
 +        ))
@@ -1877,6 +1922,10 @@ index 0000000..c384adc
 +                        showAccounts(accountRequest("accounts", JSONObject()))
 +                    }
 +                    1 -> editAccount(username)
++                    2 -> chooseAvatar(accountAvatarKey(server(), username)) {
++                        updateAvatar()
++                        loadAccounts()
++                    }
 +                    else -> confirmAccountStatus(username, !enabled)
 +                }
 +            }
@@ -2006,7 +2055,6 @@ index 0000000..c384adc
 +        popup.menu.add(0, R.string.assist_local_lock, 1, R.string.assist_local_lock)
 +        if (AppLock(this).mode != AppLock.Mode.OFF) popup.menu.add(0, R.string.assist_lock_now, 2, R.string.assist_lock_now)
 +        if (enrolled()) popup.menu.add(0, R.string.assist_sign_out, 3, R.string.assist_sign_out)
-+        if (enrolled()) popup.menu.add(0, R.string.assist_choose_server, 4, R.string.assist_choose_server)
 +        popup.menu.add(0, R.string.assist_server_settings, 5, R.string.assist_server_settings)
 +        popup.setOnMenuItemClickListener { item ->
 +            when (item.itemId) {
@@ -2019,7 +2067,6 @@ index 0000000..c384adc
 +                    startActivity(android.content.Intent(this, AssistLockActivity::class.java))
 +                }
 +                R.string.assist_sign_out -> logOut()
-+                R.string.assist_choose_server -> chooseServer(anchor)
 +                R.string.assist_server_settings -> configureServers()
 +            }
 +            true
@@ -2338,10 +2385,10 @@ index 0000000..ad67158
 +</resources>
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..952bdfc
+index 0000000..389b298
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,102 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
@@ -2442,6 +2489,7 @@ index 0000000..952bdfc
 +    <string name="assist_avatar_robot">Robot</string>
 +    <string name="assist_avatar_fox">Zorro</string>
 +    <string name="assist_avatar_planet">Planeta</string>
++    <string name="assist_title">%1$s · %2$s</string>
 +</resources>
 diff --git a/app/src/main/res/values/compact_controls_strings.xml b/app/src/main/res/values/compact_controls_strings.xml
 index 1d88699..2d77dc8 100644

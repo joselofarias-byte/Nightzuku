@@ -1,4 +1,4 @@
-# JolufaSoft Remote 1.6.0
+# JolufaSoft Remote 1.6.1
 
 Instala el APK en ambos teléfonos y selecciona el mismo servidor en los dos. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 
@@ -11,7 +11,7 @@ El instalador valida Caddy y conserva los otros sitios. La API y el túnel WebSo
 HTTPS en el 443. El SSH del relay también escucha en bucle local y sus cuentas se autentican
 con la llave privada de cada instalación. Los puertos internos de ADB y del relay no se publican.
 
-El selector muestra `remoto.jolufasoft.com` como opción principal. La etiqueta guardada `remoto` se resuelve al dominio completo. En **Menú ⋮ → Configuración de servidores** puedes añadir, editar o quitar dominios personalizados. El formulario de inicio solo permite elegir un servidor. Para cambiar de servidor con una sesión activa, la app pide confirmar el cierre y exige iniciar sesión en el nuevo destino.
+El selector muestra `remoto.jolufasoft.com` como opción principal. La etiqueta guardada `remoto` se resuelve al dominio completo. En **Menú ⋮ → Configuración de servidores** puedes añadir, editar o quitar dominios personalizados. El selector permanece visible en el inicio antes y después de iniciar sesión. Los dominios se editan desde Configuración de servidores. Para cambiar de servidor con una sesión activa, la app pide confirmar el cierre y exige iniciar sesión en el nuevo destino.
 
 El respaldo **Tailscale · Oracle A1 Hop** usa la ruta privada del mismo Oracle. Un VPS independiente se añade por dominio una vez que tiene su propio relay operativo y cuentas configuradas.
 
@@ -37,7 +37,7 @@ En una instalación existente, actualiza `/etc/jremote-login/relay-login.py` y r
 
 Los catálogos de cuentas y teléfonos usan un selector desplegable. El administrador puede editar el nombre visible de una cuenta o de un teléfono. Las cuentas mantienen su usuario de acceso y un nombre de teléfono elegido por el administrador se conserva al volver a registrar el mismo dispositivo con la misma cuenta.
 
-Toca el avatar junto al menú para elegir gato, robot, zorro o planeta. La selección se guarda en ese teléfono por modo de asistencia.
+Toca el avatar junto al menú para elegir gato, robot, zorro o planeta. El avatar se guarda localmente. En **Administrar cuentas → Opciones de la cuenta → Elegir avatar** puedes asignar una imagen a cada usuario de la lista. El encabezado muestra la versión instalada.
 
 En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configurar un PIN local, una contraseña local o el desbloqueo de Android (biometría fuerte o credencial del dispositivo, en Android 11 o posterior). Se solicita al volver con la aplicación en segundo plano y al volver a abrirla. **Bloquear ahora** permite hacerlo de inmediato. El bloqueo protege la interfaz del teléfono y la asistencia en segundo plano sigue disponible.
 

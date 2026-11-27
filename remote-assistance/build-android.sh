@@ -2,9 +2,14 @@
 set -euo pipefail
 
 mode="${1:-release}"
+gradle_args=()
 case "$mode" in
     local)
         variant=localRelease
+        ;;
+    unsigned)
+        variant=localRelease
+        gradle_args+=(-PjremoteUnsigned=true)
         ;;
     release)
         variant=release
@@ -15,15 +20,15 @@ case "$mode" in
         SCRCPY_KEYSTORE="$(realpath -e -- "$SCRCPY_KEYSTORE")"
         export SCRCPY_KEYSTORE
         ;;
-    *) echo "Uso: bash remote-assistance/build-android.sh [local|release]" >&2; exit 2 ;;
+    *) echo "Uso: bash remote-assistance/build-android.sh [local|unsigned|release]" >&2; exit 2 ;;
 esac
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 : "${sdk:?Configura ANDROID_HOME con Android SDK 36 y Build Tools 36.0.0}"
 sdk="$(cd -- "$sdk" && pwd)"
 source_dir="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 output_dir="${JREMOTE_OUTPUT_DIR:-$source_dir/dist}"
-if [[ "$mode" == local ]]; then
-    output_dir="$output_dir/local"
+if [[ "$mode" != release ]]; then
+    output_dir="$output_dir/$mode"
 fi
 mkdir -p "$output_dir"
 output_dir="$(cd -- "$output_dir" && pwd)"
@@ -40,18 +45,34 @@ git -C "$workdir" apply "$source_dir/android-client.patch"
 (
     cd "$workdir"
     ANDROID_HOME="$sdk" ./gradlew --no-daemon \
-        :app:testDebugUnitTest :libadb:testDebugUnitTest ":app:assemble${variant^}"
+        "${gradle_args[@]}" :app:testDebugUnitTest :libadb:testDebugUnitTest ":app:assemble${variant^}"
 )
-apk="$workdir/app/build/outputs/apk/$variant/app-$variant.apk"
-if [[ "$mode" == release ]]; then
-    bash "$source_dir/verify-release-signature.sh" "$apk"
-else
-    "$sdk/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
+shopt -s nullglob
+apks=("$workdir/app/build/outputs/apk/$variant/"*.apk)
+if (( ${#apks[@]} != 1 )); then
+    printf 'Se esperaba un único APK para %s.\n' "$variant" >&2
+    exit 1
 fi
-install -m 644 "$apk" "$output_dir/JolufaSoft-Remote-1.6.0-$variant.apk"
+apk=${apks[0]}
+apksigner="$sdk/build-tools/36.0.0/apksigner"
+case "$mode" in
+    release) bash "$source_dir/verify-release-signature.sh" "$apk" ;;
+    local) "$apksigner" verify --print-certs "$apk" ;;
+    unsigned)
+        if "$apksigner" verify "$apk" >/dev/null 2>&1; then
+            printf 'El paquete intermedio debe estar sin firma.\n' >&2
+            exit 1
+        fi
+        ;;
+esac
+badging=$("$sdk/build-tools/36.0.0/aapt" dump badging "$apk")
+version=$(sed -nE "s/^package: .*versionName='([^']+)'.*/\1/p" <<<"$badging")
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+filename="JolufaSoft-Remote-$version-$mode.apk"
+install -m 644 "$apk" "$output_dir/$filename"
 (
     cd "$output_dir"
-    sha256sum "JolufaSoft-Remote-1.6.0-$variant.apk" > SHA256SUMS
+    sha256sum "$filename" > SHA256SUMS
 )
 printf '%s\n' "$upstream" > "$output_dir/upstream-commit.txt"
-printf '%s\n' "APK: $output_dir/JolufaSoft-Remote-1.6.0-$variant.apk"
+printf '%s\n' "APK: $output_dir/$filename"
