@@ -136,7 +136,7 @@ index c9ded7d..6c9ac9f 100644
  }
  
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
-index b07e364..37c8a5c 100644
+index b07e364..a88c097 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 +++ b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 @@ -109,7 +109,6 @@ import com.scrcpy.remote.session.MirrorUiState
@@ -211,6 +211,15 @@ index b07e364..37c8a5c 100644
      val shareUnavailable = stringResource(R.string.artefact_share_failed)
      val capture by screenshots.state.collectAsState()
      val defaults by repository.settings.collectAsState()
+@@ -975,7 +972,7 @@ private fun MirrorScreen(
+     var confirmApplySettings by rememberSaveable { mutableStateOf(false) }
+     val dialogOpen = showApps || showEncoders || showAudioEncoders || showDisplays ||
+         showCameras || showDetails || confirmLeave || showDeviceSettings ||
+-        savingDeviceSettings || confirmApplySettings || soundChoice != null ||
++        savingDeviceSettings || confirmApplySettings ||
+         appOffer != null || installOutcome != null
+     val pipWorkPending = recording || finishedRecording != null || recordingSaveInProgress ||
+         transfer.running || transferHold || capture.busy || capture.pendingToken != null ||
 @@ -1076,8 +1073,7 @@ private fun MirrorScreen(
              onRetry = viewModel::reconnect,
              onRepair = {
