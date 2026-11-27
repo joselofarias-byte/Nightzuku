@@ -495,7 +495,11 @@ internal class NightDogRecoveryEngine(
         }
     }
 
-    fun onDeviceResume() {
+    fun onDeviceResume() = requestAfterSystemChange("reanudación del dispositivo")
+
+    fun onUsbModeChanged() = requestAfterSystemChange("cambio de modo USB")
+
+    private fun requestAfterSystemChange(reason: String) {
         synchronized(lock) {
             if (!started || !isDesiredRunning() || pingBinder()) return
             val now = clockElapsedMs()
@@ -509,7 +513,7 @@ internal class NightDogRecoveryEngine(
                 return
             }
             if (recoveryJob?.isActive != true) {
-                // Reevaluar tras salir de suspensión/Doze sin esperar un backoff largo antiguo.
+                recordRetryEventLocked("Redescubrimiento ADB tras $reason")
                 lastAttemptAt = 0L
                 requestRecoveryLocked()
             }
@@ -1384,6 +1388,12 @@ internal class NightDogRecoveryEngine(
 object NightDogRecovery {
 
     private const val TAG = "NightDogRecovery"
+    private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
+    private const val USB_RECOVERY_SETTLE_MS = 2_500L
+    // No observar el indicador "adb": cambia durante la propia recuperación.
+    private val USB_MODE_FLAGS = listOf(
+        "connected", "mtp", "ptp", "midi", "rndis", "ncm", "accessory", "audio_source", "uvc"
+    )
     private const val PREFS_NAME = "nightdog_recovery"
     private const val KEY_DESIRED_RUNNING = "desired_running"
 
@@ -1449,6 +1459,7 @@ object NightDogRecovery {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var adbWifiObserver: ContentObserver? = null
     private var deviceResumeReceiver: BroadcastReceiver? = null
+    private var usbRecoveryJob: Job? = null
     private var traceSampler: Job? = null
 
     private val systemEnv = object : NightDogSystemEnvironment {
@@ -1696,11 +1707,21 @@ object NightDogRecovery {
             }.onFailure { Log.w(TAG, "No se pudo registrar ContentObserver de adb_wifi_enabled", it) }
         }
 
-        // 3. Reanudación tras suspensión / Doze / desbloqueo
+        // 3. Reanudación del dispositivo y cambios de modo USB.
         runCatching {
             val receiver = object : BroadcastReceiver() {
+                private var usbMode: List<String>? = null
+
                 override fun onReceive(ctx: Context, intent: Intent) {
                     when (intent.action) {
+                        ACTION_USB_STATE -> {
+                            val mode = USB_MODE_FLAGS.filter { intent.getBooleanExtra(it, false) }
+                            val previous = usbMode
+                            usbMode = mode
+                            if (!isInitialStickyBroadcast && previous != mode) {
+                                scheduleUsbRecovery()
+                            }
+                        }
                         Intent.ACTION_USER_PRESENT -> engine.onDeviceResume()
                         PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
                             val pm = ctx.getSystemService(PowerManager::class.java)
@@ -1714,6 +1735,7 @@ object NightDogRecovery {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+                addAction(ACTION_USB_STATE)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -1724,8 +1746,21 @@ object NightDogRecovery {
         }.onFailure { Log.w(TAG, "No se pudo registrar receptor de reanudación", it) }
     }
 
+    @Synchronized
+    private fun scheduleUsbRecovery() {
+        if (!systemObserversRegistered) return
+        usbRecoveryJob?.cancel()
+        usbRecoveryJob = scope.launch {
+            // Android puede reiniciar adbd después de anunciar el nuevo modo USB.
+            delay(USB_RECOVERY_SETTLE_MS)
+            engine.onUsbModeChanged()
+        }
+    }
+
     private fun unregisterSystemObserversLocked() {
         if (!systemObserversRegistered) return
+        usbRecoveryJob?.cancel()
+        usbRecoveryJob = null
         systemObserversRegistered = false
         val context = applicationContext
         networkCallback?.let { cb ->

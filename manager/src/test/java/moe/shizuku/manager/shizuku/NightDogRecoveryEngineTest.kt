@@ -1025,4 +1025,57 @@ class NightDogRecoveryEngineTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun cambioUsbIgnoraBinderActivoYRedescubreSinEsperarBackoff() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            var desired = true
+            var binderAlive = false
+            var now = 1_000L
+            val calls = AtomicInteger()
+            val endpoint = AdbEndpoint("127.0.0.1", 46002)
+            val session = FakeSession(endpoint, onStartServer = { binderAlive = true })
+            val engine = NightDogRecoveryEngine(
+                scope = scope,
+                clockElapsedMs = { now },
+                delayMs = { now += it },
+                isDesiredRunning = { desired },
+                setDesiredRunning = { desired = it },
+                pingBinder = { binderAlive },
+                discoverEndpoint = {
+                    if (binderAlive || calls.getAndIncrement() == 0) AdbDiscoveryResult.Absent
+                    else AdbDiscoveryResult.Found(endpoint)
+                },
+                openSession = { session },
+                systemEnv = FakeSystemEnv(wifiConnected = true),
+                recoverySettleMs = 0L,
+                logWarning = {},
+                logDebug = {}
+            )
+
+            engine.start(startPollingLoop = false)
+            engine.activeRecoveryJobForTest()?.join()
+            assertEquals(1, calls.get())
+            assertEquals(NightDogRecovery.FailureCategory.ENDPOINT_ABSENT, engine.snapshot.value.failureCategory)
+
+            engine.onUsbModeChanged()
+            engine.activeRecoveryJobForTest()?.join()
+            assertEquals(2, calls.get())
+            assertEquals(1, session.verifyShellCalls)
+            assertEquals(1, session.startServerCalls)
+            assertEquals(NightDogRecovery.Stage.RUNNING, engine.snapshot.value.stage)
+
+            engine.onUsbModeChanged()
+            assertEquals(2, calls.get())
+
+            now += 2_000L
+            desired = false
+            binderAlive = false
+            engine.onUsbModeChanged()
+            assertEquals(2, calls.get())
+        } finally {
+            scope.cancel()
+        }
+    }
 }
