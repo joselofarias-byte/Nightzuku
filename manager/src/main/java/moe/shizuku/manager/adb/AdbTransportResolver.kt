@@ -240,7 +240,8 @@ internal object AdbTransportResolver {
     fun canTryAlternate(error: Exception, launchSubmitted: Boolean): Boolean =
         error is AdbShellUnavailableException ||
             (!launchSubmitted && (error is java.net.ConnectException ||
-                error is java.net.SocketTimeoutException || error is AdbOfflineException))
+                error is java.net.SocketTimeoutException ||
+                error is java.net.NoRouteToHostException || error is AdbOfflineException))
 
     fun persistentTcpEndpoint(): AdbEndpoint? {
         if (!ShizukuSettings.isAdbTcpEnabled()) return null

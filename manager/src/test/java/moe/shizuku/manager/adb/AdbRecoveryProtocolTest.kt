@@ -5,6 +5,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.ConnectException
 import java.net.InetAddress
+import java.net.NoRouteToHostException
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
@@ -41,6 +42,14 @@ class AdbRecoveryProtocolTest {
     private val localHosts = setOf("127.0.0.1", "192.168.1.20", "::1", "fe80::20%wlan0")
 
     // --- AdbEndpointPolicy ---
+
+    @Test
+    fun perderLaRutaPermiteRedescubrirSinReintentarUnInicioYaEnviado() {
+        val noRoute = NoRouteToHostException()
+        assertTrue(AdbTransportResolver.canTryAlternate(noRoute, launchSubmitted = false))
+        assertFalse(AdbTransportResolver.canTryAlternate(noRoute, launchSubmitted = true))
+        assertFalse(AdbTransportResolver.canTryAlternate(AdbAuthorizationException("revocada"), launchSubmitted = false))
+    }
 
     @Test
     fun anuncioViejoNoOcultaUnPuertoNuevoTrasPerderAdb() {
