@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..3834239 100644
+index 6a5a392..a936991 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -105,11 +105,11 @@ android {
@@ -12,16 +12,44 @@ index 6a5a392..3834239 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 1
-+        versionName = "1.0.0"
++        versionCode = 2
++        versionName = "1.1.0"
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
          buildConfigField("String", "PUBLISHER_EMAIL", buildConfigString(publisherEmail))
+@@ -253,6 +253,7 @@ dependencies {
+     implementation(project(":libadb"))
+     implementation(libs.conscrypt.android)
+     implementation(libs.bouncycastle.pkix)
++    implementation("com.github.mwiede:jsch:2.28.4")
+ 
+     testImplementation(libs.junit)
+     androidTestImplementation(libs.androidx.test.runner)
+diff --git a/app/proguard-rules.pro b/app/proguard-rules.pro
+index 2418380..e50c997 100644
+--- a/app/proguard-rules.pro
++++ b/app/proguard-rules.pro
+@@ -32,3 +32,7 @@
+ # Line numbers make obfuscated release stack traces usable.
+ -keepattributes SourceFile,LineNumberTable
+ -renamesourcefileattribute SourceFile
++
++# JSch loads crypto algorithms and authentication implementations by their class names.
++-keep class com.jcraft.jsch.** { *; }
++-dontwarn com.jcraft.jsch.**
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
-index 21f85d9..0527505 100644
+index 21f85d9..5830079 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
-@@ -34,7 +34,7 @@
+@@ -3,6 +3,7 @@
+     xmlns:tools="http://schemas.android.com/tools">
+ 
+     <uses-permission android:name="android.permission.INTERNET" />
++    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" android:maxSdkVersion="33" />
+     <!-- Keeps a mirroring session and its remote audio alive while the app is not on screen. -->
+@@ -34,7 +35,7 @@
        everywhere. The mirror screen keeps the older Back on every version: see MirrorActivity.
      -->
      <application
@@ -30,7 +58,7 @@ index 21f85d9..0527505 100644
          android:dataExtractionRules="@xml/data_extraction_rules"
          android:enableOnBackInvokedCallback="false"
          tools:targetApi="33"
-@@ -45,33 +45,11 @@
+@@ -45,33 +46,11 @@
          android:supportsRtl="true"
          android:theme="@style/Theme.ScrcpyRemote">
  
@@ -65,6 +93,369 @@ index 21f85d9..0527505 100644
          </activity>
  
          <!--
+@@ -92,6 +71,17 @@
+             android:windowSoftInputMode="adjustResize"
+             tools:targetApi="34" />
+ 
++        <service
++            android:name=".assist.AvailabilityService"
++            android:exported="false"
++            android:foregroundServiceType="connectedDevice" />
++
++        <receiver android:name=".assist.AssistanceBootReceiver" android:exported="false">
++            <intent-filter>
++                <action android:name="android.intent.action.BOOT_COMPLETED" />
++            </intent-filter>
++        </receiver>
++
+         <service
+             android:name=".session.MirrorSessionService"
+             android:exported="false"
+diff --git a/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
+new file mode 100644
+index 0000000..46e94de
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
+@@ -0,0 +1,165 @@
++package com.scrcpy.remote.assist
++
++import android.content.Context
++import android.util.AtomicFile
++import java.util.Base64
++import com.jcraft.jsch.HostKey
++import com.jcraft.jsch.HostKeyRepository
++import com.jcraft.jsch.JSch
++import com.jcraft.jsch.KeyPair
++import com.jcraft.jsch.Session
++import com.jcraft.jsch.UserInfo
++import java.io.File
++import java.net.InetSocketAddress
++import java.net.Socket
++import java.security.MessageDigest
++
++internal const val LOOPBACK = "127.0.0.1"
++
++internal enum class AssistRole { OPERATOR, DEVICE }
++
++internal data class AssistProfile(
++    val host: String,
++    val port: Int,
++    val user: String,
++    val fingerprint: String,
++    val relayPort: Int,
++    val adbPort: Int,
++) {
++    fun isValid(): Boolean =
++        host.length in 1..253 && host.matches(Regex("[A-Za-z0-9][A-Za-z0-9.-]*")) &&
++            user.matches(Regex("[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}")) &&
++            fingerprint.matches(Regex("SHA256:[A-Za-z0-9+/]{43}")) &&
++            port in 1..65535 && relayPort in 1024..65535 && adbPort in 1..65535
++}
++
++internal class AssistPreferences(context: Context) {
++    private val prefs = context.getSharedPreferences("remote_assistance", Context.MODE_PRIVATE)
++
++    var enabled: Boolean
++        get() = prefs.getBoolean("enabled", false)
++        set(value) { prefs.edit().putBoolean("enabled", value).apply() }
++
++    fun profile(role: AssistRole): AssistProfile {
++        val key = role.name
++        return AssistProfile(
++            prefs.getString("$key.host", "").orEmpty(),
++            prefs.getInt("$key.port", 22),
++            prefs.getString("$key.user", if (role == AssistRole.DEVICE) "remote-device-01" else "remote-operator-01").orEmpty(),
++            prefs.getString("$key.fingerprint", "").orEmpty(),
++            prefs.getInt("$key.relayPort", 15555),
++            prefs.getInt("$key.adbPort", 5555),
++        )
++    }
++
++    fun save(role: AssistRole, profile: AssistProfile) {
++        val key = role.name
++        prefs.edit()
++            .putString("$key.host", profile.host)
++            .putInt("$key.port", profile.port)
++            .putString("$key.user", profile.user)
++            .putString("$key.fingerprint", profile.fingerprint)
++            .putInt("$key.relayPort", profile.relayPort)
++            .putInt("$key.adbPort", profile.adbPort)
++            .apply()
++    }
++}
++
++internal object AssistSsh {
++    // Private app storage, separate keys for both roles. Only public keys leave the app.
++    @Synchronized
++    fun publicKey(context: Context, role: AssistRole): String {
++        val file = identity(context, role)
++        val key = KeyPair.load(JSch(), file.path)
++        return try {
++            val blob = Base64.getEncoder().encodeToString(key.publicKeyBlob)
++            "ecdsa-sha2-nistp256 $blob jolufasoft-${role.name.lowercase()}"
++        } finally {
++            key.dispose()
++        }
++    }
++
++    @Synchronized
++    private fun identity(context: Context, role: AssistRole): File {
++        val file = File(context.noBackupFilesDir, "assist-${role.name.lowercase()}.key")
++        val atomic = AtomicFile(file)
++        try {
++            atomic.openRead().use { return file }
++        } catch (_: java.io.FileNotFoundException) {
++            val key = KeyPair.genKeyPair(JSch(), KeyPair.ECDSA, 256)
++            try {
++                val output = atomic.startWrite()
++                try {
++                    key.writePrivateKey(output)
++                    atomic.finishWrite(output)
++                } catch (failure: Exception) {
++                    atomic.failWrite(output)
++                    throw failure
++                }
++            } finally {
++                key.dispose()
++            }
++        }
++        return file
++    }
++
++    fun session(context: Context, role: AssistRole, profile: AssistProfile): Session {
++        require(profile.isValid())
++        val ssh = JSch().apply {
++            hostKeyRepository = PinnedHostKey(profile.fingerprint)
++            addIdentity(identity(context, role).path)
++        }
++        return ssh.getSession(profile.user, profile.host, profile.port).apply {
++            setConfig("StrictHostKeyChecking", "yes")
++            setConfig("PreferredAuthentications", "publickey")
++            setConfig("server_host_key", "ecdsa-sha2-nistp256")
++            setServerAliveInterval(15_000)
++            setServerAliveCountMax(3)
++        }
++    }
++
++    fun adbAvailable(port: Int): Boolean = try {
++        Socket().use { it.connect(InetSocketAddress(LOOPBACK, port), 800) }
++        true
++    } catch (_: java.io.IOException) {
++        false
++    }
++}
++
++internal class PinnedHostKey(private val fingerprint: String) : HostKeyRepository {
++    override fun check(host: String, key: ByteArray): Int {
++        val hash = MessageDigest.getInstance("SHA-256").digest(key)
++        val actual = "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(hash)
++        return if (MessageDigest.isEqual(actual.toByteArray(), fingerprint.toByteArray())) {
++            HostKeyRepository.OK
++        } else {
++            HostKeyRepository.CHANGED
++        }
++    }
++
++    override fun add(hostkey: HostKey, ui: UserInfo?) = Unit
++    override fun remove(host: String, type: String) = Unit
++    override fun remove(host: String, type: String, key: ByteArray) = Unit
++    override fun getKnownHostsRepositoryID(): String = "JolufaSoft Remote"
++    override fun getHostKey(): Array<HostKey> = emptyArray()
++    override fun getHostKey(host: String?, type: String?): Array<HostKey> = emptyArray()
++}
++
++internal object OperatorTunnel {
++    // Accessed on the main thread. The mirror takes ownership until the session ends.
++    private var connection: Pair<Int, Session>? = null
++
++    fun open(port: Int, session: Session) {
++        close()
++        connection = port to session
++    }
++
++    fun isOpen(port: Int): Boolean = connection?.let { it.first == port && it.second.isConnected } == true
++
++    fun close(port: Int? = null) {
++        val current = connection ?: return
++        if (port != null && current.first != port) return
++        connection = null
++        current.second.disconnect()
++    }
++}
+diff --git a/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
+new file mode 100644
+index 0000000..699e2d2
+--- /dev/null
++++ b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
+@@ -0,0 +1,168 @@
++package com.scrcpy.remote.assist
++
++import android.app.Notification
++import android.app.NotificationChannel
++import android.app.NotificationManager
++import android.app.PendingIntent
++import android.app.Service
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.pm.ServiceInfo
++import android.os.IBinder
++import androidx.annotation.StringRes
++import androidx.core.app.NotificationManagerCompat
++import androidx.core.app.ServiceCompat
++import androidx.core.content.ContextCompat
++import com.scrcpy.remote.R
++import com.scrcpy.remote.ui.RemoteAssistActivity
++import com.jcraft.jsch.JSchException
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.currentCoroutineContext
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.ensureActive
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.launch
++
++class AvailabilityService : Service() {
++    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
++    private var tunnelJob: Job? = null
++
++    override fun onBind(intent: Intent?): IBinder? = null
++
++    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
++        val preferences = AssistPreferences(this)
++        if (intent?.action == ACTION_STOP) preferences.enabled = false
++        val profile = preferences.profile(AssistRole.DEVICE)
++        if (!preferences.enabled || !profile.isValid() || !canNotify(this)) {
++            stopSelf()
++            return START_NOT_STICKY
++        }
++        if (tunnelJob?.isActive == true) return START_STICKY
++        ServiceCompat.startForeground(
++            this, NOTIFICATION_ID, notification(R.string.assist_connecting),
++            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
++        )
++        tunnelJob = scope.launch { keepAvailable(profile) }
++        return START_STICKY
++    }
++
++    private suspend fun keepAvailable(profile: AssistProfile) {
++        var retryDelay = 2_000L
++        while (canNotify(this)) {
++            if (!AssistSsh.adbAvailable(profile.adbPort)) {
++                publish(R.string.assist_wait_adb)
++                delay(5_000)
++                continue
++            }
++            val session = try {
++                AssistSsh.session(this, AssistRole.DEVICE, profile)
++            } catch (_: Exception) {
++                publish(R.string.assist_key_error)
++                delay(30_000)
++                continue
++            }
++            try {
++                publish(R.string.assist_connecting)
++                session.connect(12_000)
++                currentCoroutineContext().ensureActive()
++                session.setPortForwardingR(LOOPBACK, profile.relayPort, LOOPBACK, profile.adbPort)
++                retryDelay = 2_000L
++                publish(R.string.assist_available)
++                while (session.isConnected && canNotify(this)) delay(2_000)
++            } catch (failure: JSchException) {
++                currentCoroutineContext().ensureActive()
++                publish(sshError(failure))
++            } finally {
++                session.disconnect()
++            }
++            delay(retryDelay)
++            retryDelay = (retryDelay * 2).coerceAtMost(60_000)
++        }
++        stopSelf()
++    }
++
++    private fun publish(@StringRes state: Int) {
++        _status.value = state
++        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state))
++    }
++
++    private fun notification(@StringRes state: Int): Notification {
++        val open = PendingIntent.getActivity(this, 0, Intent(this, RemoteAssistActivity::class.java),
++            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
++        val stop = PendingIntent.getService(this, 1,
++            Intent(this, AvailabilityService::class.java).setAction(ACTION_STOP),
++            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
++        return Notification.Builder(this, CHANNEL_ID)
++            .setSmallIcon(android.R.drawable.stat_sys_upload)
++            .setContentTitle(getString(R.string.assist_notification_title))
++            .setContentText(getString(state))
++            .setContentIntent(open)
++            .setCategory(Notification.CATEGORY_SERVICE)
++            .setOnlyAlertOnce(true)
++            .setOngoing(true)
++            .addAction(Notification.Action.Builder(null, getString(R.string.assist_disable), stop).build())
++            .build()
++    }
++
++    override fun onDestroy() {
++        scope.cancel()
++        stopForeground(STOP_FOREGROUND_REMOVE)
++        _status.value = R.string.assist_disabled
++        super.onDestroy()
++    }
++
++    companion object {
++        private const val NOTIFICATION_ID = 15555
++        private const val CHANNEL_ID = "remote_assist_availability"
++        private const val ACTION_STOP = "com.jolufasoft.remote.STOP_ASSISTANCE"
++        private val _status = MutableStateFlow(R.string.assist_disabled)
++        internal val status = _status.asStateFlow()
++
++        internal fun canNotify(context: Context): Boolean {
++            val manager = context.getSystemService(NotificationManager::class.java)
++            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID,
++                context.getString(R.string.assist_notification_title), NotificationManager.IMPORTANCE_LOW))
++            return NotificationManagerCompat.from(context).areNotificationsEnabled() &&
++                (manager.getNotificationChannel(CHANNEL_ID)?.importance ?: NotificationManager.IMPORTANCE_NONE)
++                    != NotificationManager.IMPORTANCE_NONE
++        }
++
++        internal fun start(context: Context) {
++            ContextCompat.startForegroundService(context, Intent(context, AvailabilityService::class.java))
++        }
++
++        internal fun stop(context: Context) {
++            AssistPreferences(context).enabled = false
++            context.stopService(Intent(context, AvailabilityService::class.java))
++        }
++    }
++}
++
++class AssistanceBootReceiver : BroadcastReceiver() {
++    override fun onReceive(context: Context, intent: Intent) {
++        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
++        if (AssistPreferences(context).enabled && AvailabilityService.canNotify(context)) {
++            runCatching { AvailabilityService.start(context) }
++        }
++    }
++}
++
++@StringRes
++internal fun sshError(failure: JSchException): Int {
++    val message = failure.message.orEmpty()
++    return when {
++        "HostKey" in message || "hostkey" in message.lowercase() ->
++            R.string.assist_host_key_error
++        "Auth fail" in message || "USERAUTH" in message ->
++            R.string.assist_auth_error
++        "remote port forwarding" in message ->
++            R.string.assist_forward_error
++        else -> R.string.assist_ssh_error
++    }
++}
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt b/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
 index c9ded7d..6c9ac9f 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/FloatingControls.kt
@@ -136,10 +527,19 @@ index c9ded7d..6c9ac9f 100644
  }
  
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
-index b07e364..a88c097 100644
+index b07e364..006806e 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 +++ b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
-@@ -109,7 +109,6 @@ import com.scrcpy.remote.session.MirrorUiState
+@@ -1,6 +1,8 @@
+ package com.scrcpy.remote.ui
+ 
+ import com.scrcpy.remote.R
++import com.scrcpy.remote.assist.LOOPBACK
++import com.scrcpy.remote.assist.OperatorTunnel
+ 
+ import android.Manifest
+ import android.app.KeyguardManager
+@@ -109,7 +111,6 @@ import com.scrcpy.remote.session.MirrorUiState
  import com.scrcpy.remote.session.KeyForwardingPolicy
  import com.scrcpy.remote.session.FileTransfers
  import com.scrcpy.remote.session.MirrorViewModel
@@ -147,16 +547,17 @@ index b07e364..a88c097 100644
  import com.scrcpy.remote.session.SessionOverrides
  import com.scrcpy.remote.session.SessionDisplay
  import com.scrcpy.remote.session.StreamChoice
-@@ -480,7 +479,7 @@ class MirrorActivity : ComponentActivity() {
+@@ -480,7 +481,8 @@ class MirrorActivity : ComponentActivity() {
  
          val host = intent.getStringExtra(EXTRA_HOST).orEmpty()
          val port = intent.getIntExtra(EXTRA_PORT, DEFAULT_PORT)
 -        if (host.isEmpty()) {
-+        if (host != "127.0.0.1" || port !in 1..65535) {
++        if (host != LOOPBACK || !OperatorTunnel.isOpen(port)) {
++            android.widget.Toast.makeText(this, R.string.assist_tunnel_closed, android.widget.Toast.LENGTH_LONG).show()
              finish()
              return
          }
-@@ -500,7 +499,18 @@ class MirrorActivity : ComponentActivity() {
+@@ -500,7 +502,18 @@ class MirrorActivity : ComponentActivity() {
          // whatever this device would otherwise use, and only for this session: nothing here is
          // written back, so the saved profile is untouched when the session ends.
          val linkRequest = LinkRequest.from(intent)
@@ -176,7 +577,7 @@ index b07e364..a88c097 100644
          // A recreated recording offer must not revive a session the user explicitly ended.
          if (!exitAfterRecording) {
              viewModel.connect(host, port, settingsFor(initialSettings), allowPortDiscovery = savedDeviceId != null,
-@@ -593,12 +603,6 @@ class MirrorActivity : ComponentActivity() {
+@@ -593,12 +606,6 @@ class MirrorActivity : ComponentActivity() {
                          onRequestCameraPip = { requestCameraPictureInPicture() },
                          onPipStateChanged = ::reconcileCameraPip,
                          onShareArtefact = ::launchArtefactShare,
@@ -189,7 +590,15 @@ index b07e364..a88c097 100644
                          onSaveRecording = { name ->
                              if (canUseSessionTools()) {
                                  documentPickerOpen = true
-@@ -861,8 +865,6 @@ private fun MirrorScreen(
+@@ -772,6 +779,7 @@ class MirrorActivity : ComponentActivity() {
+         super.onDestroy()
+         if (isFinishing) {
+             viewModel.disconnect()
++            OperatorTunnel.close(intent.getIntExtra(EXTRA_PORT, DEFAULT_PORT))
+             MirrorSessionService.stop(this)
+         }
+     }
+@@ -861,8 +869,6 @@ private fun MirrorScreen(
      onRequestCameraPip: () -> Unit,
      onPipStateChanged: () -> Unit,
      onShareArtefact: (Intent) -> Boolean,
@@ -198,7 +607,7 @@ index b07e364..a88c097 100644
      onSaveRecording: (String) -> Unit,
      onPickFileToSend: () -> Unit,
      onPickAppToInstall: () -> Unit,
-@@ -903,12 +905,7 @@ private fun MirrorScreen(
+@@ -903,12 +909,7 @@ private fun MirrorScreen(
      val recordingSaveInProgress by viewModel.recordingSaveInProgress.collectAsState()
      val desktopResizing by viewModel.desktopResizing.collectAsState()
      val finishedRecording by viewModel.finishedRecording.collectAsState()
@@ -211,7 +620,7 @@ index b07e364..a88c097 100644
      val shareUnavailable = stringResource(R.string.artefact_share_failed)
      val capture by screenshots.state.collectAsState()
      val defaults by repository.settings.collectAsState()
-@@ -975,7 +972,7 @@ private fun MirrorScreen(
+@@ -975,7 +976,7 @@ private fun MirrorScreen(
      var confirmApplySettings by rememberSaveable { mutableStateOf(false) }
      val dialogOpen = showApps || showEncoders || showAudioEncoders || showDisplays ||
          showCameras || showDetails || confirmLeave || showDeviceSettings ||
@@ -220,7 +629,7 @@ index b07e364..a88c097 100644
          appOffer != null || installOutcome != null
      val pipWorkPending = recording || finishedRecording != null || recordingSaveInProgress ||
          transfer.running || transferHold || capture.busy || capture.pendingToken != null ||
-@@ -1076,8 +1073,7 @@ private fun MirrorScreen(
+@@ -1076,8 +1077,7 @@ private fun MirrorScreen(
              onRetry = viewModel::reconnect,
              onRepair = {
                  // The pairing dialog lives on the device list.
@@ -230,7 +639,7 @@ index b07e364..a88c097 100644
                      .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                  onDisconnect()
              },
-@@ -1187,22 +1183,10 @@ private fun MirrorScreen(
+@@ -1187,22 +1187,10 @@ private fun MirrorScreen(
                      calibrationOverridesDefaults = calibrationOverride != null,
                      onUseGlobalCalibration = { updateCalibration(null) },
                      screenshotBusy = capture.busy,
@@ -255,7 +664,7 @@ index b07e364..a88c097 100644
                      onDeviceSettings = if (savedDevice != null) ({
                          if (canUseSessionTools()) showDeviceSettings = true
                      }) else null,
-@@ -1212,7 +1196,7 @@ private fun MirrorScreen(
+@@ -1212,7 +1200,7 @@ private fun MirrorScreen(
                      sendFileBusy = transfer.running,
                      onOpenEncoders = { if (canUseSessionTools()) showEncoders = true },
                      onOpenDisplays = { if (canUseSessionTools()) showDisplays = true },
@@ -264,7 +673,7 @@ index b07e364..a88c097 100644
                      onStreamChoices = { if (canUseSessionTools()) showStreamChoices = true },
                      cameraSession = activeSettings?.camera != null,
                      cameraTorchOn = cameraTorchOn,
-@@ -1229,7 +1213,7 @@ private fun MirrorScreen(
+@@ -1229,7 +1217,7 @@ private fun MirrorScreen(
                          viewZoom = (viewZoom / 2f).coerceAtLeast(1f)
                      },
                      onViewZoomReset = { viewZoom = 1f },
@@ -273,7 +682,7 @@ index b07e364..a88c097 100644
                      onCameraPip = if (pipSupported && activeSettings?.camera != null)
                          onRequestCameraPip else null,
                      cameraPipBlocked = pipWorkPending || dialogOpen,
-@@ -1373,24 +1357,6 @@ private fun MirrorScreen(
+@@ -1373,24 +1361,6 @@ private fun MirrorScreen(
              },
          )
      }
@@ -300,13 +709,17 @@ index b07e364..a88c097 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..bf548cc
+index 0000000..d7234cb
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,262 @@
 +package com.scrcpy.remote.ui
 +
++import android.Manifest
 +import android.app.AlertDialog
++import android.content.ClipData
++import android.content.ClipboardManager
++import android.os.Build
 +import android.os.Bundle
 +import android.text.InputType
 +import android.widget.Button
@@ -314,83 +727,291 @@ index 0000000..bf548cc
 +import android.widget.LinearLayout
 +import android.widget.ScrollView
 +import android.widget.TextView
++import android.widget.Toast
 +import androidx.activity.ComponentActivity
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.annotation.StringRes
 +import androidx.core.view.ViewCompat
 +import androidx.core.view.WindowInsetsCompat
 +import androidx.core.view.updatePadding
++import androidx.lifecycle.lifecycleScope
++import com.jcraft.jsch.JSchException
++import com.jcraft.jsch.Session
 +import com.scrcpy.remote.R
++import com.scrcpy.remote.assist.AssistPreferences
++import com.scrcpy.remote.assist.AssistProfile
++import com.scrcpy.remote.assist.AssistRole
++import com.scrcpy.remote.assist.AssistSsh
++import com.scrcpy.remote.assist.AvailabilityService
++import com.scrcpy.remote.assist.LOOPBACK
++import com.scrcpy.remote.assist.OperatorTunnel
++import com.scrcpy.remote.assist.sshError
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
 +
-+/** A session is started by the operator through a loopback SSH forward. */
 +class RemoteAssistActivity : ComponentActivity() {
++    private val preferences by lazy { AssistPreferences(this) }
++    private var role = AssistRole.OPERATOR
++    private var connecting = false
++    private lateinit var status: TextView
++    private lateinit var primary: Button
++    private lateinit var operator: Button
++    private lateinit var device: Button
++    private lateinit var host: EditText
++    private lateinit var port: EditText
++    private lateinit var user: EditText
++    private lateinit var fingerprint: EditText
++    private lateinit var relayPort: EditText
++    private lateinit var adbPort: EditText
++    private var formFields: List<EditText> = emptyList()
++
++    private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
++        if (allowed) enableAvailability() else showMessage(R.string.assist_notifications_required)
++    }
++
 +    override fun onCreate(savedInstanceState: Bundle?) {
 +        super.onCreate(savedInstanceState)
-+        val preferences = getSharedPreferences("remote_assistance", MODE_PRIVATE)
++        role = savedInstanceState?.getString("role")?.let(AssistRole::valueOf)
++            ?: if (preferences.enabled) AssistRole.DEVICE else AssistRole.OPERATOR
 +        val padding = (resources.displayMetrics.density * 24).toInt()
 +        val layout = LinearLayout(this).apply {
 +            orientation = LinearLayout.VERTICAL
 +            setPadding(padding, padding, padding, padding)
++            isFocusableInTouchMode = true
 +        }
-+        layout.addView(TextView(this).apply {
-+            setText(R.string.app_name)
-+            textSize = 26f
-+        })
-+        layout.addView(TextView(this).apply {
-+            setText(R.string.assist_help)
-+            textSize = 16f
-+            setPadding(0, padding, 0, padding)
-+        })
-+        val portInput = EditText(this).apply {
-+            id = R.id.assist_port
-+            inputType = InputType.TYPE_CLASS_NUMBER
-+            setSingleLine()
-+            setHint(R.string.assist_port_hint)
-+            contentDescription = getString(R.string.assist_port_hint)
-+            setText(preferences.getInt("port", 15556).toString())
-+        }
-+        layout.addView(portInput)
-+        layout.addView(Button(this).apply {
-+            setText(R.string.connect)
-+            setOnClickListener {
-+                val port = portInput.text.toString().toIntOrNull()
-+                if (port == null || port !in 1..65535) {
-+                    portInput.error = getString(R.string.assist_port_error)
-+                    return@setOnClickListener
-+                }
-+                AlertDialog.Builder(this@RemoteAssistActivity)
-+                    .setTitle(R.string.assist_confirm_title)
-+                    .setMessage(R.string.assist_confirm_body)
-+                    .setNegativeButton(android.R.string.cancel, null)
-+                    .setPositiveButton(R.string.connect) { _, _ ->
-+                        preferences.edit().putInt("port", port).apply()
-+                        startActivity(MirrorActivity.newIntent(this@RemoteAssistActivity, "127.0.0.1", port))
-+                    }.show()
-+            }
-+        })
++        layout.addView(TextView(this).apply { setText(R.string.app_name); textSize = 26f })
++        operator = layout.button(R.string.assist_operator) { switchRole(AssistRole.OPERATOR) }
++        device = layout.button(R.string.assist_device) { switchRole(AssistRole.DEVICE) }
++        status = TextView(this).also { layout.addView(it) }
++        host = layout.input(R.string.assist_host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
++        port = layout.input(R.string.assist_ssh_port, InputType.TYPE_CLASS_NUMBER)
++        user = layout.input(R.string.assist_ssh_user)
++        fingerprint = layout.input(R.string.assist_fingerprint)
++        relayPort = layout.input(R.string.assist_relay_port, InputType.TYPE_CLASS_NUMBER)
++        adbPort = layout.input(R.string.assist_adb_port, InputType.TYPE_CLASS_NUMBER)
++        formFields = listOf(host, port, user, fingerprint, relayPort, adbPort)
++        layout.button(R.string.assist_show_key, ::showPublicKey)
++        primary = layout.button(R.string.connect, ::submit)
 +        val page = ScrollView(this).apply { addView(layout) }
 +        ViewCompat.setOnApplyWindowInsetsListener(page) { view, insets ->
-+            val safe = insets.getInsets(
-+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-+            )
++            val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
 +            view.updatePadding(left = safe.left, top = safe.top, right = safe.right, bottom = safe.bottom)
 +            insets
 +        }
 +        setContentView(page)
++        loadProfile()
++        lifecycleScope.launch { AvailabilityService.status.collect { updateControls() } }
++    }
++
++    override fun onResume() {
++        super.onResume()
++        updateControls()
++    }
++
++    override fun onSaveInstanceState(outState: Bundle) {
++        outState.putString("role", role.name)
++        super.onSaveInstanceState(outState)
++    }
++
++    private fun switchRole(next: AssistRole) {
++        if (role == next) return
++        role = next
++        loadProfile()
++    }
++
++    private fun loadProfile() {
++        val profile = preferences.profile(role)
++        host.setText(profile.host)
++        port.setText(profile.port.toString())
++        user.setText(profile.user)
++        fingerprint.setText(profile.fingerprint)
++        relayPort.setText(profile.relayPort.toString())
++        adbPort.setText(profile.adbPort.toString())
++        updateControls()
++    }
++
++    private fun updateControls() {
++        val assisted = role == AssistRole.DEVICE
++        val enabled = preferences.enabled
++        operator.isEnabled = assisted && !connecting
++        device.isEnabled = !assisted && !connecting
++        adbPort.visibility = if (assisted) android.view.View.VISIBLE else android.view.View.GONE
++        formFields.forEach { it.isEnabled = !connecting && !(assisted && enabled) }
++        status.setText(when {
++            assisted && enabled && AvailabilityService.status.value == R.string.assist_disabled ->
++                R.string.assist_ready_to_resume
++            assisted && enabled -> AvailabilityService.status.value
++            assisted -> R.string.assist_disabled
++            connecting -> R.string.assist_connecting
++            else -> R.string.assist_operator_help
++        })
++        primary.setText(when {
++            assisted && enabled -> R.string.assist_disable
++            assisted -> R.string.assist_enable
++            else -> R.string.connect
++        })
++        primary.isEnabled = !connecting
++    }
++
++    private fun submit() {
++        val selectedRole = role
++        if (selectedRole == AssistRole.DEVICE && preferences.enabled) {
++            AvailabilityService.stop(this)
++            updateControls()
++            return
++        }
++        val profile = AssistProfile(
++            host.text.toString().trim(), port.text.toString().toIntOrNull() ?: 0,
++            user.text.toString().trim(), fingerprint.text.toString().trim(),
++            relayPort.text.toString().toIntOrNull() ?: 0, adbPort.text.toString().toIntOrNull() ?: 0,
++        )
++        if (!profile.isValid()) {
++            showMessage(R.string.assist_invalid)
++            return
++        }
++        preferences.save(selectedRole, profile)
++        if (selectedRole == AssistRole.OPERATOR) {
++            connectOperator(profile)
++        } else {
++            AlertDialog.Builder(this)
++                .setTitle(R.string.assist_enable)
++                .setMessage(R.string.assist_consent)
++                .setNegativeButton(android.R.string.cancel, null)
++                .setPositiveButton(R.string.assist_enable) { _, _ ->
++                    if (Build.VERSION.SDK_INT >= 33 && !AvailabilityService.canNotify(this)) {
++                        notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
++                    } else {
++                        enableAvailability()
++                    }
++                }.show()
++        }
++    }
++
++    private fun enableAvailability() {
++        if (!AvailabilityService.canNotify(this)) {
++            showMessage(R.string.assist_notifications_required)
++            return
++        }
++        preferences.enabled = true
++        try {
++            AvailabilityService.start(this)
++        } catch (_: IllegalStateException) {
++            preferences.enabled = false
++            showMessage(R.string.assist_service_error)
++        } catch (_: SecurityException) {
++            preferences.enabled = false
++            showMessage(R.string.assist_service_error)
++        }
++        updateControls()
++    }
++
++    private fun showPublicKey() {
++        val selectedRole = role
++        lifecycleScope.launch {
++            val key = withContext(Dispatchers.IO) {
++                runCatching { AssistSsh.publicKey(applicationContext, selectedRole) }.getOrNull()
++            }
++            if (key == null) {
++                showMessage(R.string.assist_key_error)
++                return@launch
++            }
++            AlertDialog.Builder(this@RemoteAssistActivity)
++                .setTitle(R.string.assist_show_key)
++                .setMessage(key)
++                .setNegativeButton(android.R.string.cancel, null)
++                .setPositiveButton(R.string.assist_copy_key) { _, _ ->
++                    getSystemService(ClipboardManager::class.java)
++                        .setPrimaryClip(ClipData.newPlainText(getString(R.string.assist_show_key), key))
++                }.show()
++        }
++    }
++
++    private fun connectOperator(profile: AssistProfile) {
++        connecting = true
++        updateControls()
++        lifecycleScope.launch {
++            var pending: Session? = null
++            try {
++                val forward = withContext(Dispatchers.IO) {
++                    val session = AssistSsh.session(applicationContext, AssistRole.OPERATOR, profile)
++                    pending = session
++                    session.connect(12_000)
++                    session.setPortForwardingL(LOOPBACK, 0, LOOPBACK, profile.relayPort)
++                }
++                OperatorTunnel.open(forward, checkNotNull(pending))
++                pending = null
++                startActivity(MirrorActivity.newIntent(this@RemoteAssistActivity, LOOPBACK, forward))
++            } catch (failure: JSchException) {
++                showMessage(sshError(failure))
++            } catch (_: java.io.IOException) {
++                showMessage(R.string.assist_key_error)
++            } finally {
++                pending?.disconnect()
++                connecting = false
++                updateControls()
++            }
++        }
++    }
++
++    private fun showMessage(@StringRes text: Int) {
++        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
++    }
++
++    private fun LinearLayout.button(@StringRes label: Int, action: () -> Unit): Button =
++        Button(context).apply {
++            setText(label)
++            setOnClickListener { action() }
++            this@button.addView(this)
++        }
++
++    private fun LinearLayout.input(@StringRes label: Int, type: Int = InputType.TYPE_CLASS_TEXT): EditText {
++        addView(TextView(context).apply { setText(label) })
++        return EditText(context).apply {
++            inputType = type or if (type == InputType.TYPE_CLASS_TEXT) InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS else 0
++            setSingleLine()
++            contentDescription = getString(label)
++            this@input.addView(this)
++        }
 +    }
 +}
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..a7eb01f
+index 0000000..c085675
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,32 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
-+    <item name="assist_port" type="id" />
-+    <string name="assist_help">Abre el túnel SSH en este teléfono. La otra persona debe iniciar su sesión de asistencia y autorizar la clave ADB en su Android cuando se le solicite.</string>
-+    <string name="assist_port_hint">Puerto local del túnel SSH</string>
-+    <string name="assist_port_error">Escribe un puerto entre 1 y 65535.</string>
-+    <string name="assist_confirm_title">Iniciar asistencia</string>
-+    <string name="assist_confirm_body">Confirma que la otra persona autorizó esta sesión. Podrás ver su pantalla y usar los controles mientras el túnel esté abierto.</string>
++    <string name="assist_operator">Dar asistencia</string>
++    <string name="assist_device">Recibir asistencia</string>
++    <string name="assist_operator_help">Usa la cuenta SSH asignada al operador. El teléfono asistido debe tener la disponibilidad activada.</string>
++    <string name="assist_host">Servidor SSH (IP de Tailscale o MagicDNS)</string>
++    <string name="assist_ssh_port">Puerto SSH</string>
++    <string name="assist_ssh_user">Usuario SSH</string>
++    <string name="assist_fingerprint">Huella SHA256 de la clave ECDSA del servidor</string>
++    <string name="assist_relay_port">Puerto asignado al teléfono en el servidor</string>
++    <string name="assist_adb_port">Puerto ADB local de Nightzuku</string>
++    <string name="assist_show_key">Ver clave pública SSH</string>
++    <string name="assist_copy_key">Copiar clave pública</string>
++    <string name="assist_notification_title">JolufaSoft Remote · Asistencia</string>
++    <string name="assist_enable">Activar asistencia permanente</string>
++    <string name="assist_disable">Desactivar asistencia</string>
++    <string name="assist_consent">El operador autorizado podrá ver y controlar este teléfono mientras esté disponible. La disponibilidad se restaura después del reinicio y puedes desactivarla en cualquier momento desde la notificación.</string>
++    <string name="assist_disabled">Asistencia desactivada.</string>
++    <string name="assist_ready_to_resume">Disponibilidad activada en la configuración. Si el servicio se detuvo, desactívalo y vuelve a activarlo.</string>
++    <string name="assist_connecting">Abriendo la conexión SSH…</string>
++    <string name="assist_wait_adb">Esperando el puerto ADB local de Nightzuku.</string>
++    <string name="assist_available">Disponible para el operador autorizado.</string>
++    <string name="assist_invalid">Revisa el servidor, el usuario, la huella SHA256 y los puertos.</string>
++    <string name="assist_key_error">No se pudo abrir o generar la clave SSH de este teléfono.</string>
++    <string name="assist_host_key_error">La clave ECDSA del servidor no coincide con la huella configurada.</string>
++    <string name="assist_auth_error">El servidor rechazó la clave pública SSH de este teléfono.</string>
++    <string name="assist_forward_error">El servidor rechazó el puerto asignado al teléfono.</string>
++    <string name="assist_ssh_error">No se pudo establecer la conexión SSH. Comprueba el servidor y la red.</string>
++    <string name="assist_notifications_required">Habilita las notificaciones de asistencia en Ajustes de Android para activar este modo.</string>
++    <string name="assist_service_error">Android no pudo iniciar el servicio de asistencia.</string>
++    <string name="assist_tunnel_closed">La conexión SSH se cerró. Vuelve a Dar asistencia para conectar de nuevo.</string>
 +</resources>
 diff --git a/app/src/main/res/values/compact_controls_strings.xml b/app/src/main/res/values/compact_controls_strings.xml
 index 1d88699..2d77dc8 100644
@@ -524,3 +1145,35 @@ index efd063d..363a13b 100644
 +    <string name="background_notification_stop">Desconectar</string>
      <string name="background_session_unavailable">Android refused to keep this session in the background. It will stop when the app is hidden.</string>
  </resources>
+diff --git a/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt
+new file mode 100644
+index 0000000..ab16db2
+--- /dev/null
++++ b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt
+@@ -0,0 +1,26 @@
++package com.scrcpy.remote.assist
++
++import com.jcraft.jsch.HostKeyRepository
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class AssistSshTest {
++    private val fingerprint = "SHA256:ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0"
++
++    @Test fun verifiesOnlyPinnedHostKey() {
++        val pinned = PinnedHostKey(fingerprint)
++        assertEquals(HostKeyRepository.OK, pinned.check("relay", "abc".toByteArray()))
++        assertEquals(HostKeyRepository.CHANGED, pinned.check("relay", "wrong".toByteArray()))
++    }
++
++    @Test fun acceptsMagicDnsAndTailnetIpv4() {
++        val profile = AssistProfile("relay.tail.example.ts.net", 2222, "remote-device-01", fingerprint, 15555, 5555)
++        assertTrue(profile.isValid())
++        assertTrue(profile.copy(host = "100.64.12.20").isValid())
++        assertFalse(profile.copy(host = "ssh://relay").isValid())
++        assertFalse(profile.copy(fingerprint = "").isValid())
++        assertFalse(profile.copy(relayPort = 99999).isValid())
++    }
++}
