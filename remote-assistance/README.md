@@ -43,8 +43,10 @@ En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configura
 
 ## Teléfonos
 
-- **Recibir asistencia** usa `remote-device-01` y su contraseña. Al iniciar sesión, ponle un nombre al teléfono y habilita la disponibilidad. Se mantiene mientras el servidor elegido y el ADB local autorizado estén disponibles. La puesta en marcha del ADB en el teléfono asistido sigue dependiendo de un componente externo como Nightzuku. La notificación indica **Disponible para José Luis** cuando el servicio está disponible. Para desactivar la asistencia, abre la aplicación y usa **Desactivar asistencia**.
+- **Recibir asistencia** usa `remote-device-01` y su contraseña. Al iniciar sesión, ponle un nombre al teléfono y habilita la disponibilidad. Se mantiene mientras el servidor elegido y el ADB local autorizado estén disponibles. La puesta en marcha del ADB en el teléfono asistido sigue dependiendo de un componente externo como Nightzuku. La notificación muestra **Disponible** con el nombre configurado en **Nombre visible del operador**. El valor inicial es **José Luis**. Puedes cambiarlo o dejarlo vacío. Para desactivar la asistencia, abre la aplicación y usa **Desactivar asistencia**.
 - **Dar asistencia** usa `remote-operator-01` y su contraseña. Pulsa **Teléfonos** y elige el equipo. Acepta una vez en el equipo asistido la autorización ADB del cliente si Android la pide. Los teléfonos registrados aparecen en la lista aunque estén apagados o la disponibilidad esté desactivada.
+
+La ayuda breve sobre el uso y los servidores se abre desde **Menú ⋮ → Ayuda**.
 
 ## Compilación
 

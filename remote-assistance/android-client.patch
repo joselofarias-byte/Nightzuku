@@ -272,14 +272,15 @@ index 0000000..fe75d1a
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
 new file mode 100644
-index 0000000..eb23673
+index 0000000..61342b9
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/AssistSsh.kt
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,181 @@
 +package com.scrcpy.remote.assist
 +
 +import android.content.Context
 +import android.util.AtomicFile
++import com.scrcpy.remote.R
 +import java.util.Base64
 +import com.jcraft.jsch.HostKey
 +import com.jcraft.jsch.HostKeyRepository
@@ -316,10 +317,15 @@ index 0000000..eb23673
 +
 +internal class AssistPreferences(context: Context) {
 +    private val prefs = context.getSharedPreferences("remote_assistance", Context.MODE_PRIVATE)
++    private val defaultOperatorName = context.getString(R.string.assist_default_operator)
 +
 +    var enabled: Boolean
 +        get() = prefs.getBoolean("enabled", false)
 +        set(value) { prefs.edit().putBoolean("enabled", value).apply() }
++
++    var operatorName: String
++        get() = prefs.getString("operatorName", defaultOperatorName).orEmpty()
++        set(value) { prefs.edit().putString("operatorName", value).apply() }
 +
 +    fun profile(role: AssistRole): AssistProfile {
 +        val key = role.name
@@ -453,10 +459,10 @@ index 0000000..eb23673
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
 new file mode 100644
-index 0000000..6f5b2ae
+index 0000000..f79c20a
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,172 @@
 +package com.scrcpy.remote.assist
 +
 +import android.app.Notification
@@ -501,7 +507,10 @@ index 0000000..6f5b2ae
 +            stopSelf()
 +            return START_NOT_STICKY
 +        }
-+        if (tunnelJob?.isActive == true) return START_STICKY
++        if (tunnelJob?.isActive == true) {
++            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(status.value))
++            return START_STICKY
++        }
 +        ServiceCompat.startForeground(
 +            this, NOTIFICATION_ID, notification(R.string.assist_connecting),
 +            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
@@ -556,7 +565,7 @@ index 0000000..6f5b2ae
 +        return Notification.Builder(this, CHANNEL_ID)
 +            .setSmallIcon(android.R.drawable.stat_sys_upload)
 +            .setContentTitle(getString(R.string.assist_notification_title))
-+            .setContentText(getString(state))
++            .setContentText(statusText(this, state))
 +            .setContentIntent(open)
 +            .setCategory(Notification.CATEGORY_SERVICE)
 +            .setOnlyAlertOnce(true)
@@ -576,6 +585,13 @@ index 0000000..6f5b2ae
 +        private const val CHANNEL_ID = "remote_assist_availability"
 +        private val _status = MutableStateFlow(R.string.assist_disabled)
 +        internal val status = _status.asStateFlow()
++
++        internal fun statusText(context: Context, @StringRes state: Int): String {
++            if (state != R.string.assist_available) return context.getString(state)
++            val name = AssistPreferences(context).operatorName
++            return if (name.isBlank()) context.getString(state)
++                else context.getString(R.string.assist_available_for, name)
++        }
 +
 +        internal fun canNotify(context: Context): Boolean {
 +            val manager = context.getSystemService(NotificationManager::class.java)
@@ -1352,10 +1368,10 @@ index b07e364..92418d6 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..5cfc118
+index 0000000..05f4429
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,1060 @@
+@@ -0,0 +1,1088 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
@@ -1429,6 +1445,7 @@ index 0000000..5cfc118
 +    private lateinit var menu: Button
 +    private lateinit var avatar: ImageButton
 +    private lateinit var servers: Button
++    private lateinit var operatorName: Button
 +    private lateinit var status: TextView
 +    private lateinit var feedback: TextView
 +    private lateinit var deviceNameRow: LinearLayout
@@ -1492,6 +1509,7 @@ index 0000000..5cfc118
 +
 +        val panel = layout.card()
 +        status = label(R.string.assist_login_hint, 14f, tone = R.color.assist_muted).also(panel::addView)
++        operatorName = panel.button(R.string.assist_operator_name) { editOperatorName() }
 +        servers = panel.button(R.string.assist_choose_server) { chooseServer(servers) }
 +        form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }.also(panel::addView)
 +        userInput = form.field(R.string.assist_ssh_user, InputType.TYPE_CLASS_TEXT)
@@ -1564,9 +1582,11 @@ index 0000000..5cfc118
 +        updateAvatar()
 +        updateMode(operator, !receive)
 +        updateMode(assisted, receive)
-+        listOf(servers, avatar, userInput, passwordInput, passwordReveal, deviceName).forEach { it.isEnabled = !busy }
++        listOf(servers, avatar, operatorName, userInput, passwordInput, passwordReveal, deviceName)
++            .forEach { it.isEnabled = !busy }
++        operatorName.visibility = if (receive) View.VISIBLE else View.GONE
 +        form.visibility = if (registered) View.GONE else View.VISIBLE
-+        status.setText(when {
++        status.text = AvailabilityService.statusText(this, when {
 +            busy -> R.string.assist_connecting
 +            receive && preferences.enabled -> AvailabilityService.status.value
 +            receive && registered -> R.string.assist_disabled
@@ -1581,6 +1601,27 @@ index 0000000..5cfc118
 +        })
 +        action.isEnabled = !busy
 +        menu.isEnabled = !busy
++    }
++
++    private fun editOperatorName() {
++        val fields = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(8), dp(20), dp(8))
++        }
++        val name = fields.field(R.string.assist_operator_name, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS)
++        name.filters = arrayOf(android.text.InputFilter.LengthFilter(60))
++        name.setText(preferences.operatorName)
++        AlertDialog.Builder(this).setTitle(R.string.assist_operator_name)
++            .setMessage(R.string.assist_operator_name_hint)
++            .setView(fields)
++            .setPositiveButton(R.string.assist_save_account) { _, _ ->
++                preferences.operatorName = name.text.toString().trim().filterNot(Char::isISOControl)
++                if (preferences.enabled) {
++                    runCatching { AvailabilityService.start(this) }.onFailure { message(R.string.assist_service_error) }
++                }
++                render()
++            }
++            .setNegativeButton(android.R.string.cancel, null).show()
 +    }
 +
 +    private fun submit() {
@@ -2175,6 +2216,7 @@ index 0000000..5cfc118
 +        if (AppLock(this).mode != AppLock.Mode.OFF) popup.menu.add(0, R.string.assist_lock_now, 2, R.string.assist_lock_now)
 +        if (enrolled()) popup.menu.add(0, R.string.assist_sign_out, 3, R.string.assist_sign_out)
 +        popup.menu.add(0, R.string.assist_server_settings, 5, R.string.assist_server_settings)
++        popup.menu.add(0, R.string.assist_help, 6, R.string.assist_help)
 +        popup.setOnMenuItemClickListener { item ->
 +            when (item.itemId) {
 +                R.string.assist_accounts -> loadAccounts()
@@ -2188,6 +2230,8 @@ index 0000000..5cfc118
 +                }
 +                R.string.assist_sign_out -> logOut()
 +                R.string.assist_server_settings -> configureServers()
++                R.string.assist_help -> AlertDialog.Builder(this).setTitle(R.string.assist_help)
++                    .setMessage(R.string.assist_help_body).setPositiveButton(R.string.close, null).show()
 +            }
 +            true
 +        }
@@ -2506,10 +2550,10 @@ index 0000000..ad67158
 +</resources>
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..ce0f72b
+index 0000000..731e493
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,107 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
@@ -2522,7 +2566,13 @@ index 0000000..ce0f72b
 +    <string name="assist_disabled">Asistencia desactivada.</string>
 +    <string name="assist_connecting">Abriendo la conexión SSH…</string>
 +    <string name="assist_wait_adb">Esperando el puerto ADB local de Nightzuku.</string>
-+    <string name="assist_available">Disponible para José Luis.</string>
++    <string name="assist_available">Disponible</string>
++    <string name="assist_available_for">Disponible para %1$s</string>
++    <string name="assist_default_operator">José Luis</string>
++    <string name="assist_operator_name">Nombre visible del operador</string>
++    <string name="assist_operator_name_hint">Se usa en este teléfono y en la notificación. Déjalo vacío para mostrar solo Disponible.</string>
++    <string name="assist_help">Ayuda</string>
++    <string name="assist_help_body">JolufaSoft Remote es gratuito. En el teléfono asistido, inicia sesión en Recibir asistencia y pulsa Activar asistencia permanente. En el operador, abre Dar asistencia y elige el teléfono en la lista.\n\nEl servidor principal usa HTTPS. Puedes elegir Tailscale o configurar otro servidor. El modo Recibir asistencia necesita un ADB local autorizado.</string>
 +    <string name="assist_invalid">Revisa el servidor, el usuario, la contraseña y el nombre del teléfono.</string>
 +    <string name="assist_key_error">No se pudo abrir o generar la clave SSH de este teléfono.</string>
 +    <string name="assist_host_key_error">La clave ECDSA del servidor no coincide con la huella configurada.</string>
