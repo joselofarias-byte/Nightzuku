@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 6a5a392..0290d12 100644
+index 6a5a392..6f764c1 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -95,6 +95,8 @@ val validatePublisherIdentity = tasks.register("validatePublisherIdentity") {
@@ -21,8 +21,8 @@ index 6a5a392..0290d12 100644
          targetSdk = 36
 -        versionCode = 86
 -        versionName = "3.5.7"
-+        versionCode = 10
-+        versionName = "1.6.1"
++        versionCode = 11
++        versionName = "1.6.2"
 +        buildConfigField("String", "ASSIST_DEFAULT_SERVER", buildConfigString(assistDefaultServer.get()))
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField("String", "PUBLISHER_NAME", buildConfigString(publisherName))
@@ -58,6 +58,39 @@ index 2418380..e50c997 100644
 +# JSch loads crypto algorithms and authentication implementations by their class names.
 +-keep class com.jcraft.jsch.** { *; }
 +-dontwarn com.jcraft.jsch.**
+diff --git a/app/src/androidTest/java/com/scrcpy/remote/session/MirrorSessionServiceTest.kt b/app/src/androidTest/java/com/scrcpy/remote/session/MirrorSessionServiceTest.kt
+index 9bfb72f..a970d47 100644
+--- a/app/src/androidTest/java/com/scrcpy/remote/session/MirrorSessionServiceTest.kt
++++ b/app/src/androidTest/java/com/scrcpy/remote/session/MirrorSessionServiceTest.kt
+@@ -154,25 +154,13 @@ class MirrorSessionServiceTest {
+             InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command),
+         ).use { it.readBytes().toString(Charsets.UTF_8) }
+ 
+-    @Test fun theNotificationActionRequestsAStopAndTakesTheNotificationDown() {
+-        val before = MirrorSessionService.stopRequests.value
++    @Test fun theNotificationOpensTheAppWithoutADisconnectAction() {
+         assertTrue(MirrorSessionService.start(context, "Desk phone", SessionHold.CONNECTED))
+         val notification = awaitNotificationText(
+             context.getString(R.string.background_notification_device, "Desk phone"))
+ 
+-        notification.actions.single {
+-            it.title == context.getString(R.string.background_notification_stop)
+-        }.actionIntent.send()
+-
+-        // The service owns no session, so a stop must be observable by the session owner rather
+-        // than quietly ending with the connection still running.
+-        val deadline = System.currentTimeMillis() + TIMEOUT_MILLIS
+-        while (MirrorSessionService.stopRequests.value == before && System.currentTimeMillis() < deadline) {
+-            Thread.sleep(POLL_MILLIS)
+-        }
+-        assertEquals(before + 1, MirrorSessionService.stopRequests.value)
+-        awaitNoNotification()
+-        assertNull(current())
++        assertTrue(notification.actions.isNullOrEmpty())
++        assertNotNull(notification.contentIntent)
+     }
+ 
+     @Test fun restartingUpdatesTheSameNotificationInsteadOfStackingThem() {
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 index 21f85d9..8436edd 100644
 --- a/app/src/main/AndroidManifest.xml
@@ -420,10 +453,10 @@ index 0000000..eb23673
 +}
 diff --git a/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
 new file mode 100644
-index 0000000..65dfb10
+index 0000000..6f5b2ae
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/assist/AvailabilityService.kt
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,162 @@
 +package com.scrcpy.remote.assist
 +
 +import android.app.Notification
@@ -463,7 +496,6 @@ index 0000000..65dfb10
 +
 +    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 +        val preferences = AssistPreferences(this)
-+        if (intent?.action == ACTION_STOP) preferences.enabled = false
 +        val profile = preferences.profile(AssistRole.DEVICE)
 +        if (!preferences.enabled || !profile.isValid() || !canNotify(this)) {
 +            stopSelf()
@@ -521,9 +553,6 @@ index 0000000..65dfb10
 +    private fun notification(@StringRes state: Int): Notification {
 +        val open = PendingIntent.getActivity(this, 0, Intent(this, RemoteAssistActivity::class.java),
 +            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-+        val stop = PendingIntent.getService(this, 1,
-+            Intent(this, AvailabilityService::class.java).setAction(ACTION_STOP),
-+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 +        return Notification.Builder(this, CHANNEL_ID)
 +            .setSmallIcon(android.R.drawable.stat_sys_upload)
 +            .setContentTitle(getString(R.string.assist_notification_title))
@@ -532,7 +561,6 @@ index 0000000..65dfb10
 +            .setCategory(Notification.CATEGORY_SERVICE)
 +            .setOnlyAlertOnce(true)
 +            .setOngoing(true)
-+            .addAction(Notification.Action.Builder(null, getString(R.string.assist_disable), stop).build())
 +            .build()
 +    }
 +
@@ -546,7 +574,6 @@ index 0000000..65dfb10
 +    companion object {
 +        private const val NOTIFICATION_ID = 15555
 +        private const val CHANNEL_ID = "remote_assist_availability"
-+        private const val ACTION_STOP = "com.jolufasoft.remote.STOP_ASSISTANCE"
 +        private val _status = MutableStateFlow(R.string.assist_disabled)
 +        internal val status = _status.asStateFlow()
 +
@@ -781,12 +808,86 @@ index 0000000..ecf001d
 +            .build()
 +    }
 +}
+diff --git a/app/src/main/java/com/scrcpy/remote/session/MirrorSessionService.kt b/app/src/main/java/com/scrcpy/remote/session/MirrorSessionService.kt
+index e10e3bc..488af26 100644
+--- a/app/src/main/java/com/scrcpy/remote/session/MirrorSessionService.kt
++++ b/app/src/main/java/com/scrcpy/remote/session/MirrorSessionService.kt
+@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
+  *
+  * Android freezes and then kills background processes, which would drop the ADB connection and
+  * silence the remote audio within seconds. The service exists purely to hold the process up and
+- * to give the user a visible, dismissible handle on the still-running session; it deliberately
++ * to give the user a visible entry back into the still-running session; it deliberately
+  * owns no session state, so it can never disagree with [MirrorViewModel] about what is connected.
+  */
+ class MirrorSessionService : Service() {
+@@ -30,14 +30,6 @@ class MirrorSessionService : Service() {
+     override fun onBind(intent: Intent?): IBinder? = null
+ 
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+-        if (intent?.action == ACTION_STOP) {
+-            _stopRequests.value++
+-            synchronized(startLock) {
+-                stopPending = true
+-                if (pendingForegroundStarts == 0) stopSelf(startId)
+-            }
+-            return START_NOT_STICKY
+-        }
+         val device = intent?.getStringExtra(EXTRA_DEVICE)
+         val hold = runCatching {
+             SessionHold.valueOf(intent?.getStringExtra(EXTRA_HOLD) ?: SessionHold.CONNECTED.name)
+@@ -104,12 +96,6 @@ class MirrorSessionService : Service() {
+                 ?: Intent(),
+             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+         )
+-        val stop = PendingIntent.getService(
+-            this,
+-            1,
+-            Intent(this, MirrorSessionService::class.java).setAction(ACTION_STOP),
+-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+-        )
+         return NotificationCompat.Builder(this, CHANNEL_ID)
+             .setSmallIcon(R.drawable.ic_notification_session)
+             .setContentTitle(getString(
+@@ -120,7 +106,6 @@ class MirrorSessionService : Service() {
+                 else getString(hold.namedNotificationText(), device),
+             )
+             .setContentIntent(open)
+-            .addAction(0, getString(R.string.background_notification_stop), stop)
+             .setOngoing(true)
+             .setSilent(true)
+             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+@@ -146,11 +131,9 @@ class MirrorSessionService : Service() {
+         private const val CHANNEL_ID = "mirror-session"
+         private const val TAG = "MirrorSessionService"
+         private const val NOTIFICATION_ID = 1
+-        private const val ACTION_STOP = "com.scrcpy.remote.STOP_BACKGROUND_SESSION"
+         private const val EXTRA_DEVICE = "device"
+         private const val EXTRA_HOLD = "hold"
+ 
+-        private val _stopRequests = MutableStateFlow(0L)
+         private val _startFailures = MutableStateFlow(0L)
+         private val startLock = Any()
+         private var pendingForegroundStarts = 0
+@@ -159,12 +142,6 @@ class MirrorSessionService : Service() {
+         /** Increments when the process could not be held up, so the caller can say so once. */
+         val startFailures: StateFlow<Long> = _startFailures.asStateFlow()
+ 
+-        /**
+-         * Increments when the notification's Disconnect action is used. The session owner watches
+-         * this rather than the service watching the session, so the service stays stateless.
+-         */
+-        val stopRequests: StateFlow<Long> = _stopRequests.asStateFlow()
+-
+         /**
+          * Starting a foreground service is rejected once the app is already in the cached state,
+          * so callers must invoke this while the Activity is still stopping rather than after.
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt
 new file mode 100644
-index 0000000..e22dd50
+index 0000000..a70693e
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/AssistLockActivity.kt
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,179 @@
 +package com.scrcpy.remote.ui
 +
 +import android.app.KeyguardManager
@@ -820,7 +921,7 @@ index 0000000..e22dd50
 +    override fun onStart() {
 +        super.onStart()
 +        val protected = appLock.mode != AppLock.Mode.OFF
-+        if (protected) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
++        updateRecentsProtection(protected)
 +        findViewById<View>(android.R.id.content).visibility =
 +            if (protected && !AppLock.unlocked) View.INVISIBLE else View.VISIBLE
 +    }
@@ -838,6 +939,10 @@ index 0000000..e22dd50
 +    override fun onStop() {
 +        if (appLock.mode != AppLock.Mode.OFF) findViewById<View>(android.R.id.content).visibility = View.INVISIBLE
 +        super.onStop()
++    }
++
++    protected fun updateRecentsProtection(protected: Boolean) {
++        if (android.os.Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!protected)
 +    }
 +}
 +
@@ -1033,7 +1138,7 @@ index c9ded7d..6c9ac9f 100644
  }
  
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
-index b07e364..88ab4b2 100644
+index b07e364..92418d6 100644
 --- a/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 +++ b/app/src/main/java/com/scrcpy/remote/ui/MirrorActivity.kt
 @@ -1,6 +1,8 @@
@@ -1102,7 +1207,20 @@ index b07e364..88ab4b2 100644
          // A recreated recording offer must not revive a session the user explicitly ended.
          if (!exitAfterRecording) {
              viewModel.connect(host, port, settingsFor(initialSettings), allowPortDiscovery = savedDeviceId != null,
-@@ -593,12 +610,6 @@ class MirrorActivity : ComponentActivity() {
+@@ -553,12 +570,6 @@ class MirrorActivity : ComponentActivity() {
+                 if (failures != failureBaseline) viewModel.reportBackgroundSessionUnavailable()
+             }
+         }
+-        lifecycleScope.launch {
+-            val baseline = MirrorSessionService.stopRequests.value
+-            MirrorSessionService.stopRequests.collect { requests ->
+-                if (requests != baseline) leaveSession()
+-            }
+-        }
+         lifecycleScope.launch {
+             // Finishing was deferred because a recording or screenshot was still being kept; once
+             // nothing the user asked to keep is in flight there is nothing left to stay for.
+@@ -593,12 +604,6 @@ class MirrorActivity : ComponentActivity() {
                          onRequestCameraPip = { requestCameraPictureInPicture() },
                          onPipStateChanged = ::reconcileCameraPip,
                          onShareArtefact = ::launchArtefactShare,
@@ -1115,7 +1233,7 @@ index b07e364..88ab4b2 100644
                          onSaveRecording = { name ->
                              if (canUseSessionTools()) {
                                  documentPickerOpen = true
-@@ -772,6 +783,7 @@ class MirrorActivity : ComponentActivity() {
+@@ -772,6 +777,7 @@ class MirrorActivity : ComponentActivity() {
          super.onDestroy()
          if (isFinishing) {
              viewModel.disconnect()
@@ -1123,7 +1241,7 @@ index b07e364..88ab4b2 100644
              MirrorSessionService.stop(this)
          }
      }
-@@ -861,8 +873,6 @@ private fun MirrorScreen(
+@@ -861,8 +867,6 @@ private fun MirrorScreen(
      onRequestCameraPip: () -> Unit,
      onPipStateChanged: () -> Unit,
      onShareArtefact: (Intent) -> Boolean,
@@ -1132,7 +1250,7 @@ index b07e364..88ab4b2 100644
      onSaveRecording: (String) -> Unit,
      onPickFileToSend: () -> Unit,
      onPickAppToInstall: () -> Unit,
-@@ -903,12 +913,7 @@ private fun MirrorScreen(
+@@ -903,12 +907,7 @@ private fun MirrorScreen(
      val recordingSaveInProgress by viewModel.recordingSaveInProgress.collectAsState()
      val desktopResizing by viewModel.desktopResizing.collectAsState()
      val finishedRecording by viewModel.finishedRecording.collectAsState()
@@ -1145,7 +1263,7 @@ index b07e364..88ab4b2 100644
      val shareUnavailable = stringResource(R.string.artefact_share_failed)
      val capture by screenshots.state.collectAsState()
      val defaults by repository.settings.collectAsState()
-@@ -975,7 +980,7 @@ private fun MirrorScreen(
+@@ -975,7 +974,7 @@ private fun MirrorScreen(
      var confirmApplySettings by rememberSaveable { mutableStateOf(false) }
      val dialogOpen = showApps || showEncoders || showAudioEncoders || showDisplays ||
          showCameras || showDetails || confirmLeave || showDeviceSettings ||
@@ -1154,7 +1272,7 @@ index b07e364..88ab4b2 100644
          appOffer != null || installOutcome != null
      val pipWorkPending = recording || finishedRecording != null || recordingSaveInProgress ||
          transfer.running || transferHold || capture.busy || capture.pendingToken != null ||
-@@ -1076,8 +1081,7 @@ private fun MirrorScreen(
+@@ -1076,8 +1075,7 @@ private fun MirrorScreen(
              onRetry = viewModel::reconnect,
              onRepair = {
                  // The pairing dialog lives on the device list.
@@ -1164,7 +1282,7 @@ index b07e364..88ab4b2 100644
                      .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                  onDisconnect()
              },
-@@ -1187,22 +1191,10 @@ private fun MirrorScreen(
+@@ -1187,22 +1185,10 @@ private fun MirrorScreen(
                      calibrationOverridesDefaults = calibrationOverride != null,
                      onUseGlobalCalibration = { updateCalibration(null) },
                      screenshotBusy = capture.busy,
@@ -1189,7 +1307,7 @@ index b07e364..88ab4b2 100644
                      onDeviceSettings = if (savedDevice != null) ({
                          if (canUseSessionTools()) showDeviceSettings = true
                      }) else null,
-@@ -1212,7 +1204,7 @@ private fun MirrorScreen(
+@@ -1212,7 +1198,7 @@ private fun MirrorScreen(
                      sendFileBusy = transfer.running,
                      onOpenEncoders = { if (canUseSessionTools()) showEncoders = true },
                      onOpenDisplays = { if (canUseSessionTools()) showDisplays = true },
@@ -1198,7 +1316,7 @@ index b07e364..88ab4b2 100644
                      onStreamChoices = { if (canUseSessionTools()) showStreamChoices = true },
                      cameraSession = activeSettings?.camera != null,
                      cameraTorchOn = cameraTorchOn,
-@@ -1229,7 +1221,7 @@ private fun MirrorScreen(
+@@ -1229,7 +1215,7 @@ private fun MirrorScreen(
                          viewZoom = (viewZoom / 2f).coerceAtLeast(1f)
                      },
                      onViewZoomReset = { viewZoom = 1f },
@@ -1207,7 +1325,7 @@ index b07e364..88ab4b2 100644
                      onCameraPip = if (pipSupported && activeSettings?.camera != null)
                          onRequestCameraPip else null,
                      cameraPipBlocked = pipWorkPending || dialogOpen,
-@@ -1373,24 +1365,6 @@ private fun MirrorScreen(
+@@ -1373,24 +1359,6 @@ private fun MirrorScreen(
              },
          )
      }
@@ -1234,10 +1352,10 @@ index b07e364..88ab4b2 100644
              onDismissRequest = { confirmLeave = false },
 diff --git a/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
 new file mode 100644
-index 0000000..f2633fd
+index 0000000..5cfc118
 --- /dev/null
 +++ b/app/src/main/java/com/scrcpy/remote/ui/RemoteAssistActivity.kt
-@@ -0,0 +1,1057 @@
+@@ -0,0 +1,1060 @@
 +package com.scrcpy.remote.ui
 +
 +import android.Manifest
@@ -1472,7 +1590,7 @@ index 0000000..f2633fd
 +            return
 +        }
 +        if (enrolled()) {
-+            if (role == AssistRole.DEVICE) confirmAvailability() else refreshDevices()
++            if (role == AssistRole.DEVICE) enableAvailability() else refreshDevices()
 +            return
 +        }
 +        val host = selectedServer
@@ -1496,6 +1614,7 @@ index 0000000..f2633fd
 +            return
 +        }
 +        ViewCompat.getWindowInsetsController(form)?.hide(WindowInsetsCompat.Type.ime())
++        setPasswordVisible(false)
 +        runNetwork {
 +            val response = withContext(Dispatchers.IO) {
 +                val key = AssistSsh.publicKey(applicationContext, selectedRole)
@@ -1515,7 +1634,7 @@ index 0000000..f2633fd
 +            }
 +            edit.apply()
 +            passwordInput.setText("")
-+            if (selectedRole == AssistRole.DEVICE) confirmAvailability() else showDevices(response)
++            if (selectedRole == AssistRole.OPERATOR) showDevices(response)
 +        }
 +    }
 +
@@ -1566,6 +1685,7 @@ index 0000000..f2633fd
 +            if (enrolled()) logOut()
 +            updateSelectedServer(host)
 +            passwordInput.setText("")
++            setPasswordVisible(false)
 +        }
 +        if (enrolled()) {
 +            AlertDialog.Builder(this).setTitle(R.string.assist_choose_server)
@@ -1813,16 +1933,12 @@ index 0000000..f2633fd
 +        }
 +    }
 +
-+    private fun confirmAvailability() {
-+        AlertDialog.Builder(this)
-+            .setTitle(R.string.assist_enable)
-+            .setMessage(R.string.assist_consent)
-+            .setNegativeButton(android.R.string.cancel, null)
-+            .setPositiveButton(R.string.assist_enable) { _, _ ->
-+                if (Build.VERSION.SDK_INT >= 33 && !AvailabilityService.canNotify(this)) {
-+                    notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-+                } else activate()
-+            }.show()
++    private fun enableAvailability() {
++        if (Build.VERSION.SDK_INT >= 33 && !AvailabilityService.canNotify(this)) {
++            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
++        } else {
++            activate()
++        }
 +    }
 +
 +    private fun activate() {
@@ -2051,7 +2167,10 @@ index 0000000..f2633fd
 +    private fun openMenu(anchor: View) {
 +        if (busy) return
 +        val popup = PopupMenu(this, anchor)
-+        if (canAdminister()) popup.menu.add(0, R.string.assist_accounts, 0, R.string.assist_accounts)
++        if (canAdminister()) {
++            popup.menu.add(0, R.string.assist_accounts, 0, R.string.assist_accounts)
++            popup.menu.add(0, R.string.assist_create_account, 1, R.string.assist_create_account)
++        }
 +        popup.menu.add(0, R.string.assist_local_lock, 1, R.string.assist_local_lock)
 +        if (AppLock(this).mode != AppLock.Mode.OFF) popup.menu.add(0, R.string.assist_lock_now, 2, R.string.assist_lock_now)
 +        if (enrolled()) popup.menu.add(0, R.string.assist_sign_out, 3, R.string.assist_sign_out)
@@ -2059,6 +2178,7 @@ index 0000000..f2633fd
 +        popup.setOnMenuItemClickListener { item ->
 +            when (item.itemId) {
 +                R.string.assist_accounts -> loadAccounts()
++                R.string.assist_create_account -> editAccount(null)
 +                R.string.assist_local_lock -> verifyLockSettings()
 +                R.string.assist_lock_now -> {
 +                    AppLock.unlocked = false
@@ -2167,8 +2287,7 @@ index 0000000..f2633fd
 +        runNetwork {
 +            withContext(Dispatchers.Default) { lock.configure(mode, value) }
 +            AppLock.unlocked = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-+            if (mode == AppLock.Mode.OFF) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-+            else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
++            updateRecentsProtection(mode != AppLock.Mode.OFF)
 +            message(R.string.assist_lock_saved)
 +        }
 +    }
@@ -2265,6 +2384,8 @@ index 0000000..f2633fd
 +    private fun passwordVisible(): Boolean = passwordInput.transformationMethod !is PasswordTransformationMethod
 +
 +    private fun setPasswordVisible(visible: Boolean) {
++        if (visible) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
++        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
 +        passwordInput.transformationMethod = if (visible) null else PasswordTransformationMethod.getInstance()
 +        passwordInput.setSelection(passwordInput.text.length)
 +        passwordReveal.setText(if (visible) R.string.assist_hide_password else R.string.assist_show_password)
@@ -2385,10 +2506,10 @@ index 0000000..ad67158
 +</resources>
 diff --git a/app/src/main/res/values/assistance.xml b/app/src/main/res/values/assistance.xml
 new file mode 100644
-index 0000000..389b298
+index 0000000..ce0f72b
 --- /dev/null
 +++ b/app/src/main/res/values/assistance.xml
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,101 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="assist_operator">Dar asistencia</string>
@@ -2398,11 +2519,10 @@ index 0000000..389b298
 +    <string name="assist_notification_title">JolufaSoft Remote · Asistencia</string>
 +    <string name="assist_enable">Activar asistencia permanente</string>
 +    <string name="assist_disable">Desactivar asistencia</string>
-+    <string name="assist_consent">El operador autorizado podrá ver y controlar este teléfono mientras esté disponible. La disponibilidad se restaura después del reinicio y puedes desactivarla en cualquier momento desde la notificación.</string>
 +    <string name="assist_disabled">Asistencia desactivada.</string>
 +    <string name="assist_connecting">Abriendo la conexión SSH…</string>
 +    <string name="assist_wait_adb">Esperando el puerto ADB local de Nightzuku.</string>
-+    <string name="assist_available">Disponible para el operador autorizado.</string>
++    <string name="assist_available">Disponible para José Luis.</string>
 +    <string name="assist_invalid">Revisa el servidor, el usuario, la contraseña y el nombre del teléfono.</string>
 +    <string name="assist_key_error">No se pudo abrir o generar la clave SSH de este teléfono.</string>
 +    <string name="assist_host_key_error">La clave ECDSA del servidor no coincide con la huella configurada.</string>
@@ -2435,7 +2555,7 @@ index 0000000..389b298
 +    <string name="assist_admin">Administrador</string>
 +    <string name="assist_account_active">Activa</string>
 +    <string name="assist_account_inactive">Desactivada</string>
-+    <string name="assist_create_account">Crear usuario</string>
++    <string name="assist_create_account">Agregar usuario</string>
 +    <string name="assist_change_password">Cambiar contraseña</string>
 +    <string name="assist_disable_account">Desactivar cuenta</string>
 +    <string name="assist_enable_account">Reactivar cuenta</string>
@@ -2503,8 +2623,170 @@ index 1d88699..2d77dc8 100644
      <string name="compact_navigation_only">Compact controls</string>
      <string name="compact_audio_notice">Audio needs attention. Open more controls.</string>
      <string name="compact_settings_notice">Saved settings are waiting to apply. Open more controls.</string>
+diff --git a/app/src/main/res/values/connection_checkup_strings.xml b/app/src/main/res/values/connection_checkup_strings.xml
+index cdd4ef8..ef4ccc3 100644
+--- a/app/src/main/res/values/connection_checkup_strings.xml
++++ b/app/src/main/res/values/connection_checkup_strings.xml
+@@ -1,32 +1,32 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="checkup_title">Connection checkup</string>
+-    <string name="checkup_stage_reach">Connect to %1$s</string>
+-    <string name="checkup_stage_authorize">ADB authorization</string>
+-    <string name="checkup_stage_deploy">Install the scrcpy server</string>
+-    <string name="checkup_stage_start">Start the server and its streams</string>
+-    <string name="checkup_stage_media">Receive video</string>
+-    <string name="checkup_stage_session">Stay connected</string>
+-    <string name="checkup_status_passed">Done</string>
+-    <string name="checkup_status_passed_ms">Done in %1$d ms</string>
+-    <string name="checkup_status_passed_timed">Done in %1$s s</string>
+-    <string name="checkup_status_running">In progress</string>
+-    <string name="checkup_status_failed">Failed</string>
+-    <string name="checkup_status_failed_ms">Failed after %1$d ms</string>
+-    <string name="checkup_status_failed_timed">Failed after %1$s s</string>
+-    <string name="checkup_status_lost">Lost</string>
+-    <string name="checkup_status_not_reached">Not reached</string>
+-    <string name="checkup_next">Next: %1$s</string>
+-    <string name="checkup_action_reach_refused">Turn on Wireless debugging (or adb tcpip) and use the connection port it shows now, not the pairing port.</string>
+-    <string name="checkup_action_reach">Check the address, and that both devices are awake and on the same network.</string>
+-    <string name="checkup_action_pair">Pair this phone first: on the device, open Wireless debugging and choose Pair device with pairing code.</string>
+-    <string name="checkup_action_authorize">Unlock the device and accept the Allow debugging prompt for this phone.</string>
+-    <string name="checkup_action_adb_port">Make sure this is the device\'s ADB connection port, then reconnect.</string>
+-    <string name="checkup_action_deploy">Check that the device has free storage, then reconnect.</string>
+-    <string name="checkup_action_start">Unlock the device and keep its screen on, then reconnect.</string>
+-    <string name="checkup_action_setting">Change the setting the device rejected, shown in the details, then reconnect.</string>
+-    <string name="checkup_action_session_setting">Go back to your devices and connect again: that uses the saved settings, without this session\'s choices.</string>
+-    <string name="checkup_action_codec">Choose a different video codec or encoder for this device.</string>
+-    <string name="checkup_action_network">Keep both devices awake and on the same network, then reconnect.</string>
+-    <string name="checkup_action_reconnect">Reconnect once the connection is stable.</string>
++    <string name="checkup_title">Comprobación de la conexión</string>
++    <string name="checkup_stage_reach">Conectar con %1$s</string>
++    <string name="checkup_stage_authorize">Autorización ADB</string>
++    <string name="checkup_stage_deploy">Instalar el servidor scrcpy</string>
++    <string name="checkup_stage_start">Iniciar el servidor y la transmisión</string>
++    <string name="checkup_stage_media">Recibir video</string>
++    <string name="checkup_stage_session">Mantener la conexión</string>
++    <string name="checkup_status_passed">Completado</string>
++    <string name="checkup_status_passed_ms">Completado en %1$d ms</string>
++    <string name="checkup_status_passed_timed">Completado en %1$s s</string>
++    <string name="checkup_status_running">En curso</string>
++    <string name="checkup_status_failed">Falló</string>
++    <string name="checkup_status_failed_ms">Falló después de %1$d ms</string>
++    <string name="checkup_status_failed_timed">Falló después de %1$s s</string>
++    <string name="checkup_status_lost">Conexión perdida</string>
++    <string name="checkup_status_not_reached">Pendiente</string>
++    <string name="checkup_next">Siguiente paso · %1$s</string>
++    <string name="checkup_action_reach_refused">Activa la depuración inalámbrica y comprueba el puerto de conexión que muestra Android.</string>
++    <string name="checkup_action_reach">Comprueba la dirección y que ambos teléfonos estén conectados.</string>
++    <string name="checkup_action_pair">En el teléfono asistido, abre Depuración inalámbrica y elige Vincular con código.</string>
++    <string name="checkup_action_authorize">Desbloquea el teléfono asistido y acepta la solicitud de depuración si aparece.</string>
++    <string name="checkup_action_adb_port">Comprueba que el ADB del teléfono asistido responda y vuelve a conectar.</string>
++    <string name="checkup_action_deploy">Comprueba que el teléfono asistido tenga espacio libre y vuelve a conectar.</string>
++    <string name="checkup_action_start">Desbloquea el teléfono asistido, mantén la pantalla encendida y vuelve a conectar.</string>
++    <string name="checkup_action_setting">Cambia el ajuste que rechazó el teléfono, según el detalle, y vuelve a conectar.</string>
++    <string name="checkup_action_session_setting">Vuelve a la lista de teléfonos y conecta de nuevo para usar los ajustes guardados.</string>
++    <string name="checkup_action_codec">Elige otro códec o codificador de video para este teléfono.</string>
++    <string name="checkup_action_network">Comprueba la conexión de ambos teléfonos y vuelve a conectar.</string>
++    <string name="checkup_action_reconnect">Vuelve a conectar cuando la red esté estable.</string>
+ </resources>
+diff --git a/app/src/main/res/values/connection_health_strings.xml b/app/src/main/res/values/connection_health_strings.xml
+index 74b1409..fdb589f 100644
+--- a/app/src/main/res/values/connection_health_strings.xml
++++ b/app/src/main/res/values/connection_health_strings.xml
+@@ -1,49 +1,49 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="pair_still_finishing">The previous pairing request is still finishing. Try again shortly.</string>
+-    <string name="pair_code_six_digits">Pairing code must contain six digits (0\u20139).</string>
++    <string name="pair_still_finishing">El emparejamiento anterior todavía está terminando. Vuelve a intentarlo en unos segundos.</string>
++    <string name="pair_code_six_digits">El código debe tener seis dígitos (0–9).</string>
+ 
+-    <string name="diag_open">Diagnose</string>
+-    <string name="diag_title">Connection diagnosis</string>
+-    <string name="diag_cause_label">What happened</string>
+-    <string name="diag_next_label">What to try</string>
++    <string name="diag_open">Diagnosticar</string>
++    <string name="diag_title">Diagnóstico de conexión</string>
++    <string name="diag_cause_label">Qué pasó</string>
++    <string name="diag_next_label">Qué puedes probar</string>
+ 
+-    <string name="diag_auth_cause">The device did not accept this phone\u2019s ADB key, or it is not paired.</string>
+-    <string name="diag_auth_next">Re-pair the device, and tick \u201cAlways allow\u201d when it asks \u201cAllow debugging?\u201d.</string>
+-    <string name="diag_network_cause">The device could not be reached over the network.</string>
+-    <string name="diag_network_next">Check that both devices are on the same Wi\u2011Fi, that the device is awake, and that its address has not changed.</string>
+-    <string name="diag_lost_cause">The device answered, then the connection dropped.</string>
+-    <string name="diag_lost_next">Check the Wi\u2011Fi signal on both devices, then retry.</string>
+-    <string name="diag_refused_cause">The device is reachable, but nothing is listening on this port.</string>
+-    <string name="diag_refused_next">Turn Wireless debugging off and on again; its port changes each time. Update the saved port, or re-pair.</string>
+-    <string name="diag_server_cause">The device refused the session or one of its settings.</string>
+-    <string name="diag_server_next">Retry. If it repeats, use Connect from the device list, or reset this device\u2019s mirroring settings.</string>
+-    <string name="diag_timeout_cause">The device stopped answering in time.</string>
+-    <string name="diag_timeout_next">Wake the device, check the Wi\u2011Fi signal, and retry. A busy or sleeping device can be slow to answer.</string>
+-    <string name="diag_codec_cause">The video, audio or input stream could not be started on this phone or on the device.</string>
+-    <string name="diag_codec_next">Retry with a lower resolution or a different video codec in this device\u2019s settings.</string>
+-    <string name="diag_other_cause">The connection failed for a reason the app could not classify.</string>
+-    <string name="diag_other_next">Retry. If it repeats, copy the diagnostic details and check the technical message below.</string>
++    <string name="diag_auth_cause">El teléfono asistido rechazó la clave ADB o todavía no está emparejado.</string>
++    <string name="diag_auth_next">Vuelve a emparejar. Si Android pregunta si permites la depuración, acepta la solicitud.</string>
++    <string name="diag_network_cause">No se pudo llegar al teléfono asistido por la red.</string>
++    <string name="diag_network_next">Comprueba que el teléfono asistido esté encendido y tenga conexión, y revisa que la dirección siga vigente.</string>
++    <string name="diag_lost_cause">La conexión se abrió y después se cortó.</string>
++    <string name="diag_lost_next">Comprueba la conexión de ambos teléfonos y que la asistencia siga activa. Luego vuelve a conectar.</string>
++    <string name="diag_refused_cause">El teléfono responde en la red, pero el puerto de conexión está cerrado.</string>
++    <string name="diag_refused_next">Comprueba la depuración inalámbrica y el puerto de conexión actual del teléfono asistido.</string>
++    <string name="diag_server_cause">El teléfono rechazó la sesión o alguno de sus ajustes.</string>
++    <string name="diag_server_next">Vuelve a conectar desde la lista de teléfonos. Si se repite, revisa los ajustes de control remoto.</string>
++    <string name="diag_timeout_cause">El teléfono tardó demasiado en responder.</string>
++    <string name="diag_timeout_next">Desbloquea el teléfono asistido, comprueba su conexión y vuelve a intentarlo.</string>
++    <string name="diag_codec_cause">No se pudo iniciar el video, el audio o el control.</string>
++    <string name="diag_codec_next">Prueba una resolución menor u otro códec de video.</string>
++    <string name="diag_other_cause">La aplicación no pudo clasificar el fallo.</string>
++    <string name="diag_other_next">Vuelve a intentarlo. Si se repite, copia el diagnóstico y revisa el detalle técnico.</string>
+ 
+-    <string name="diag_action_repair">Re-pair device</string>
+-    <string name="diag_action_help">Wireless debugging help</string>
+-    <string name="diag_action_settings">Open Wi\u2011Fi settings</string>
+-    <string name="diag_action_copy">Copy diagnostic details</string>
+-    <string name="diag_action_details">Details</string>
+-    <string name="diag_copied">Diagnostic details copied</string>
+-    <string name="diag_help_text">On the device: Settings \u2192 Developer options \u2192 Wireless debugging. Turn it on, then use \u201cPair device with pairing code\u201d to re-pair. The connect port shown on the Wireless debugging screen changes each time it is turned on.</string>
++    <string name="diag_action_repair">Volver a emparejar</string>
++    <string name="diag_action_help">Ayuda con la depuración inalámbrica</string>
++    <string name="diag_action_settings">Abrir ajustes de Wi-Fi</string>
++    <string name="diag_action_copy">Copiar diagnóstico</string>
++    <string name="diag_action_details">Detalles</string>
++    <string name="diag_copied">Diagnóstico copiado</string>
++    <string name="diag_help_text">En el teléfono asistido, abre Ajustes → Opciones de desarrollador → Depuración inalámbrica. Actívala y elige Vincular con código. Android puede cambiar el puerto de conexión al volver a activarla.</string>
+ 
+-    <string name="check_connection">Check connection</string>
+-    <string name="check_connection_title">Connection check: %1$s</string>
+-    <string name="check_connection_run_again">Check again</string>
+-    <string name="check_step_network">Network: device reachable at this address</string>
+-    <string name="check_step_adb">ADB handshake and authorization</string>
+-    <string name="check_step_server">Server can be deployed</string>
+-    <string name="check_status_pending">Waiting</string>
+-    <string name="check_status_running">Checking\u2026</string>
+-    <string name="check_status_passed">OK</string>
+-    <string name="check_status_failed">Failed</string>
+-    <string name="check_status_skipped">Skipped</string>
+-    <string name="check_result_ok">All checks passed. The device is ready to connect.</string>
+-    <string name="check_result_failed">First failing step: %1$s</string>
++    <string name="check_connection">Comprobar conexión</string>
++    <string name="check_connection_title">Comprobar conexión · %1$s</string>
++    <string name="check_connection_run_again">Comprobar de nuevo</string>
++    <string name="check_step_network">Red · teléfono accesible en esta dirección</string>
++    <string name="check_step_adb">Conexión y autorización ADB</string>
++    <string name="check_step_server">Instalación del servidor</string>
++    <string name="check_status_pending">En espera</string>
++    <string name="check_status_running">Comprobando…</string>
++    <string name="check_status_passed">Correcto</string>
++    <string name="check_status_failed">Falló</string>
++    <string name="check_status_skipped">Omitido</string>
++    <string name="check_result_ok">El teléfono está listo para conectar.</string>
++    <string name="check_result_failed">Primer paso que falló · %1$s</string>
+ </resources>
 diff --git a/app/src/main/res/values/release_ui_strings.xml b/app/src/main/res/values/release_ui_strings.xml
-index e1cc815..d6d553a 100644
+index e1cc815..440c7f2 100644
 --- a/app/src/main/res/values/release_ui_strings.xml
 +++ b/app/src/main/res/values/release_ui_strings.xml
 @@ -19,7 +19,7 @@
@@ -2516,6 +2798,22 @@ index e1cc815..d6d553a 100644
      <string name="release_control_copy">Copy</string>
      <string name="release_control_cut">Cut</string>
      <string name="release_control_paste">Paste</string>
+@@ -40,7 +40,7 @@
+     <string name="release_connecting_title">Connecting your screen</string>
+     <string name="mirror_surface_description">Mirrored screen of %1$s. Touches and swipes here are sent to that device.</string>
+     <string name="release_connecting_help">Keep the other device unlocked. Approve its debugging prompt if asked.</string>
+-    <string name="release_connection_failed">Could not connect</string>
++    <string name="release_connection_failed">No se pudo conectar</string>
+     <string name="release_connection_check">Check the address, wireless debugging, and that both devices can reach each other.</string>
+     <string name="setting_preset">Responsiveness</string>
+     <string name="setting_preset_responsive">Most responsive</string>
+@@ -56,4 +56,4 @@
+     <string name="view_zoom_reset">Fit the picture to the screen again</string>
+     <string name="view_zoom_reset_label">Fit</string>
+     <string name="view_zoom_active">Magnified %1$.1f×. Two fingers move the picture; one still reaches the device.</string>
+-</resources>
+\ No newline at end of file
++</resources>
 diff --git a/app/src/main/res/values/session_strings.xml b/app/src/main/res/values/session_strings.xml
 index 6066a46..eb624d7 100644
 --- a/app/src/main/res/values/session_strings.xml
@@ -2531,7 +2829,7 @@ index 6066a46..eb624d7 100644
      <string name="session_stay">Stay</string>
  </resources>
 diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index efd063d..363a13b 100644
+index efd063d..4be6498 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
 @@ -1,6 +1,6 @@
@@ -2542,6 +2840,15 @@ index efd063d..363a13b 100644
  
      <!-- Device list -->
      <string name="settings">Settings</string>
+@@ -18,7 +18,7 @@
+     <string name="port_help">Use the connection port from Wireless debugging, or 5555 after \'adb tcpip 5555\'.</string>
+     <string name="save">Save</string>
+     <string name="cancel">Cancel</string>
+-    <string name="close">Close</string>
++    <string name="close">Cerrar</string>
+ 
+     <!-- Pairing -->
+     <string name="pair_title">Pair with device</string>
 @@ -60,7 +60,7 @@
      <string name="link_request_keep_active_on">the device kept active</string>
      <string name="link_request_keep_active_off">the device not kept active</string>
@@ -2560,17 +2867,19 @@ index efd063d..363a13b 100644
      <string name="release_control_send_file">Send file</string>
      <string name="send_file_title">Sending a file</string>
      <string name="send_file_progress">%1$s of %2$s</string>
-@@ -155,8 +155,8 @@
+@@ -155,9 +155,9 @@
      <string name="setting_edge_gestures_help">Reserves the middle of each side edge for the remote device. Turn this off to give your own phone\'s back gesture the whole edge back.</string>
  
      <!-- Mirroring -->
 -    <string name="disconnected">Disconnected</string>
 -    <string name="reconnect">Reconnect</string>
+-    <string name="back_to_devices">Back to devices</string>
 +    <string name="disconnected">Desconectado</string>
 +    <string name="reconnect">Reconectar</string>
-     <string name="back_to_devices">Back to devices</string>
++    <string name="back_to_devices">Volver a los teléfonos</string>
      <string name="exit">Exit</string>
      <string name="hide">Hide</string>
+     <string name="done">Done</string>
 @@ -168,12 +168,12 @@
      <string name="calibration_help">Nudge the press until the remote pointer sits under your finger.</string>
  
@@ -2590,7 +2899,7 @@ index efd063d..363a13b 100644
      <string name="control_collapse_panels">Close the device\'s panels</string>
      <string name="control_apps">Apps on device</string>
      <string name="apps_title">Apps on the device</string>
-@@ -247,19 +247,19 @@
+@@ -247,22 +247,22 @@
      <string name="control_plus_ten">%1$s plus ten</string>
  
      <!-- Session status and errors -->
@@ -2614,13 +2923,16 @@ index efd063d..363a13b 100644
 +    <string name="error_codec">Este teléfono no pudo decodificar el vídeo.</string>
      <string name="error_invalid_settings">The saved connection or mirroring settings are not valid. Review them and try again.</string>
      <string name="error_invalid_session_choice">The device refused a setting chosen for this session, by the link that opened it or in its controls. Go back to your devices and connect again to use the saved settings.</string>
-     <string name="error_detail">Details: %1$s</string>
-@@ -311,6 +311,6 @@
+-    <string name="error_detail">Details: %1$s</string>
++    <string name="error_detail">Detalle · %1$s</string>
+ 
+     <!-- Accessible UI, explicit text sending and endpoint validation -->
+     <string name="ui_retry_audio">Retry audio</string>
+@@ -311,6 +311,5 @@
      <string name="transfer_notification_text">The connection stays open while a file is chosen and sent.</string>
      <string name="background_notification_device">Connected to %1$s</string>
      <string name="transfer_notification_device">For %1$s: the connection stays open while a file is chosen and sent.</string>
 -    <string name="background_notification_stop">Disconnect</string>
-+    <string name="background_notification_stop">Desconectar</string>
      <string name="background_session_unavailable">Android refused to keep this session in the background. It will stop when the app is hidden.</string>
  </resources>
 diff --git a/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt b/app/src/test/java/com/scrcpy/remote/assist/AssistSshTest.kt

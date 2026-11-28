@@ -1,4 +1,4 @@
-# JolufaSoft Remote 1.6.1
+# JolufaSoft Remote 1.6.2
 
 Instala el APK en ambos teléfonos y selecciona el mismo servidor en los dos. Cada teléfono asistido se registra una vez con usuario, contraseña y un nombre. En el operador, inicia sesión una vez y elige el teléfono de la lista. La aplicación registra automáticamente sus claves SSH y obtiene la huella del servidor mediante HTTPS. Las contraseñas se usan al iniciar sesión. El operador conserva un token y el teléfono asistido conserva su identidad SSH en el almacenamiento privado de la app.
 
@@ -27,7 +27,7 @@ El Oracle necesita OpenSSH, Python 3 y Tailscale con HTTPS habilitado. Limita TC
 
 ## Cuentas y roles
 
-La cuenta inicial `remote-operator-01` administra las cuentas desde **Dar asistencia → Menú ⋮ → Administrar cuentas**. Puede crear operadores y cuentas para equipos asistidos, cambiar o generar sus contraseñas y desactivar o reactivar cuentas. Los operadores creados pueden dar asistencia. Los equipos asistidos se registran con su cuenta y un nombre.
+La cuenta inicial `remote-operator-01` administra las cuentas desde **Dar asistencia → Menú ⋮ → Administrar cuentas**. El acceso **Menú ⋮ → Agregar usuario** abre directamente el alta de cuentas. Puede crear operadores y cuentas para equipos asistidos, cambiar o generar sus contraseñas y desactivar o reactivar cuentas. Los operadores creados pueden dar asistencia. Los equipos asistidos se registran con su cuenta y un nombre.
 
 Al cambiar una contraseña o desactivar una cuenta se revocan sus credenciales para conexiones nuevas. Un túnel SSH ya establecido puede seguir abierto hasta que termine su conexión. Los teléfonos afectados deben volver a iniciar sesión para registrar su llave.
 
@@ -39,11 +39,11 @@ Los catálogos de cuentas y teléfonos usan un selector desplegable. El administ
 
 Toca el avatar junto al menú para elegir gato, robot, zorro o planeta. El avatar se guarda localmente. En **Administrar cuentas → Opciones de la cuenta → Elegir avatar** puedes asignar una imagen a cada usuario de la lista. El encabezado muestra la versión instalada.
 
-En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configurar un PIN local, una contraseña local o el desbloqueo de Android (biometría fuerte o credencial del dispositivo, en Android 11 o posterior). Se solicita al volver con la aplicación en segundo plano y al volver a abrirla. **Bloquear ahora** permite hacerlo de inmediato. El bloqueo protege la interfaz del teléfono y la asistencia en segundo plano sigue disponible.
+En cada teléfono, **Menú ⋮ → Bloqueo de la aplicación** permite configurar un PIN local, una contraseña local o el desbloqueo de Android (biometría fuerte o credencial del dispositivo, en Android 11 o posterior). Se solicita al volver con la aplicación en segundo plano y al volver a abrirla. **Bloquear ahora** permite hacerlo de inmediato. El bloqueo protege la interfaz del teléfono y la asistencia en segundo plano sigue disponible. Una vez desbloqueada la aplicación, puedes capturar el diagnóstico y los errores.
 
 ## Teléfonos
 
-- **Recibir asistencia** usa `remote-device-01` y su contraseña. Al iniciar sesión, ponle un nombre al teléfono y habilita la disponibilidad. Se mantiene mientras el servidor elegido y el ADB local autorizado estén disponibles. La puesta en marcha del ADB en el teléfono asistido sigue dependiendo de un componente externo como Nightzuku. Puedes desactivarla desde la notificación.
+- **Recibir asistencia** usa `remote-device-01` y su contraseña. Al iniciar sesión, ponle un nombre al teléfono y habilita la disponibilidad. Se mantiene mientras el servidor elegido y el ADB local autorizado estén disponibles. La puesta en marcha del ADB en el teléfono asistido sigue dependiendo de un componente externo como Nightzuku. La notificación indica **Disponible para José Luis** cuando el servicio está disponible. Para desactivar la asistencia, abre la aplicación y usa **Desactivar asistencia**.
 - **Dar asistencia** usa `remote-operator-01` y su contraseña. Pulsa **Teléfonos** y elige el equipo. Acepta una vez en el equipo asistido la autorización ADB del cliente si Android la pide. Los teléfonos registrados aparecen en la lista aunque estén apagados o la disponibilidad esté desactivada.
 
 ## Compilación
