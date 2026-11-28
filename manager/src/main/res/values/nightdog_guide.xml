@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nightdog_guide_title">Qué hace NightDog</string>
+    <string name="nightdog_guide_features">• Recupera el servicio si Binder deja de responder.\n• Busca un puerto ADB nuevo tras un cambio de red y verifica el shell antes de iniciar el servicio.\n• Después de reiniciar, puede recuperar el servicio tras desbloquear el teléfono si Android permite el inicio y hay un transporte ADB autorizado.\n• El panel muestra el transporte, las recuperaciones y su cronología.</string>
+    <string name="nightdog_guide_test_description">La prueba detiene el servidor una vez y deja NightDog activo para comprobar el regreso. Detener Nightzuku desde el menú pausa la recuperación hasta que vuelvas a iniciarlo.</string>
+    <string name="nightdog_guide_test">Abrir prueba de recuperación</string>
+    <string name="nightdog_guide_support">Nightzuku es gratuito y seguirá siéndolo. Si te sirve, una estrella ayuda a que más gente encuentre el proyecto.</string>
+    <string name="nightdog_guide_star">Ver el proyecto en GitHub</string>
+</resources>

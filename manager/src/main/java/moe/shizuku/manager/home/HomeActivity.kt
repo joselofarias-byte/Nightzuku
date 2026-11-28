@@ -20,6 +20,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -40,8 +42,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +59,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -70,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -98,6 +105,7 @@ import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.module.AdbModuleManager
 import moe.shizuku.manager.module.ModulesActivity
 import moe.shizuku.manager.settings.SettingsActivity
+import moe.shizuku.manager.settings.LabFeaturesActivity
 import moe.shizuku.manager.shell.ShellTutorialActivity
 import moe.shizuku.manager.shizuku.NightDogRecovery
 import moe.shizuku.manager.shizuku.NightDogTrace
@@ -547,6 +555,19 @@ private fun PhoneHomeScreen(
     val recoverySnapshot by NightDogRecovery.snapshot.collectAsStateWithLifecycle()
     val canUseWirelessAdb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0
     var moreOpen by remember { mutableStateOf(false) }
+    var showNightDogGuide by rememberSaveable { mutableStateOf(false) }
+    if (showNightDogGuide) {
+        NightDogGuide(
+            onDismiss = { showNightDogGuide = false },
+            onOpenRecoveryTest = {
+                showNightDogGuide = false
+                context.startActivity(Intent(context, LabFeaturesActivity::class.java))
+            },
+            onOpenProject = {
+                CustomTabsHelper.launchUrlOrCopy(context, "https://github.com/joselofarias-byte/Nightzuku")
+            }
+        )
+    }
     var elapsedNow by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
 
     LaunchedEffect(running, recoverySnapshot.runningSinceElapsedRealtime) {
@@ -595,6 +616,11 @@ private fun PhoneHomeScreen(
                                     )
                                 }
                             }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.nightdog_guide_title)) },
+                                leadingIcon = { ShizukuIcon(icon = R.drawable.ic_server_ok_24dp, contentDescription = null) },
+                                onClick = { moreOpen = false; showNightDogGuide = true }
+                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.action_about)) },
                                 leadingIcon = { ShizukuIcon(icon = R.drawable.ic_outline_info_24, contentDescription = null) },
@@ -890,6 +916,51 @@ private fun DiagnosticsCard(diagnostics: String, onCopyDiagnostics: (String) -> 
 @Composable
 private fun SimpleActionCard(@DrawableRes icon: Int, title: String, body: String, enabled: Boolean = true, onClick: () -> Unit) {
     HomeCard(icon, title, body, enabled = enabled, onClick = onClick)
+}
+
+@Composable
+private fun NightDogGuide(
+    onDismiss: () -> Unit,
+    onOpenRecoveryTest: () -> Unit,
+    onOpenProject: () -> Unit
+) {
+    var arrived by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { arrived = true }
+    val scale by animateFloatAsState(
+        targetValue = if (arrived) 1f else 0.8f,
+        animationSpec = spring(dampingRatio = 0.55f),
+        label = "NightDog"
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.nightdog_guide_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.nightdog_status_active),
+                    contentDescription = null,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).size(88.dp)
+                        .graphicsLayer { scaleX = scale; scaleY = scale },
+                    contentScale = ContentScale.Fit
+                )
+                Text(stringResource(R.string.nightdog_guide_features))
+                Text(stringResource(R.string.nightdog_guide_test_description))
+                FilledTonalButton(onClick = onOpenRecoveryTest, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.nightdog_guide_test))
+                }
+                Text(stringResource(R.string.nightdog_guide_support))
+                OutlinedButton(onClick = onOpenProject, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.nightdog_guide_star))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.ok)) }
+        }
+    )
 }
 
 @Composable

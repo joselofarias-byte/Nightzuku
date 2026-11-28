@@ -13,6 +13,10 @@ Proyecto Android de la familia Shizuku mantenido por **JoseloFarias**, con ident
 
 Desarrollo activo. Las funciones nuevas deben validarse en dispositivo y mediante las tareas reales del proyecto.
 
+## Qué hace NightDog
+
+Consulta [recuperación, arranque y prueba de persistencia](docs/NIGHTDOG-RECUPERACION.md). En Android también está disponible desde **Menú ⋮ → Qué hace NightDog**.
+
 ## Desarrollo
 
 ```bash
